@@ -153,10 +153,10 @@ function Remove-OnlineOwnedStaging {
     $parent = [IO.Path]::GetFullPath($ParentPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
     $staging = [IO.Path]::GetFullPath($StagingPath)
     if (-not [IO.Path]::GetDirectoryName($staging).Equals($parent, [StringComparison]::OrdinalIgnoreCase) -or
-        [IO.Path]::GetFileName($staging) -notmatch '^\.online-stage-[0-9a-f]{32}$') {
-        throw 'Refusing to remove a staging path outside the exact owned release directory.'
+        [IO.Path]::GetFileName($staging) -notmatch '^\.online-(?:stage|work)-[0-9a-f]{32}$') {
+        throw 'Refusing to remove a staging path outside its exact owned parent directory.'
     }
-    Assert-ILauncherNoReparseAncestors $parent 'Online release directory'
+    Assert-ILauncherNoReparseAncestors $parent 'Online staging parent'
     if (-not (Test-Path -LiteralPath $staging)) { return }
     if (([IO.File]::GetAttributes($staging) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw 'Refusing to remove an unexpected reparse-point staging root.'
@@ -311,10 +311,26 @@ if (-not (Test-Path -LiteralPath $releaseRoot -PathType Container)) { throw "Run
 $finalOnlinePath = Join-Path $releaseRoot 'online'
 if (Test-Path -LiteralPath $finalOnlinePath) { throw "Online release already exists: $finalOnlinePath" }
 $stagePath = Join-Path $releaseRoot ('.online-stage-' + [Guid]::NewGuid().ToString('N'))
-$workPath = Join-Path $stagePath 'work'
+$workParent = if (-not [string]::IsNullOrWhiteSpace([string]$env:RUNNER_TEMP)) {
+    [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+}
+elseif (-not [string]::IsNullOrWhiteSpace([string]$env:TEMP)) {
+    [IO.Path]::GetFullPath($env:TEMP)
+}
+else {
+    [IO.Path]::GetTempPath()
+}
+if (-not (Test-Path -LiteralPath $workParent -PathType Container)) { throw "Online staging parent is missing: $workParent" }
+Assert-ILauncherNoReparseAncestors $workParent 'Online work directory parent'
+$workPath = Join-Path $workParent ('.online-work-' + [Guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $workPath) { throw "Online work directory already exists: $workPath" }
 [IO.Directory]::CreateDirectory($workPath) | Out-Null
 
 try {
+    Assert-ILauncherNoReparseAncestors $releaseRoot 'Online release directory'
+    if (Test-Path -LiteralPath $stagePath) { throw "Online stage directory already exists: $stagePath" }
+    [IO.Directory]::CreateDirectory($stagePath) | Out-Null
+
     $runtimeVersion = Get-OnlineRuntimeVersion $dotnetRoot
     $definitions = [Collections.Generic.List[object]]::new()
     $manifestFolders = [Collections.Generic.List[string]]::new()
@@ -411,7 +427,7 @@ try {
     foreach ($file in Get-ChildItem -LiteralPath $workPath -File) {
         [IO.File]::Move($file.FullName, (Join-Path $stagePath $file.Name))
     }
-    Remove-Item -LiteralPath $workPath -Recurse -Force
+    Remove-OnlineOwnedStaging $workParent $workPath
     [IO.Directory]::Move($stagePath, $finalOnlinePath)
 
     Write-Host "Published online bootstrapper and app packages: $finalOnlinePath"
@@ -419,6 +435,9 @@ try {
     Write-Host "Online apps: $($apps.Count)"
 }
 catch {
+    if (Test-Path -LiteralPath $workPath) {
+        Remove-OnlineOwnedStaging $workParent $workPath
+    }
     if (Test-Path -LiteralPath $stagePath) {
         Remove-OnlineOwnedStaging $releaseRoot $stagePath
     }

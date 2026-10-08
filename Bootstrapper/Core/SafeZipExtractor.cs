@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using Directory = ILauncher.Bootstrapper.LongPathDirectory;
+using File = ILauncher.Bootstrapper.LongPathFile;
 using System.Linq;
 using System.Text;
 
@@ -51,7 +53,7 @@ namespace ILauncher.Bootstrapper
             HashSet<string> directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             long declaredTotal = 0;
             long actualTotal = 0;
-            using (FileStream stream = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (FileStream stream = File.Open(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read, false))
             {
                 if (archive.Entries.Count == 0 || archive.Entries.Count > options.MaximumArchiveEntries)
@@ -87,7 +89,7 @@ namespace ILauncher.Bootstrapper
                     string parent = Path.GetDirectoryName(target);
                     SafeFiles.EnsureSafeDirectory(fullDestination, parent, true);
                     using (Stream input = entry.Open())
-                    using (FileStream output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    using (FileStream output = File.Open(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     {
                         byte[] buffer = new byte[64 * 1024];
                         int read;

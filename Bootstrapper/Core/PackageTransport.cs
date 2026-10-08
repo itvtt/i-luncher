@@ -7,6 +7,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Directory = ILauncher.Bootstrapper.LongPathDirectory;
+using File = ILauncher.Bootstrapper.LongPathFile;
 
 namespace ILauncher.Bootstrapper
 {
@@ -83,8 +85,7 @@ namespace ILauncher.Bootstrapper
             string actualHash = SafeFiles.Sha256File(destination);
             if (!String.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Downloaded package hash does not match the pinned catalog.");
-            FileInfo file = new FileInfo(destination);
-            if (file.Length != expectedBytes)
+            if (File.Length(destination) != expectedBytes)
                 throw new InvalidDataException("Downloaded package size does not match the pinned catalog.");
         }
 
@@ -188,8 +189,8 @@ namespace ILauncher.Bootstrapper
             string localPackage = SafeFiles.CombineContained(localRoot, assetName, "Package mirror asset");
             if (!File.Exists(localPackage)) throw new FileNotFoundException("Package asset is missing from the configured mirror.");
             SafeFiles.EnsureExistingPathHasNoReparsePoints(localPackage, false);
-            using (FileStream input = new FileStream(localPackage, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (FileStream output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (FileStream input = File.Open(localPackage, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (FileStream output = File.Open(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await CopyBoundedAsync(input, output, expectedBytes, appId, progress, cancellationToken).ConfigureAwait(false);
                 output.Flush(true);
@@ -270,7 +271,7 @@ namespace ILauncher.Bootstrapper
                 response.Content.Headers.ContentLength.Value != expectedBytes)
                 throw new InvalidDataException("Package content length does not match the pinned catalog.");
             using (Stream input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-            using (FileStream output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (FileStream output = File.Open(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await CopyBoundedAsync(input, output, expectedBytes, appId, progress, cancellationToken)
                     .ConfigureAwait(false);

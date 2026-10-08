@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Directory = ILauncher.Bootstrapper.LongPathDirectory;
+using File = ILauncher.Bootstrapper.LongPathFile;
 
 namespace ILauncher.Bootstrapper
 {
@@ -17,7 +19,7 @@ namespace ILauncher.Bootstrapper
         internal static string Sha256File(string path)
         {
             using (SHA256 sha = SHA256.Create())
-            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
                 return ToHex(sha.ComputeHash(stream));
         }
 
@@ -97,7 +99,7 @@ namespace ILauncher.Bootstrapper
             if (!IsWithinOrEqual(fullParent, fullStaging) || String.Equals(fullParent, fullStaging, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Refusing to remove a directory outside the owned staging parent.");
             EnsureTreeHasNoReparsePoints(fullStaging);
-            Directory.Delete(fullStaging, true);
+            DeleteTreeWithoutFollowingLinks(fullStaging);
         }
 
         internal static void EnsureTreeHasNoReparsePoints(string root)
@@ -120,6 +122,34 @@ namespace ILauncher.Bootstrapper
             }
         }
 
+        private static void DeleteTreeWithoutFollowingLinks(string root)
+        {
+            Stack<KeyValuePair<string, bool>> pending = new Stack<KeyValuePair<string, bool>>();
+            pending.Push(new KeyValuePair<string, bool>(root, false));
+            while (pending.Count > 0)
+            {
+                KeyValuePair<string, bool> item = pending.Pop();
+                if (!Directory.Exists(item.Key) && !File.Exists(item.Key)) continue;
+                FileAttributes attributes = File.GetAttributes(item.Key);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("A cache staging path contains a reparse point.");
+                if ((attributes & FileAttributes.Directory) == 0)
+                {
+                    File.Delete(item.Key);
+                    continue;
+                }
+                if (item.Value)
+                {
+                    Directory.Delete(item.Key, false);
+                    continue;
+                }
+                pending.Push(new KeyValuePair<string, bool>(item.Key, true));
+                string[] entries = Directory.GetFileSystemEntries(item.Key);
+                for (int i = entries.Length - 1; i >= 0; i--)
+                    pending.Push(new KeyValuePair<string, bool>(entries[i], false));
+            }
+        }
+
         internal static void WriteAtomic(string path, byte[] contents)
         {
             string directory = Path.GetDirectoryName(path);
@@ -128,7 +158,7 @@ namespace ILauncher.Bootstrapper
             string temporary = Path.Combine(directory, ".tmp-" + Guid.NewGuid().ToString("N"));
             try
             {
-                using (FileStream stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (FileStream stream = File.Open(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
                     stream.Write(contents, 0, contents.Length);
                     stream.Flush(true);

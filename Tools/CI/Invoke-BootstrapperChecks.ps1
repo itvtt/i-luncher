@@ -28,6 +28,7 @@ try {
     ) + (Join-Path $sourceRoot 'Bootstrapper\\Checks\\Program.cs')
     $arguments = @(
         '/nologo', '/target:exe', '/langversion:5', ('/out:"{0}"' -f $outputPath),
+        ('/win32manifest:"{0}"' -f (Join-Path $sourceRoot 'Bootstrapper\app.manifest')),
         '/r:System.Net.Http.dll', '/r:System.IO.Compression.dll',
         '/r:System.IO.Compression.FileSystem.dll', '/r:Microsoft.CSharp.dll'
     ) + $sources

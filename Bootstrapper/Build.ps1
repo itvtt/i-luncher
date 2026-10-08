@@ -50,6 +50,8 @@ if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) {
 $frameworkDir = Split-Path -Parent $csc
 $appSource = Join-Path $PSScriptRoot 'App.cs'
 if (-not (Test-Path -LiteralPath $appSource -PathType Leaf)) { throw "Bootstrapper source not found: $appSource" }
+$manifestFile = Join-Path $PSScriptRoot 'app.manifest'
+if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) { throw "Bootstrapper manifest not found: $manifestFile" }
 $coreDirectory = Join-Path $PSScriptRoot 'Core'
 $coreSources = @()
 if (Test-Path -LiteralPath $coreDirectory -PathType Container) {
@@ -67,6 +69,7 @@ try {
     $arguments = @(
         '/nologo', '/target:winexe', '/platform:anycpu', '/optimize+', '/debug-', '/langversion:5',
         ('/out:"' + $outputFullPath + '"'),
+        ('/win32manifest:"' + $manifestFile + '"'),
         ('/win32icon:"' + $iconFile + '"'),
         ('/reference:"' + (Join-Path $frameworkDir 'System.dll') + '"'),
         ('/reference:"' + (Join-Path $frameworkDir 'System.Core.dll') + '"'),

@@ -8,6 +8,8 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Directory = ILauncher.Bootstrapper.LongPathDirectory;
+using File = ILauncher.Bootstrapper.LongPathFile;
 
 namespace ILauncher.Bootstrapper
 {

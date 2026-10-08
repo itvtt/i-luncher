@@ -17,6 +17,7 @@ internal static class Program
     private static int _passed;
     private static int Main(string[] args)
     {
+        FrameworkCompatibility.Initialize();
         if (args != null && args.Length == 4 && String.Equals(args[0], "--payload-smoke", StringComparison.OrdinalIgnoreCase))
             return RunPayloadSmoke(args[1], args[2], args[3]).GetAwaiter().GetResult();
         string root = Path.Combine(Path.GetTempPath(), "iluncher-bootstrap-checks-" + Guid.NewGuid().ToString("N"));
@@ -30,7 +31,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("FAILED: " + ex.GetType().Name + ": " + ex.Message);
+            Console.Error.WriteLine("FAILED: " + ex);
             return 1;
         }
         finally
@@ -98,6 +99,12 @@ internal static class Program
 
     private static void TestZipRejections(string root)
     {
+        Expect<InvalidDataException>(delegate { LongPathFileSystem.ForIo("\\\\?\\C:\\temp\\fixture"); },
+            "extended device paths are rejected at the filesystem boundary");
+        Expect<InvalidDataException>(delegate { LongPathFileSystem.ForIo("C:\\temp\\fixture:stream"); },
+            "drive alternate data streams are rejected at the filesystem boundary");
+        Expect<InvalidDataException>(delegate { LongPathFileSystem.ForIo("\\\\server\\share\\fixture:stream"); },
+            "UNC alternate data streams are rejected at the filesystem boundary");
         string cache = Path.Combine(root, "zip-checks");
         Directory.CreateDirectory(cache);
         BootstrapperOptions options = Limits(cache);
@@ -254,6 +261,64 @@ internal static class Program
         Check(!engine.GetStatus("module-one").IsInstalled, "truncated install receipt is not reported as installed");
         File.WriteAllText(installedOne.ReceiptPath, validReceipt);
         Check(engine.GetStatus("module-one").IsInstalled, "valid receipt and shortcut restore installed status");
+
+        string longEntry = "deep";
+        for (int i = 0; i < 6; i++) longEntry += "/" + new string('\u754c', 36);
+        longEntry += "/payload.txt";
+        string longPathZip = Path.Combine(mirror, "module-one-long.zip");
+        CreateZip(longPathZip, new Dictionary<string, byte[]>
+        {
+            { "probe.exe", File.ReadAllBytes(probeExe) },
+            { longEntry, Bytes("unicode long-path payload") }
+        }, false);
+        byte[] longPathZipBytes = File.ReadAllBytes(longPathZip);
+        string longCache = Path.Combine(fixture, "unicode-cache");
+        string longCatalogJson = CatalogJson(runtimeBytes, longPathZipBytes, twoBytes).Replace(
+            "\"asset\":\"module-one.zip\"", "\"asset\":\"module-one-long.zip\"");
+        string longDataPath = Path.Combine(Path.Combine(Path.Combine(longCache, "apps"), "module-one"),
+            Hash(longPathZipBytes) + Path.DirectorySeparatorChar + longEntry.Replace('/', Path.DirectorySeparatorChar));
+        Check(Path.GetFullPath(longDataPath).Length > 300, "Unicode cache payload path exceeds 300 characters");
+        BootstrapperOptions longPathOptions = Limits(longCache);
+        longPathOptions.EmbeddedCatalogJson = longCatalogJson;
+        longPathOptions.ExpectedCatalogSha256 = Hash(Encoding.UTF8.GetBytes(longCatalogJson));
+        longPathOptions.BootstrapperExecutablePath = probeExe;
+        longPathOptions.StartMenuRoot = menu;
+        longPathOptions.PackageMirrorBase = mirror;
+        string longPathStage = "engine construction";
+        try
+        {
+            using (BootstrapperEngine longPathEngine = new BootstrapperEngine(longPathOptions,
+                NullBootstrapperCredentialProvider.Instance,
+                delegate { return new NoNetworkTransport(); },
+                delegate { return new NoNetworkTransport(); }))
+            {
+                longPathStage = "EnsureReadyAsync extraction";
+                BootstrapperReadyApp longPathReady = await longPathEngine.EnsureReadyAsync("module-one", CancellationToken.None);
+                Check(longPathReady.ExecutablePath.Length < 260 && File.Exists(longPathReady.ExecutablePath),
+                    "app executable stays shell-compatible under a long Unicode payload path");
+                Check(LongPathFile.Exists(longDataPath),
+                    "package extracts Unicode payload beneath a path longer than 300 characters");
+                Check(longPathEngine.GetStatus("module-one").IsReady,
+                    "ready status resolves files under a long Unicode cache path");
+                longPathStage = "InstallAsync receipt and shortcut";
+                BootstrapperInstallResult longPathInstall = await longPathEngine.InstallAsync("module-one", CancellationToken.None);
+                Check(longPathInstall.ReceiptPath.Length < 260 && File.Exists(longPathInstall.ReceiptPath) &&
+                    longPathInstall.InstalledBootstrapperPath.Length < 260 &&
+                    longPathEngine.GetStatus("module-one").IsInstalled,
+                    "install receipt, launcher target, and status stay valid with a long payload path");
+                Check(File.Exists(longPathInstall.ShortcutPath) && longPathInstall.ShortcutPath.Length < 260,
+                    "long-payload install creates a normal Start Menu shortcut");
+            }
+            longPathStage = "long-path cleanup";
+            DeleteFixtureRoot(longCache);
+            Check(!Directory.Exists(longCache), "long Unicode cache staging and receipts clean up safely");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Long-path fixture failed during " + longPathStage + ": " +
+                ex.GetType().Name + " (HRESULT 0x" + ex.HResult.ToString("X8") + ", cache path length " +
+                Path.GetFullPath(longCache).Length + "): " + ex.Message, ex);
+        }
 
         string output = Path.Combine(fixture, "child-env.txt");
         Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", output);
@@ -465,9 +530,21 @@ internal static class Program
     private static void DeleteFixtureRoot(string root)
     {
         string fullRoot = Path.GetFullPath(root);
-        SafeFiles.EnsureTreeHasNoReparsePoints(fullRoot);
+        if (!Directory.Exists(fullRoot)) return;
+        string extendedRoot = ToExtendedPath(fullRoot);
+        Stack<string> verify = new Stack<string>();
+        verify.Push(extendedRoot);
+        while (verify.Count > 0)
+        {
+            string path = verify.Pop();
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Refusing to remove a fixture reparse point.");
+            if ((attributes & FileAttributes.Directory) != 0)
+                foreach (string child in Directory.GetFileSystemEntries(path)) verify.Push(child);
+        }
         Stack<KeyValuePair<string, bool>> pending = new Stack<KeyValuePair<string, bool>>();
-        pending.Push(new KeyValuePair<string, bool>(fullRoot, false));
+        pending.Push(new KeyValuePair<string, bool>(extendedRoot, false));
         while (pending.Count > 0)
         {
             KeyValuePair<string, bool> item = pending.Pop();
@@ -490,6 +567,12 @@ internal static class Program
             for (int i = children.Length - 1; i >= 0; i--)
                 pending.Push(new KeyValuePair<string, bool>(children[i], false));
         }
+    }
+
+    private static string ToExtendedPath(string path)
+    {
+        if (path.StartsWith("\\\\?\\", StringComparison.Ordinal)) return path;
+        return "\\\\?\\" + path;
     }
 
     private sealed class NoNetworkTransport : IBootstrapperHttpTransport

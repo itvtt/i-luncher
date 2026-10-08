@@ -21,6 +21,7 @@ namespace ILauncher.BootstrapperUi
         [STAThread]
         private static int Main(string[] args)
         {
+            FrameworkCompatibility.Initialize();
             Stopwatch startup = Stopwatch.StartNew();
             try
             {
