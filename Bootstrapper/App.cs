@@ -389,6 +389,7 @@ namespace ILauncher.BootstrapperUi
         private readonly Dictionary<string, AppCard> _cards = new Dictionary<string, AppCard>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _inFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Label _status;
+        private readonly LauncherStatusBar _statusBar;
         private readonly bool _smokeUi;
         private readonly bool _smokeRealProfile;
         private readonly Stopwatch _startup;
@@ -429,7 +430,7 @@ namespace ILauncher.BootstrapperUi
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = BackColor };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
             Controls.Add(root);
 
             Panel header = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 12, 20, 8), BackColor = Color.FromArgb(22, 26, 35) };
@@ -467,17 +468,11 @@ namespace ILauncher.BootstrapperUi
                 _cards.Add(app.Id, card);
                 grid.Controls.Add(card);
             }
-            Panel footer = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(22, 26, 35), Padding = new Padding(20, 4, 20, 4) };
-            root.Controls.Add(footer, 0, 2);
-            _status = new Label { Left = 0, Top = 0, Width = 900, Height = 22, Text = "목록을 불러왔습니다. 필요한 항목을 설치하거나 실행하세요.", ForeColor = Color.FromArgb(180, 190, 207), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
-            footer.Controls.Add(_status);
-            Label runtimeNote = new Label
-            {
-                Left = 0, Top = 24, Width = 1120, Height = 20,
-                Text = "공용 .NET 런타임 " + FormatMegabytes(catalog.RuntimeBytes) + "은 처음 필요한 앱을 실행할 때 한 번 다운로드해 캐시에 저장하고, 이후 앱이 공유합니다.",
-                ForeColor = Color.FromArgb(135, 145, 164), Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true
-            };
-            footer.Controls.Add(runtimeNote);
+            _statusBar = new LauncherStatusBar(
+                "공용 .NET 런타임 " + FormatMegabytes(catalog.RuntimeBytes) + "은 처음 필요한 앱을 실행할 때 한 번 다운로드해 캐시에 저장하고, 이후 앱이 공유합니다.");
+            root.Controls.Add(_statusBar, 0, 2);
+            _status = _statusBar.StatusLabel;
+            _status.Text = "목록을 불러왔습니다. 필요한 항목을 설치하거나 실행하세요.";
             _engine.ProgressChanged += Engine_ProgressChanged;
             Shown += async delegate
             {
@@ -531,6 +526,10 @@ namespace ILauncher.BootstrapperUi
                 { "smokeInstalledAppId", _smokeInstalledAppId },
                 { "smokeInstalledAction", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].InstallActionLabel },
                 { "smokeInstalledStatus", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].StatusLabel },
+                { "footerStyle", _statusBar.StyleName },
+                { "footerState", _statusBar.StateName },
+                { "footerStatusAccessibleName", _status.AccessibleName },
+                { "footerProgressVisible", _statusBar.ProgressVisible },
                 { "windowIconSource", _windowIconSource },
                 { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
                 { "profileMode", _smokeRealProfile ? "current-user-read-only" : "isolated-temporary" },
@@ -609,26 +608,29 @@ namespace ILauncher.BootstrapperUi
                     catch { }
                 }
             }
-            catch (Exception ex) { _status.Text = "목록 확인 실패: " + Program.ShortError(ex); }
+            catch (Exception ex) { SetAmbientStatusState("error"); _status.Text = "목록 확인 실패: " + Program.ShortError(ex); }
         }
         private async void InstallClicked(BootstrapApp app)
         {
             if (_smokeUi) return;
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, "설치 중…");
+            _statusBar.SetState("working");
             _status.Text = app.Name + " 설치를 준비하고 있습니다…";
             try
             {
                 BootstrapperInstallResult result = await _engine.InstallAsync(app.Id, CancellationToken.None);
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("success");
                 _status.Text = "설치 완료: " + result.ShortcutPath;
             }
             catch (Exception ex)
             {
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("error");
                 _status.Text = "설치 실패: " + Program.ShortError(ex);
             }
-            finally { _inFlight.Remove(app.Id); SetBusy(app.Id, false); }
+            finally { FinishOperation(app.Id); }
         }
         private async void RemoveClicked(BootstrapApp app)
         {
@@ -641,38 +643,59 @@ namespace ILauncher.BootstrapperUi
                 return;
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, "제거 중…");
+            _statusBar.SetState("working");
             _status.Text = app.Name + " 제거 중…";
             try
             {
                 BootstrapperUninstallResult result = await _engine.UninstallAsync(app.Id, CancellationToken.None);
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState(result.Removed ? "success" : "ready");
                 _status.Text = result.Removed ? "제거 완료: " + app.Name : "제거하지 않았습니다: " + app.Name;
             }
             catch (Exception ex)
             {
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("error");
                 _status.Text = "제거 실패: " + Program.ShortError(ex);
             }
-            finally { _inFlight.Remove(app.Id); SetBusy(app.Id, false); }
+            finally { FinishOperation(app.Id); }
         }
         private async void RunClicked(BootstrapApp app)
         {
             if (_smokeUi) return;
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, null);
+            _statusBar.SetState("working");
             _status.Text = app.Name + "을(를) 확인하고 있습니다…";
             try
             {
                 BootstrapperLaunchResult result = await _engine.LaunchAsync(app.Id, CancellationToken.None);
+                SetOperationResultState("success");
                 _status.Text = "실행했습니다: " + Path.GetFileName(result.ExecutablePath);
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
             }
             catch (Exception ex)
             {
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("error");
                 _status.Text = "실행 실패: " + Program.ShortError(ex);
             }
-            finally { _inFlight.Remove(app.Id); SetBusy(app.Id, false); }
+            finally { FinishOperation(app.Id); }
+        }
+        private void FinishOperation(string appId)
+        {
+            _inFlight.Remove(appId);
+            SetBusy(appId, false);
+            if (_inFlight.Count > 0) _statusBar.SetState("working");
+            _statusBar.SetProgress(0, 0);
+        }
+        private void SetOperationResultState(string state)
+        {
+            _statusBar.SetState(_inFlight.Count > 1 ? "working" : state);
+        }
+        private void SetAmbientStatusState(string state)
+        {
+            _statusBar.SetState(_inFlight.Count > 0 ? "working" : state);
         }
         private void SetBusy(string appId, bool busy, string busyLabel = null)
         {
@@ -683,8 +706,12 @@ namespace ILauncher.BootstrapperUi
         {
             if (IsDisposed) return;
             if (InvokeRequired) { BeginInvoke(new EventHandler<BootstrapperProgressEventArgs>(Engine_ProgressChanged), sender, e); return; }
+            if (_inFlight.Count == 0 || (!string.Equals(e.AppId, "runtime", StringComparison.Ordinal)
+                && !_inFlight.Contains(e.AppId))) return;
             string bytes = e.BytesTotal > 0 ? string.Format("{0:0.0} / {1:0.0} MiB", e.BytesTransferred / 1048576.0, e.BytesTotal / 1048576.0) : "다운로드 중";
+            SetAmbientStatusState("working");
             _status.Text = e.Phase + " · " + bytes;
+            _statusBar.SetProgress(e.BytesTransferred, e.BytesTotal);
         }
         private void OpenSettings()
         {
@@ -712,9 +739,10 @@ namespace ILauncher.BootstrapperUi
                         settings.Save();
                         EngineFactory.Options.PackageMirrorBase = settings.MirrorBase;
                         _credentials.Update(new BootstrapSettings { MirrorBase = mirror.Text.Trim(), RememberToken = remember.Checked, Token = token.Text });
+                        SetAmbientStatusState("success");
                         _status.Text = "설정을 저장했습니다. 토큰은 선택한 경우에만 현재 사용자 DPAPI로 보호됩니다.";
                     }
-                    catch (Exception ex) { MessageBox.Show(this, Program.ShortError(ex), "설정", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                    catch (Exception ex) { SetAmbientStatusState("error"); MessageBox.Show(this, Program.ShortError(ex), "설정", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
                 }
             }
         }
@@ -738,6 +766,154 @@ namespace ILauncher.BootstrapperUi
             button.BackColor = primary ? Color.FromArgb(50, 91, 168) : Color.FromArgb(37, 43, 55);
             button.ForeColor = Color.White;
             button.Cursor = Cursors.Hand;
+        }
+    }
+
+    internal sealed class LauncherStatusBar : Panel
+    {
+        private readonly Label _state;
+        private readonly Label _status;
+        private readonly Label _runtimeNote;
+        private readonly Panel _badge;
+        private readonly Panel _progressTrack;
+        private readonly Panel _progressFill;
+        private readonly ToolTip _statusTip;
+        private readonly Font _dotFont;
+        private readonly Font _stateFont;
+        private readonly Font _statusFont;
+        private readonly Font _runtimeFont;
+        private string _stateName = "ready";
+        private long _progressTransferred;
+        private long _progressTotal;
+
+        public Label StatusLabel { get { return _status; } }
+        public string StyleName { get { return "dark-custom-status-bar"; } }
+        public string StateName { get { return _stateName; } }
+        public bool ProgressVisible { get { return _progressTrack.Visible; } }
+
+        public LauncherStatusBar(string runtimeText)
+        {
+            Dock = DockStyle.Fill;
+            BackColor = Color.FromArgb(22, 26, 35);
+            Padding = new Padding(20, 8, 20, 7);
+            AccessibleName = "상태 표시줄";
+
+            Panel divider = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = Color.FromArgb(49, 57, 72) };
+            Controls.Add(divider);
+
+            _badge = new Panel { Left = Padding.Left, Top = 17, Width = 82, Height = 26, BackColor = Color.FromArgb(36, 45, 59), Anchor = AnchorStyles.Top | AnchorStyles.Left };
+            _badge.AccessibleRole = AccessibleRole.StatusBar;
+            _badge.AccessibleName = "작업 상태";
+            Controls.Add(_badge);
+            _dotFont = new Font("Segoe UI", 8F);
+            Label dot = new Label { Text = "●", Left = 8, Top = 0, Width = 14, Height = 26, ForeColor = Color.FromArgb(83, 190, 143), Font = _dotFont, TextAlign = ContentAlignment.MiddleCenter, AccessibleName = "상태 표시기" };
+            _badge.Controls.Add(dot);
+            _stateFont = new Font("Segoe UI Semibold", 8F);
+            _state = new Label { Text = "준비됨", Left = 23, Top = 0, Width = 54, Height = 26, ForeColor = Color.FromArgb(202, 211, 225), Font = _stateFont, TextAlign = ContentAlignment.MiddleLeft, AccessibleName = "현재 상태" };
+            _badge.Controls.Add(_state);
+
+            _statusFont = new Font("Segoe UI", 9F);
+            _status = new Label
+            {
+                Left = _badge.Right + 14, Top = 7, Width = 700, Height = 22,
+                Text = "", ForeColor = Color.FromArgb(223, 228, 238), Font = _statusFont,
+                TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true,
+                AccessibleRole = AccessibleRole.StatusBar, AccessibleName = "상태 메시지", AccessibleDescription = "현재 작업의 상태 메시지",
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            Controls.Add(_status);
+
+            _progressTrack = new Panel { Left = _status.Left, Top = 32, Width = 700, Height = 3, BackColor = Color.FromArgb(49, 57, 72), Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            _progressFill = new Panel { Left = 0, Top = 0, Width = 0, Height = 3, BackColor = Color.FromArgb(83, 154, 239) };
+            _progressTrack.Controls.Add(_progressFill);
+            Controls.Add(_progressTrack);
+
+            _runtimeFont = new Font("Segoe UI", 8.25F);
+            _runtimeNote = new Label
+            {
+                Left = _status.Left, Top = 39, Width = 700, Height = 18, Text = runtimeText,
+                ForeColor = Color.FromArgb(135, 145, 164), Font = _runtimeFont,
+                AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                AccessibleName = "공유 실행 환경 캐시 안내"
+            };
+            Controls.Add(_runtimeNote);
+            _statusTip = new ToolTip { ShowAlways = true, InitialDelay = 350, ReshowDelay = 100, AutoPopDelay = 10000 };
+            _statusTip.SetToolTip(_status, _status.Text);
+            _status.TextChanged += delegate
+            {
+                _statusTip.SetToolTip(_status, _status.Text);
+                _status.AccessibleName = String.IsNullOrWhiteSpace(_status.Text) ? "상태 메시지" : _status.Text;
+            };
+            _statusTip.SetToolTip(_runtimeNote, runtimeText);
+            Resize += delegate { LayoutContents(); };
+            LayoutContents();
+        }
+
+        public void SetProgress(long transferred, long total)
+        {
+            _progressTransferred = transferred;
+            _progressTotal = total;
+            _progressTrack.Visible = total > 0;
+            LayoutProgress();
+        }
+
+        private void LayoutContents()
+        {
+            _badge.Left = Padding.Left;
+            int available = Math.Max(0, ClientSize.Width - Padding.Right - _status.Left);
+            _status.Width = available;
+            _progressTrack.Left = _status.Left;
+            _progressTrack.Width = available;
+            _runtimeNote.Left = _status.Left;
+            _runtimeNote.Width = available;
+            LayoutProgress();
+        }
+
+        private void LayoutProgress()
+        {
+            if (_progressFill == null || _progressTrack == null) return;
+            int width = _progressTotal <= 0 ? 0 : (int)Math.Max(0, Math.Min(_progressTrack.ClientSize.Width,
+                (double)_progressTrack.ClientSize.Width * Math.Min(_progressTransferred, _progressTotal) / (double)_progressTotal));
+            _progressFill.Width = width;
+        }
+
+        public void SetState(string stateName)
+        {
+            Color accent;
+            Color badgeBack;
+            if (string.Equals(stateName, "error", StringComparison.Ordinal))
+            {
+                _stateName = "error"; _state.Text = "오류"; accent = Color.FromArgb(242, 112, 112); badgeBack = Color.FromArgb(58, 38, 44);
+            }
+            else if (string.Equals(stateName, "working", StringComparison.Ordinal))
+            {
+                _stateName = "working"; _state.Text = "진행 중"; accent = Color.FromArgb(95, 165, 245); badgeBack = Color.FromArgb(35, 48, 68);
+            }
+            else if (string.Equals(stateName, "success", StringComparison.Ordinal))
+            {
+                _stateName = "success"; _state.Text = "완료"; accent = Color.FromArgb(83, 190, 143); badgeBack = Color.FromArgb(34, 53, 48);
+            }
+            else
+            {
+                _stateName = "ready"; _state.Text = "준비됨"; accent = Color.FromArgb(83, 190, 143); badgeBack = Color.FromArgb(36, 45, 59);
+            }
+            _badge.BackColor = badgeBack;
+            if (_badge.Controls.Count > 0) _badge.Controls[0].ForeColor = accent;
+            _progressFill.BackColor = _stateName == "error" ? Color.FromArgb(224, 100, 105) : accent;
+            _state.AccessibleName = "현재 상태: " + _state.Text;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _statusTip.Dispose();
+                _dotFont.Dispose();
+                _stateFont.Dispose();
+                _statusFont.Dispose();
+                _runtimeFont.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 
