@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $releaseToken = [string]$env:GITHUB_TOKEN
 Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
 
@@ -82,10 +83,15 @@ $packageDirectory = Join-Path $sourceRoot "dist\releases\$Version"
 $zipName = "i-luncher-$Version-win-x64.zip"
 $zipPath = Join-Path $packageDirectory $zipName
 $checksumPath = "$zipPath.sha256"
+$onlineDirectory = Join-Path $packageDirectory 'online'
 
 Write-Host 'Running headless launcher service checks.'
 & dotnet run --project (Join-Path $sourceRoot 'Launcher.Checks\Launcher.Checks.csproj') -c Release
 if ($LASTEXITCODE -ne 0) { throw "Launcher service checks failed with exit code $LASTEXITCODE." }
+
+Write-Host 'Running headless online bootstrapper checks.'
+& (Join-Path $PSScriptRoot 'Invoke-BootstrapperChecks.ps1')
+if (-not $?) { throw 'Bootstrapper checks failed.' }
 
 Write-Host "Publishing distribution version $Version from the runner checkout."
 & (Join-Path $sourceRoot 'Publish-Distribution.ps1') -Version $Version -UseCurrentWorkspace
@@ -94,6 +100,27 @@ if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
     throw "The distribution publisher did not create the expected ZIP: $zipPath"
 }
 
+Write-Host "Publishing online app catalog and hash-addressed packages for $Version."
+$catalogTagName = if ([string]::IsNullOrWhiteSpace($TagName)) { "v$Version" } else { $TagName }
+& (Join-Path $sourceRoot 'Publish-OnlineDistribution.ps1') -Version $Version -ServerUrl $ServerUrl `
+    -ApiUrl $ApiUrl -Repository $Repository -TagName $catalogTagName -UseCurrentWorkspace
+if (-not $?) { throw 'Online distribution publishing failed.' }
+if (-not (Test-Path -LiteralPath $onlineDirectory -PathType Container)) {
+    throw "The online distribution publisher did not create its output directory: $onlineDirectory"
+}
+$onlineLauncherPath = Join-Path $onlineDirectory 'i-luncher-start.exe'
+if (-not (Test-Path -LiteralPath $onlineLauncherPath -PathType Leaf)) {
+    throw "The online publisher did not create the small start launcher: $onlineLauncherPath"
+}
+$onlineLauncherSizeKiB = [Math]::Round((Get-Item -LiteralPath $onlineLauncherPath).Length / 1KB, 1)
+$onlineLauncherUrl = $ServerUrl.TrimEnd('/') + "/$Repository/releases/download/" +
+    [Uri]::EscapeDataString($TagName) + '/i-luncher-start.exe'
+$releaseNotes = @"
+Windows x64 release. 첫 다운로드는 [i-luncher-start.exe (${onlineLauncherSizeKiB} KiB)]($onlineLauncherUrl) 하나만 받으면 됩니다. 실행 후 앱과 공유 .NET 런타임은 최초 사용 시 내려받습니다. 비공개 저장소는 앱 설정에서 액세스 토큰을 입력하고, 사내망에서는 패키지 미러를 설정할 수 있습니다.
+
+오프라인 설치가 필요하면 아래의 전체 배포 ZIP과 SHA-256 체크섬을 사용하세요. Catalog, 런타임, 앱별 패키지에도 체크섬 파일을 함께 제공합니다.
+"@
+
 $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText($checksumPath, "$zipHash  $zipName`n", [Text.UTF8Encoding]::new($false))
 Write-Host "Distribution ZIP: $zipPath"
@@ -101,6 +128,7 @@ Write-Host "SHA-256: $zipHash"
 
 if (-not $PublishRelease) {
     Write-Host 'Build validation completed; release publication was not requested.'
+    Write-Host "Online bootstrapper and packages: $onlineDirectory"
     $releaseToken = $null
     return
 }
@@ -138,7 +166,7 @@ $releaseBody = [ordered]@{
     tag_name = $TagName
     target_commitish = [string]$env:GITHUB_SHA
     name = "i-luncher $Version"
-    body = "Windows x64 distribution. Verify the ZIP with the accompanying SHA-256 file."
+    body = $releaseNotes.Trim()
     draft = $false
     prerelease = $false
 } | ConvertTo-Json -Depth 4
@@ -181,10 +209,20 @@ if (-not $actualUploadPath.Equals($expectedUploadPath, [StringComparison]::Ordin
 }
 $uploadBase = $uploadUri.GetLeftPart([UriPartial]::Path)
 
-foreach ($asset in @(
-    [pscustomobject]@{ Path = $zipPath; ContentType = 'application/zip' },
-    [pscustomobject]@{ Path = $checksumPath; ContentType = 'text/plain' }
-)) {
+$assets = [Collections.Generic.List[object]]::new()
+$assets.Add([pscustomobject]@{ Path = $zipPath; ContentType = 'application/zip' })
+$assets.Add([pscustomobject]@{ Path = $checksumPath; ContentType = 'text/plain' })
+foreach ($onlineAsset in Get-ChildItem -LiteralPath $onlineDirectory -File | Sort-Object Name) {
+    $contentType = switch -Regex ($onlineAsset.Extension) {
+        '^\.zip$' { 'application/zip'; break }
+        '^\.json$' { 'application/json'; break }
+        '^\.exe$' { 'application/vnd.microsoft.portable-executable'; break }
+        default { 'text/plain' }
+    }
+    $assets.Add([pscustomobject]@{ Path = $onlineAsset.FullName; ContentType = $contentType })
+}
+
+foreach ($asset in $assets) {
     $assetName = [IO.Path]::GetFileName($asset.Path)
     $uploadUri = $uploadBase + '?name=' + [Uri]::EscapeDataString($assetName)
     Write-Host "Uploading release asset $assetName."

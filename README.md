@@ -37,6 +37,8 @@ DLL, SQLite 의존 파일, `runtime/`을 포함한 **전체 폴더를 함께 이
 
 소스 프로젝트도 먼저 실행할 필요 없이 **설치**를 누를 수 있습니다. 필요한 빌드 결과를 준비한 뒤 실행에 필요한 파일만 설치합니다. 개발 중 추가 .NET 앱은 호환되는 설치된 런타임을 사용하므로, 다른 PC에 전달할 때는 공용 런타임이 포함된 배포 ZIP을 사용하세요.
 
+기존 통합 WPF 런처 설치본과 그 안의 앱은 계속 사용할 수 있습니다. 온라인 시작 프로그램은 별도 설치본으로 관리되므로, 기존 설치 상태와 앱별 설치 상태를 공유하지 않습니다.
+
 ## 개발 빌드
 
 ```powershell
@@ -132,3 +134,9 @@ For GitHub Enterprise Server or an on-premises network, preconfigure the runner'
 The workflow manually fetches the triggering ref into a unique directory under `RUNNER_TEMP`, using a temporary Git authorization header, then removes only that run-owned checkout. It does not use a personal access token, store credentials in Git configuration, or use the interactive build workspace. The publisher's `-UseCurrentWorkspace` option is restricted to that validated Actions checkout. Protect `main` and `v*` tags, restrict who can dispatch release runs, and use a dedicated runner account because self-hosted runners execute repository code with the runner's local permissions. This workflow intentionally has no pull-request trigger.
 
 The release script uses `GITHUB_SERVER_URL`, `GITHUB_API_URL`, and `GITHUB_TOKEN` supplied by the Actions context, so release creation and asset upload use the configured GitHub Enterprise Server or GitHub.com API. The only required token permission is repository contents write. No upload-artifact action is used, which keeps the release path compatible with GHES installations that do not support upload-artifact v4. Retain the runner's trusted TLS configuration for your enterprise server.
+
+## Small online launcher
+
+Each tagged release also includes `i-luncher-start.exe`, a small .NET Framework 4.8 launcher that opens before any .NET 10 runtime or app package is downloaded. Downloading this starter gets only the launcher executable. On first use of an app, it downloads the shared runtime once and that app's package; later app uses reuse the cached files. The original full offline ZIP remains available for machines that need a complete package without network access.
+
+The online launcher downloads immutable assets from the release tag using HTTPS. Public GitHub releases need no token. For private GitHub or GHES releases, enter a user-authorized PAT in launcher settings; if saved, it is protected for the current Windows user with DPAPI. A corporate mirror can be configured for environments that do not allow direct release downloads. The launcher verifies catalog and package SHA-256 values before extraction, and the same runtime package is reused across app installs and release versions when its content hash matches.
