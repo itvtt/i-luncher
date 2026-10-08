@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Repository,
     [Parameter(Mandatory = $true)][string]$ServerUrl,
@@ -162,7 +162,7 @@ $headers = @{
     Accept = 'application/vnd.github+json'
 }
 $releaseEndpoint = "$apiRoot/repos/$Repository/releases"
-$releaseBody = [ordered]@{
+$releaseBodyJson = [ordered]@{
     tag_name = $TagName
     target_commitish = [string]$env:GITHUB_SHA
     name = "i-luncher $Version"
@@ -170,10 +170,11 @@ $releaseBody = [ordered]@{
     draft = $false
     prerelease = $false
 } | ConvertTo-Json -Depth 4
+$releaseBody = [Text.UTF8Encoding]::new($false).GetBytes($releaseBodyJson)
 
 Write-Host "Creating release $TagName using the configured GitHub-compatible API."
 $release = Invoke-RestMethod -Uri $releaseEndpoint -Method Post -Headers $headers `
-    -ContentType 'application/json' -Body $releaseBody -MaximumRedirection 0
+    -ContentType 'application/json; charset=utf-8' -Body $releaseBody -MaximumRedirection 0
 $uploadBase = ([string]$release.upload_url) -replace '\{\?.*$', ''
 if ([string]::IsNullOrWhiteSpace($uploadBase)) {
     throw 'The release API response did not include an asset upload URL.'
