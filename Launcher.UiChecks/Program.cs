@@ -75,10 +75,10 @@ internal static class Program
                     "Delayed catalog load did not populate launcher cards.");
                 responsivenessWindow.UpdateLayout();
                 Button runOnlyButton = ActionButtons(responsivenessWindow, "Launch_").Single();
-                Check(responsivenessWindow.LauncherCards.Single().RunColumnSpan == 2
-                      && responsivenessWindow.LauncherCards.Single().RunMargin == new Thickness(0)
-                      && runOnlyButton.ActualWidth >= 180,
-                    "Run-only app keeps a full-width action and has no install tab stop");
+                Check(runOnlyButton.ActualWidth is >= 68 and <= 80
+                      && ActionButtons(responsivenessWindow, "Install_").All(button =>
+                          !button.IsVisible || !KeyboardNavigation.GetIsTabStop(button)),
+                    "Run-only app keeps the compact right-side action and no install tab stop");
                 responsivenessWindow.Close();
 
                 string uninstallAppsRoot = Path.Combine(testState, "UninstallFixtureApps");
@@ -240,20 +240,28 @@ internal static class Program
                     "Every supported app exposes an enabled, accessible install action");
                 Check(launchButtons.All(button => Equals(button.Content, "실행")
                                                    && AutomationProperties.GetName(button).EndsWith(" 실행", StringComparison.Ordinal)
-                                                   && Equals(button.ToolTip, "설치 등록 없이 바로 실행합니다.")
+                                                   && Equals(button.ToolTip, "앱 실행")
                                                    && button.Focusable && KeyboardNavigation.GetIsTabStop(button)),
-                    "Run actions use a concise accessible label and explain install-free execution in tooltips");
-                Check(Descendants<TextBlock>(window).Any(text => text.Text.Equals("오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.", StringComparison.Ordinal)),
-                    "Visible launcher guidance explains the top-right install icon");
+                    "Run actions keep concise accessible labels and tooltips");
+                Check(!Descendants<TextBlock>(window).Any(text => text.Text.Equals("오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.", StringComparison.Ordinal))
+                      && window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
+                          ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category)),
+                    "Cards show app categories without persistent install guidance");
                 Check(expectedSupportedAppIds.All(id =>
                 {
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Button run = launchButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Launch_{id}");
                     Rect installBounds = BoundsInWindow(install, window);
                     Rect runBounds = BoundsInWindow(run, window);
+                    MainWindow.LauncherCard card = window.LauncherCards.Single(candidate => candidate.Entry.Id == id);
+                    TextBlock description = Descendants<TextBlock>(window).Single(text =>
+                        ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Description);
+                    Rect descriptionBounds = BoundsInWindow(description, window);
                     return installBounds.Top < runBounds.Top && install.ActualWidth <= 44
-                        && Math.Abs(installBounds.Right - runBounds.Right) <= 10 && run.ActualWidth >= 250;
-                }), "Registration icons sit above the full-width portable run action");
+                        && runBounds.Left >= descriptionBounds.Right - 2
+                        && run.ActualWidth is >= 68 and <= 80
+                        && run.ActualHeight >= 32 && runBounds.Top < descriptionBounds.Bottom;
+                }), "Install icons stay above the compact Run action beside each description");
 
                 Button firstLaunch = launchButtons[0];
                 window.ShowActivated = true;
@@ -274,6 +282,10 @@ internal static class Program
                     card.IsBusy = true;
                 }
                 await Idle(window);
+                Check(window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
+                          ReferenceEquals(text.DataContext, card) && text.Text == card.StatusMessage
+                          && AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite)),
+                    "Busy progress remains visible through polite live status text");
                 Check(launchButtons.All(button => !button.IsEnabled), "Busy state disables every run action");
                 Check(installButtons.All(button => button.IsVisible && !button.IsEnabled
                     && !AutomationProperties.GetName(button).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)),
@@ -288,6 +300,19 @@ internal static class Program
                 }
                 await Idle(window);
                 Check(launchButtons.All(button => button.IsEnabled), "Run actions recover after busy state");
+                typeof(MainWindow).GetMethod("ShowError", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(window, new object?[] { "Fixture error status" });
+                await Idle(window);
+                Border errorPanel = (Border)window.FindName("ErrorPanel");
+                TextBlock errorText = (TextBlock)window.FindName("ErrorText");
+                Check(errorPanel.IsVisible && errorText.Text == "Fixture error status"
+                      && AutomationProperties.GetLiveSetting(errorPanel) == AutomationLiveSetting.Assertive,
+                    "Error status stays visible and assertive to assistive technology");
+                ActionButtons(window, "").Single(button =>
+                    AutomationProperties.GetAutomationId(button) == "DismissErrorButton")
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(!errorPanel.IsVisible && errorText.Text.Length == 0,
+                    "Error status recovers after dismissal");
 
                 MainWindow.LauncherCard installingCard = window.LauncherCards.Single(card => card.Entry.Id == expectedAppIds[0]);
                 installingCard.IsInstalling = true;
@@ -327,7 +352,7 @@ internal static class Program
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
-                    return run.ActualWidth >= 250 && run.ActualHeight >= 32
+                    return run.ActualWidth is >= 68 and <= 80 && run.ActualHeight >= 32
                            && install.ActualWidth >= 32 && install.ActualHeight >= 32
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;

@@ -431,14 +431,13 @@ public partial class MainWindow : Window
             : IsInstalled ? (Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC") : "\uC124\uCE58";
         public string InstallAutomationId => $"Install_{Entry.Id}";
         public string RunAccessibleName => $"{Entry.Name} \uC2E4\uD589";
-        public string RunToolTip => "\uC124\uCE58 \uB4F1\uB85D \uC5C6\uC774 \uBC14\uB85C \uC2E4\uD589\uD569\uB2C8\uB2E4.";
+        public string RunToolTip => "\uC571 \uC2E4\uD589";
         public string InstallAccessibleName => $"{Entry.Name} {InstallLabel}";
         public string InstallToolTip => IsInstalled && Entry.CanUninstall
-            ? "\uAC1C\uBCC4 \uC124\uCE58 \uB4F1\uB85D\uACFC \uC2DC\uC791 \uBA54\uB274 \uBC14\uB85C\uAC00\uAE30\uB9CC \uC81C\uAC70\uD558\uACE0, \uB2E4\uC6B4\uB85C\uB4DC\uD55C \uD30C\uC77C\uACFC \uACF5\uC6A9 \uC2E4\uD589 \uD658\uACBD, \uC0AC\uC6A9\uC790 \uB370\uC774\uD130\uB294 \uC720\uC9C0\uD569\uB2C8\uB2E4."
-            : IsInstalled ? "\uC774 \uC571\uC740 \uC124\uCE58\uB418\uC5B4 \uC788\uC9C0\uB9CC, \uC774 \uC2E4\uD589 \uC720\uD615\uC5D0\uC11C\uB294 \uC81C\uAC70\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
-            : Entry.CanInstall
-                ? "\uC124\uCE58\uD558\uBA74 \uC2DC\uC791 \uBA54\uB274\uC5D0 \uB4F1\uB85D\uD558\uACE0 \uBC14\uB85C \uAC00\uAE30\uB97C \uB9CC\uB4ED\uB2C8\uB2E4."
-                : "\uC124\uCE58 \uAE30\uB2A5\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uC571\uC785\uB2C8\uB2E4.";
+            ? "\uC2DC\uC791 \uBA54\uB274 \uB4F1\uB85D \uC81C\uAC70"
+            : IsInstalled ? "\uC774\uBBF8 \uC124\uCE58\uB428"
+            : Entry.CanInstall ? "\uC2DC\uC791 \uBA54\uB274\uC5D0 \uC124\uCE58"
+            : "\uC124\uCE58 \uBD88\uAC00";
         public LauncherEntry Entry { get; }
         public ImageSource? IconSource { get; }
         public Visibility IconVisibility => IconSource is null ? Visibility.Collapsed : Visibility.Visible;

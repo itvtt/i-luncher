@@ -390,6 +390,14 @@ namespace ILauncher.BootstrapperUi
         private readonly HashSet<string> _inFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Label _status;
         private readonly LauncherStatusBar _statusBar;
+        private readonly Panel _headerPanel;
+        private readonly Button _settingsButton;
+        private readonly Button _minimizeButton;
+        private readonly Button _maximizeButton;
+        private readonly Button _closeButton;
+        private readonly ContextMenuStrip _windowMenu;
+        private readonly Font _windowButtonFont;
+        private readonly FlowLayoutPanel _grid;
         private readonly bool _smokeUi;
         private readonly bool _smokeRealProfile;
         private readonly Stopwatch _startup;
@@ -398,6 +406,9 @@ namespace ILauncher.BootstrapperUi
         private readonly System.Windows.Forms.Timer _smokeTimer;
         private Icon _ownedWindowIcon;
         private string _windowIconSource;
+        private bool _customMaximized;
+        private Rectangle _restoreBounds;
+        private Rectangle _maximizedBounds;
         private long _firstPaintMs = -1;
 
         public LauncherForm(BootstrapCatalog catalog, BootstrapperEngine engine, bool smokeUi, bool smokeRealProfile, Stopwatch startup,
@@ -417,9 +428,12 @@ namespace ILauncher.BootstrapperUi
             _smokeTimer = new System.Windows.Forms.Timer { Interval = 200 };
             _smokeTimer.Tick += delegate { _smokeTimer.Stop(); WriteSmokeReportAndClose(); };
             Text = "i-luncher";
+            FormBorderStyle = FormBorderStyle.None;
             BackColor = Color.FromArgb(17, 20, 27);
             ForeColor = Color.FromArgb(241, 244, 250);
             Font = new Font("Segoe UI", 9F);
+            KeyPreview = true;
+            KeyDown += Form_KeyDown;
             MinimumSize = new Size(720, 520);
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(1240, 840);
@@ -428,51 +442,62 @@ namespace ILauncher.BootstrapperUi
             ClampToWorkArea();
 
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = BackColor };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
             Controls.Add(root);
 
-            Panel header = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 12, 20, 8), BackColor = Color.FromArgb(22, 26, 35) };
-            root.Controls.Add(header, 0, 0);
-            Label title = new Label { Text = "i-luncher", AutoSize = true, Font = new Font("Segoe UI Semibold", 16F), ForeColor = Color.White, Location = new Point(22, 14) };
-            header.Controls.Add(title);
-            Label build = new Label { Text = "버전 " + catalog.Version, AutoSize = true, ForeColor = Color.FromArgb(157, 166, 182), Location = new Point(140, 24) };
-            header.Controls.Add(build);
-            Button settings = new Button { Text = "설정", Width = 82, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(Width - 142, 14) };
-            settings.Enabled = !_smokeUi;
-            StyleButton(settings, false);
-            settings.Click += delegate { OpenSettings(); };
-            Label usageHint = new Label
-            {
-                Text = "오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.",
-                Left = 250, Top = 22, Height = 20, ForeColor = Color.FromArgb(157, 166, 182),
-                Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
+            _headerPanel = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = Color.FromArgb(22, 26, 35) };
+            root.Controls.Add(_headerPanel, 0, 0);
+            Label title = new Label { Text = "i-luncher", AutoSize = true, Font = new Font("Segoe UI Semibold", 15F), ForeColor = Color.White, Location = new Point(20, 11) };
+            _headerPanel.Controls.Add(title);
+            _settingsButton = new Button { Text = "설정", Width = 72, Height = 30, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(Width - 260, 9), AccessibleName = "설정" };
+            _settingsButton.Enabled = !_smokeUi;
+            StyleButton(_settingsButton, false);
+            _settingsButton.Click += delegate { OpenSettings(); };
+            _windowButtonFont = new Font("Segoe UI Symbol", 14F);
+            _minimizeButton = CreateWindowButton("—", "최소화", false);
+            _maximizeButton = CreateWindowButton("□", "최대화", false);
+            _closeButton = CreateWindowButton("×", "닫기", true);
+            _windowMenu = CreateWindowMenu();
+            _headerPanel.ContextMenuStrip = _windowMenu;
+            title.ContextMenuStrip = _windowMenu;
+            _minimizeButton.Click += delegate { WindowState = FormWindowState.Minimized; };
+            _maximizeButton.Click += delegate { ToggleCustomMaximize(); };
+            _closeButton.Click += delegate { Close(); };
             Action layoutHeaderActions = delegate
             {
-                settings.Left = header.ClientSize.Width - settings.Width - 18;
-                usageHint.Width = Math.Max(0, settings.Left - usageHint.Left - 12);
+                _closeButton.Left = _headerPanel.ClientSize.Width - _closeButton.Width;
+                _maximizeButton.Left = _closeButton.Left - _maximizeButton.Width;
+                _minimizeButton.Left = _maximizeButton.Left - _minimizeButton.Width;
+                _settingsButton.Left = _minimizeButton.Left - _settingsButton.Width - 10;
             };
-            header.Resize += delegate { layoutHeaderActions(); };
-            header.Controls.Add(settings);
-            header.Controls.Add(usageHint);
+            _headerPanel.Resize += delegate { layoutHeaderActions(); };
+            _headerPanel.Controls.Add(_settingsButton);
+            _headerPanel.Controls.Add(_minimizeButton);
+            _headerPanel.Controls.Add(_maximizeButton);
+            _headerPanel.Controls.Add(_closeButton);
             layoutHeaderActions();
 
-            FlowLayoutPanel grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
-            root.Controls.Add(grid, 0, 1);
+            _grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
+            root.Controls.Add(_grid, 0, 1);
             int cardWidth = 360;
             foreach (BootstrapApp app in catalog.Apps)
             {
-                AppCard card = new AppCard(app, cardWidth, catalog.RuntimeBytes, InstallClicked, RemoveClicked, RunClicked, true);
+                AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
                 _cards.Add(app.Id, card);
-                grid.Controls.Add(card);
+                _grid.Controls.Add(card);
             }
-            _statusBar = new LauncherStatusBar(
-                "공용 .NET 런타임 " + FormatMegabytes(catalog.RuntimeBytes) + "은 처음 필요한 앱을 실행할 때 한 번 다운로드해 캐시에 저장하고, 이후 앱이 공유합니다.");
+            _statusBar = new LauncherStatusBar();
+            _statusBar.Visible = false;
             root.Controls.Add(_statusBar, 0, 2);
             _status = _statusBar.StatusLabel;
-            _status.Text = "목록을 불러왔습니다. 필요한 항목을 설치하거나 실행하세요.";
+            _statusBar.VisibilityChanged += delegate(bool visible)
+            {
+                _statusBar.Visible = visible;
+                root.RowStyles[2].Height = visible ? 48 : 0;
+                root.PerformLayout();
+            };
             _engine.ProgressChanged += Engine_ProgressChanged;
             Shown += async delegate
             {
@@ -487,8 +512,220 @@ namespace ILauncher.BootstrapperUi
             if (_firstPaintMs < 0) _firstPaintMs = _startup.ElapsedMilliseconds;
         }
 
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.Style |= 0x00040000 | 0x00020000 | 0x00010000 | 0x00080000;
+                return parameters;
+            }
+        }
+
+        private Button CreateWindowButton(string text, string name, bool closeButton)
+        {
+            Button button = new Button
+            {
+                Text = text, Width = 44, Height = 48, Top = 0,
+                FlatStyle = FlatStyle.Flat, UseVisualStyleBackColor = false,
+                BackColor = Color.FromArgb(22, 26, 35), ForeColor = Color.FromArgb(221, 226, 236),
+                Font = _windowButtonFont,
+                AccessibleName = name, AccessibleRole = AccessibleRole.PushButton,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right, TabStop = true
+            };
+            button.FlatAppearance.BorderSize = 0;
+            button.FlatAppearance.MouseOverBackColor = closeButton ? Color.FromArgb(196, 54, 64) : Color.FromArgb(42, 49, 63);
+            button.FlatAppearance.MouseDownBackColor = closeButton ? Color.FromArgb(153, 37, 47) : Color.FromArgb(51, 60, 76);
+            button.Cursor = Cursors.Hand;
+            return button;
+        }
+
+        private ContextMenuStrip CreateWindowMenu()
+        {
+            ContextMenuStrip menu = new ContextMenuStrip();
+            ToolStripMenuItem restore = new ToolStripMenuItem("복원/최대화");
+            ToolStripMenuItem minimize = new ToolStripMenuItem("최소화");
+            ToolStripMenuItem close = new ToolStripMenuItem("닫기");
+            restore.Click += delegate { ToggleCustomMaximize(); };
+            minimize.Click += delegate { WindowState = FormWindowState.Minimized; };
+            close.Click += delegate { Close(); };
+            menu.Items.Add(restore);
+            menu.Items.Add(minimize);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(close);
+            return menu;
+        }
+
+        private void Form_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Alt && e.KeyCode == Keys.Space)
+            {
+                _windowMenu.Show(_headerPanel, new Point(8, _headerPanel.Height));
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Alt | Keys.Space))
+            {
+                _windowMenu.Show(_headerPanel, new Point(8, _headerPanel.Height));
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void ToggleCustomMaximize()
+        {
+            if (_customMaximized)
+            {
+                Rectangle restore = _restoreBounds;
+                if (restore.Width < MinimumSize.Width || restore.Height < MinimumSize.Height)
+                    restore = new Rectangle(Left, Top, Math.Max(MinimumSize.Width, Width), Math.Max(MinimumSize.Height, Height));
+                Rectangle area = Screen.FromRectangle(restore).WorkingArea;
+                if (!area.IntersectsWith(restore)) restore.Location = new Point(area.Left + 24, area.Top + 24);
+                Bounds = restore;
+                _customMaximized = false;
+                _maximizeButton.Text = "□";
+                _maximizeButton.AccessibleName = "최대화";
+            }
+            else
+            {
+                _restoreBounds = Bounds;
+                _maximizedBounds = Screen.FromControl(this).WorkingArea;
+                Bounds = _maximizedBounds;
+                _customMaximized = true;
+                _maximizeButton.Text = "❐";
+                _maximizeButton.AccessibleName = "복원";
+            }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
+
+        private int SendNcHitTest(Point screenPoint)
+        {
+            int packed = (screenPoint.X & 0xFFFF) | ((screenPoint.Y & 0xFFFF) << 16);
+            return SendMessage(Handle, 0x0084, IntPtr.Zero, new IntPtr(packed)).ToInt32();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WmNcCalcSize = 0x0083;
+            const int WmNcPaint = 0x0085;
+            const int WmNcHitTest = 0x0084;
+            const int WmNcLButtonDown = 0x00A1;
+            const int WmNcLButtonDblClk = 0x00A3;
+            const int WmSysCommand = 0x0112;
+            const int HtClient = 1;
+            const int HtCaption = 2;
+            const int ScMaximize = 0xF030;
+            const int ScMinimize = 0xF020;
+            const int ScRestore = 0xF120;
+
+            if (m.Msg == WmSysCommand)
+            {
+                int command = unchecked((int)m.WParam.ToInt64()) & 0xFFF0;
+                if (command == ScMaximize && !_customMaximized)
+                {
+                    ToggleCustomMaximize();
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                if (command == ScRestore && _customMaximized)
+                {
+                    if (WindowState == FormWindowState.Minimized)
+                    {
+                        WindowState = FormWindowState.Normal;
+                        Bounds = _maximizedBounds;
+                    }
+                    else
+                        ToggleCustomMaximize();
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                if (command == ScMinimize)
+                {
+                    base.WndProc(ref m);
+                    return;
+                }
+            }
+            if (m.Msg == WmNcLButtonDown && m.WParam.ToInt32() == HtCaption && _customMaximized)
+            {
+                Point cursor = Cursor.Position;
+                ToggleCustomMaximize();
+                Left = cursor.X - Width / 2;
+                Top = cursor.Y - 15;
+                base.WndProc(ref m);
+                return;
+            }
+            if (m.Msg == WmNcLButtonDblClk && m.WParam.ToInt32() == HtCaption)
+            {
+                ToggleCustomMaximize();
+                m.Result = IntPtr.Zero;
+                return;
+            }
+
+            if (m.Msg == WmNcCalcSize)
+            {
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            if (m.Msg == WmNcPaint)
+            {
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
+            if (m.Msg != WmNcHitTest || m.Result.ToInt32() != HtClient) return;
+
+            long packed = m.LParam.ToInt64();
+            Point point = PointToClient(new Point(unchecked((short)(packed & 0xFFFF)), unchecked((short)((packed >> 16) & 0xFFFF))));
+            m.Result = new IntPtr(HitTestWindow(point));
+        }
+
+        private int HitTestWindow(Point point)
+        {
+            const int HtClient = 1;
+            const int HtCaption = 2;
+            const int HtLeft = 10;
+            const int HtRight = 11;
+            const int HtTop = 12;
+            const int HtTopLeft = 13;
+            const int HtTopRight = 14;
+            const int HtBottom = 15;
+            const int HtBottomLeft = 16;
+            const int HtBottomRight = 17;
+            int edge = 6;
+            bool left = point.X < edge;
+            bool right = point.X >= ClientSize.Width - edge;
+            bool top = point.Y < edge;
+            bool bottom = point.Y >= ClientSize.Height - edge;
+            if (!_customMaximized)
+            {
+                if (top && left) return HtTopLeft;
+                if (top && right) return HtTopRight;
+                if (bottom && left) return HtBottomLeft;
+                if (bottom && right) return HtBottomRight;
+                if (left) return HtLeft;
+                if (right) return HtRight;
+                if (top) return HtTop;
+                if (bottom) return HtBottom;
+            }
+            if (point.Y >= 0 && point.Y < _headerPanel.Height)
+            {
+                Point headerPoint = _headerPanel.PointToClient(PointToScreen(point));
+                foreach (Control control in _headerPanel.Controls)
+                    if (control is Button && control.Bounds.Contains(headerPoint)) return HtClient;
+                return HtCaption;
+            }
+            return HtClient;
+        }
+
         private void WriteSmokeReportAndClose()
         {
+            Dictionary<string, object> chromeChecks = RunChromeSmokeChecks();
             Rectangle bounds = Bounds;
             Process process = Process.GetCurrentProcess();
             string screenshotPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".png");
@@ -517,8 +754,11 @@ namespace ILauncher.BootstrapperUi
                         { "actionColor", card.InstallActionColor },
                         { "actionAccessibleName", card.InstallAccessibleName },
                         { "actionPlacement", "top-right-icon" },
+                        { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
                         { "portableAction", card.RunActionLabel },
-                        { "portablePlacement", "full-width-bottom" },
+                        { "portablePlacement", card.RunActionPlacement },
+                        { "runBounds", RectangleToDictionary(card.RunActionBounds) },
+                        { "cardBounds", RectangleToDictionary(card.CardBounds) },
                         { "status", card.StatusLabel }
                     }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
@@ -530,6 +770,25 @@ namespace ILauncher.BootstrapperUi
                 { "footerState", _statusBar.StateName },
                 { "footerStatusAccessibleName", _status.AccessibleName },
                 { "footerProgressVisible", _statusBar.ProgressVisible },
+                { "windowChrome", "custom-borderless" },
+                { "titleBarBounds", RectangleToDictionary(_headerPanel.Bounds) },
+                { "gridLayout", new Dictionary<string, object>
+                    {
+                        { "clientBounds", RectangleToDictionary(_grid.ClientRectangle) },
+                        { "displayBounds", RectangleToDictionary(_grid.DisplayRectangle) },
+                        { "autoScrollMinSize", RectangleToDictionary(new Rectangle(Point.Empty, _grid.AutoScrollMinSize)) },
+                        { "verticalScrollVisible", _grid.VerticalScroll.Visible },
+                        { "horizontalScrollVisible", _grid.HorizontalScroll.Visible },
+                        { "cardBottom", _cards.Count == 0 ? 0 : _cards.Values.Max(card => card.Bottom) }
+                    } },
+                { "windowControlBounds", new Dictionary<string, object>
+                    {
+                        { "settings", RectangleToDictionary(_settingsButton.Bounds) },
+                        { "minimize", RectangleToDictionary(_minimizeButton.Bounds) },
+                        { "maximizeRestore", RectangleToDictionary(_maximizeButton.Bounds) },
+                        { "close", RectangleToDictionary(_closeButton.Bounds) }
+                    } },
+                { "smokeChromeChecks", chromeChecks },
                 { "windowIconSource", _windowIconSource },
                 { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
                 { "profileMode", _smokeRealProfile ? "current-user-read-only" : "isolated-temporary" },
@@ -546,6 +805,92 @@ namespace ILauncher.BootstrapperUi
             File.WriteAllText(_reportPath, reportJson, new UTF8Encoding(false));
             _smokeTimer.Dispose();
             Close();
+        }
+
+        private Dictionary<string, object> RunChromeSmokeChecks()
+        {
+            const int HtClient = 1;
+            const int HtCaption = 2;
+            const int HtLeft = 10;
+            const int ScRestore = 0xF120;
+            Rectangle originalBounds = Bounds;
+            bool maximizedToWorkArea = false;
+            bool restoredBounds = false;
+            bool minimized = false;
+            bool restoredFromMinimize = false;
+            bool taskbarRestoreKeepsMaximized = false;
+            bool minimumSizeScrollOverflowAccessible = false;
+            bool minimumSizeActionsInsideCards = false;
+            bool idleLayoutRestoresNoScroll = false;
+            try
+            {
+                _maximizeButton.PerformClick();
+                maximizedToWorkArea = Bounds.Equals(Screen.FromControl(this).WorkingArea);
+                _maximizeButton.PerformClick();
+                restoredBounds = Bounds.Equals(originalBounds);
+                _maximizeButton.PerformClick();
+                _minimizeButton.PerformClick();
+                minimized = WindowState == FormWindowState.Minimized;
+                SendMessage(Handle, 0x0112, new IntPtr(ScRestore), IntPtr.Zero);
+                restoredFromMinimize = WindowState == FormWindowState.Normal;
+                taskbarRestoreKeepsMaximized = _customMaximized && Bounds.Equals(Screen.FromControl(this).WorkingArea);
+                _maximizeButton.PerformClick();
+                if (!Bounds.Equals(originalBounds)) Bounds = originalBounds;
+                PerformLayout();
+                _grid.PerformLayout();
+                Size minimumWindow = MinimumSize;
+                Rectangle workArea = Screen.FromControl(this).WorkingArea;
+                Bounds = new Rectangle(workArea.Left + 12, workArea.Top + 12,
+                    Math.Min(minimumWindow.Width, workArea.Width - 24), Math.Min(minimumWindow.Height, workArea.Height - 24));
+                PerformLayout();
+                _grid.PerformLayout();
+                Application.DoEvents();
+                bool overflowVisible = _grid.VerticalScroll.Visible &&
+                    _grid.VerticalScroll.Maximum > _grid.VerticalScroll.LargeChange - 1;
+                int scrollMaximum = Math.Max(0, _grid.VerticalScroll.Maximum - _grid.VerticalScroll.LargeChange + 1);
+                if (overflowVisible && scrollMaximum > 0)
+                {
+                    _grid.AutoScrollPosition = new Point(0, scrollMaximum);
+                    Application.DoEvents();
+                }
+                minimumSizeScrollOverflowAccessible = overflowVisible && _grid.AutoScrollPosition.Y < 0;
+                minimumSizeActionsInsideCards = _cards.Values.All(card =>
+                    new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.RunActionBounds) &&
+                    new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.InstallActionBounds));
+                _grid.AutoScrollPosition = Point.Empty;
+                Bounds = originalBounds;
+                PerformLayout();
+                _grid.PerformLayout();
+                Application.DoEvents();
+                idleLayoutRestoresNoScroll = !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible;
+            }
+            catch { }
+            Point resizePoint = PointToScreen(new Point(2, ClientSize.Height / 2));
+            Point titlePoint = PointToScreen(new Point(150, _headerPanel.Height / 2));
+            Point settingsPoint = _settingsButton.PointToScreen(new Point(_settingsButton.Width / 2, _settingsButton.Height / 2));
+            return new Dictionary<string, object>
+            {
+                { "maximizeUsesWorkingArea", maximizedToWorkArea },
+                { "restoreReturnsToPriorBounds", restoredBounds },
+                { "minimizeAndRestore", minimized && restoredFromMinimize },
+                { "taskbarRestoreKeepsMaximized", taskbarRestoreKeepsMaximized },
+                { "minimumSize", new Dictionary<string, int> { { "width", MinimumSize.Width }, { "height", MinimumSize.Height } } },
+                { "minimumSizeScrollOverflowAccessible", minimumSizeScrollOverflowAccessible },
+                { "minimumSizeActionsInsideCards", minimumSizeActionsInsideCards },
+                { "idleLayoutRestoresNoScroll", idleLayoutRestoresNoScroll },
+                { "resizeEdgeHitTest", SendNcHitTest(resizePoint) == HtLeft },
+                { "titleDragHitTest", SendNcHitTest(titlePoint) == HtCaption },
+                { "settingsButtonHitTest", SendNcHitTest(settingsPoint) == HtClient },
+                { "closeControlAccessible", _closeButton.Enabled && _closeButton.AccessibleName == "닫기" }
+            };
+        }
+
+        private static Dictionary<string, int> RectangleToDictionary(Rectangle rectangle)
+        {
+            return new Dictionary<string, int>
+            {
+                { "x", rectangle.X }, { "y", rectangle.Y }, { "width", rectangle.Width }, { "height", rectangle.Height }
+            };
         }
 
         private void ClampToWorkArea()
@@ -584,10 +929,15 @@ namespace ILauncher.BootstrapperUi
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && _ownedWindowIcon != null)
+            if (disposing)
             {
-                _ownedWindowIcon.Dispose();
-                _ownedWindowIcon = null;
+                if (_ownedWindowIcon != null)
+                {
+                    _ownedWindowIcon.Dispose();
+                    _ownedWindowIcon = null;
+                }
+                if (_windowMenu != null) _windowMenu.Dispose();
+                if (_windowButtonFont != null) _windowButtonFont.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -708,9 +1058,9 @@ namespace ILauncher.BootstrapperUi
             if (InvokeRequired) { BeginInvoke(new EventHandler<BootstrapperProgressEventArgs>(Engine_ProgressChanged), sender, e); return; }
             if (_inFlight.Count == 0 || (!string.Equals(e.AppId, "runtime", StringComparison.Ordinal)
                 && !_inFlight.Contains(e.AppId))) return;
-            string bytes = e.BytesTotal > 0 ? string.Format("{0:0.0} / {1:0.0} MiB", e.BytesTransferred / 1048576.0, e.BytesTotal / 1048576.0) : "다운로드 중";
+            BootstrapApp app = _catalog.Apps.FirstOrDefault(item => string.Equals(item.Id, e.AppId, StringComparison.OrdinalIgnoreCase));
             SetAmbientStatusState("working");
-            _status.Text = e.Phase + " · " + bytes;
+            _status.Text = (app == null ? e.AppId : app.Name) + " · " + e.Phase;
             _statusBar.SetProgress(e.BytesTransferred, e.BytesTotal);
         }
         private void OpenSettings()
@@ -771,72 +1121,46 @@ namespace ILauncher.BootstrapperUi
 
     internal sealed class LauncherStatusBar : Panel
     {
-        private readonly Label _state;
         private readonly Label _status;
-        private readonly Label _runtimeNote;
-        private readonly Panel _badge;
         private readonly Panel _progressTrack;
         private readonly Panel _progressFill;
         private readonly ToolTip _statusTip;
-        private readonly Font _dotFont;
-        private readonly Font _stateFont;
-        private readonly Font _statusFont;
-        private readonly Font _runtimeFont;
         private string _stateName = "ready";
         private long _progressTransferred;
         private long _progressTotal;
+        private bool _isShown;
 
         public Label StatusLabel { get { return _status; } }
-        public string StyleName { get { return "dark-custom-status-bar"; } }
+        public string StyleName { get { return "compact-transient-status"; } }
         public string StateName { get { return _stateName; } }
         public bool ProgressVisible { get { return _progressTrack.Visible; } }
+        public event Action<bool> VisibilityChanged;
 
-        public LauncherStatusBar(string runtimeText)
+        public LauncherStatusBar()
         {
             Dock = DockStyle.Fill;
             BackColor = Color.FromArgb(22, 26, 35);
-            Padding = new Padding(20, 8, 20, 7);
+            Padding = new Padding(20, 5, 20, 5);
             AccessibleName = "상태 표시줄";
 
             Panel divider = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = Color.FromArgb(49, 57, 72) };
             Controls.Add(divider);
 
-            _badge = new Panel { Left = Padding.Left, Top = 17, Width = 82, Height = 26, BackColor = Color.FromArgb(36, 45, 59), Anchor = AnchorStyles.Top | AnchorStyles.Left };
-            _badge.AccessibleRole = AccessibleRole.StatusBar;
-            _badge.AccessibleName = "작업 상태";
-            Controls.Add(_badge);
-            _dotFont = new Font("Segoe UI", 8F);
-            Label dot = new Label { Text = "●", Left = 8, Top = 0, Width = 14, Height = 26, ForeColor = Color.FromArgb(83, 190, 143), Font = _dotFont, TextAlign = ContentAlignment.MiddleCenter, AccessibleName = "상태 표시기" };
-            _badge.Controls.Add(dot);
-            _stateFont = new Font("Segoe UI Semibold", 8F);
-            _state = new Label { Text = "준비됨", Left = 23, Top = 0, Width = 54, Height = 26, ForeColor = Color.FromArgb(202, 211, 225), Font = _stateFont, TextAlign = ContentAlignment.MiddleLeft, AccessibleName = "현재 상태" };
-            _badge.Controls.Add(_state);
-
-            _statusFont = new Font("Segoe UI", 9F);
             _status = new Label
             {
-                Left = _badge.Right + 14, Top = 7, Width = 700, Height = 22,
-                Text = "", ForeColor = Color.FromArgb(223, 228, 238), Font = _statusFont,
+                Left = Padding.Left, Top = 5, Width = 700, Height = 21,
+                Text = "", ForeColor = Color.FromArgb(223, 228, 238),
                 TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true,
                 AccessibleRole = AccessibleRole.StatusBar, AccessibleName = "상태 메시지", AccessibleDescription = "현재 작업의 상태 메시지",
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(_status);
 
-            _progressTrack = new Panel { Left = _status.Left, Top = 32, Width = 700, Height = 3, BackColor = Color.FromArgb(49, 57, 72), Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            _progressTrack = new Panel { Left = _status.Left, Top = 30, Width = 700, Height = 3, BackColor = Color.FromArgb(49, 57, 72), Visible = false, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             _progressFill = new Panel { Left = 0, Top = 0, Width = 0, Height = 3, BackColor = Color.FromArgb(83, 154, 239) };
             _progressTrack.Controls.Add(_progressFill);
             Controls.Add(_progressTrack);
 
-            _runtimeFont = new Font("Segoe UI", 8.25F);
-            _runtimeNote = new Label
-            {
-                Left = _status.Left, Top = 39, Width = 700, Height = 18, Text = runtimeText,
-                ForeColor = Color.FromArgb(135, 145, 164), Font = _runtimeFont,
-                AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                AccessibleName = "공유 실행 환경 캐시 안내"
-            };
-            Controls.Add(_runtimeNote);
             _statusTip = new ToolTip { ShowAlways = true, InitialDelay = 350, ReshowDelay = 100, AutoPopDelay = 10000 };
             _statusTip.SetToolTip(_status, _status.Text);
             _status.TextChanged += delegate
@@ -844,7 +1168,6 @@ namespace ILauncher.BootstrapperUi
                 _statusTip.SetToolTip(_status, _status.Text);
                 _status.AccessibleName = String.IsNullOrWhiteSpace(_status.Text) ? "상태 메시지" : _status.Text;
             };
-            _statusTip.SetToolTip(_runtimeNote, runtimeText);
             Resize += delegate { LayoutContents(); };
             LayoutContents();
         }
@@ -853,19 +1176,16 @@ namespace ILauncher.BootstrapperUi
         {
             _progressTransferred = transferred;
             _progressTotal = total;
-            _progressTrack.Visible = total > 0;
+            _progressTrack.Visible = total > 0 && _stateName == "working";
             LayoutProgress();
         }
 
         private void LayoutContents()
         {
-            _badge.Left = Padding.Left;
             int available = Math.Max(0, ClientSize.Width - Padding.Right - _status.Left);
             _status.Width = available;
             _progressTrack.Left = _status.Left;
             _progressTrack.Width = available;
-            _runtimeNote.Left = _status.Left;
-            _runtimeNote.Width = available;
             LayoutProgress();
         }
 
@@ -880,27 +1200,31 @@ namespace ILauncher.BootstrapperUi
         public void SetState(string stateName)
         {
             Color accent;
-            Color badgeBack;
             if (string.Equals(stateName, "error", StringComparison.Ordinal))
             {
-                _stateName = "error"; _state.Text = "오류"; accent = Color.FromArgb(242, 112, 112); badgeBack = Color.FromArgb(58, 38, 44);
+                _stateName = "error"; accent = Color.FromArgb(242, 112, 112);
             }
             else if (string.Equals(stateName, "working", StringComparison.Ordinal))
             {
-                _stateName = "working"; _state.Text = "진행 중"; accent = Color.FromArgb(95, 165, 245); badgeBack = Color.FromArgb(35, 48, 68);
+                _stateName = "working"; accent = Color.FromArgb(95, 165, 245);
             }
             else if (string.Equals(stateName, "success", StringComparison.Ordinal))
             {
-                _stateName = "success"; _state.Text = "완료"; accent = Color.FromArgb(83, 190, 143); badgeBack = Color.FromArgb(34, 53, 48);
+                _stateName = "success"; accent = Color.FromArgb(83, 190, 143);
             }
             else
             {
-                _stateName = "ready"; _state.Text = "준비됨"; accent = Color.FromArgb(83, 190, 143); badgeBack = Color.FromArgb(36, 45, 59);
+                _stateName = "ready"; accent = Color.FromArgb(83, 190, 143);
             }
-            _badge.BackColor = badgeBack;
-            if (_badge.Controls.Count > 0) _badge.Controls[0].ForeColor = accent;
             _progressFill.BackColor = _stateName == "error" ? Color.FromArgb(224, 100, 105) : accent;
-            _state.AccessibleName = "현재 상태: " + _state.Text;
+            if (_stateName != "working") SetProgress(0, 0);
+            bool shouldShow = _stateName == "working" || _stateName == "error";
+            if (_isShown != shouldShow)
+            {
+                _isShown = shouldShow;
+                Action<bool> handler = VisibilityChanged;
+                if (handler != null) handler(shouldShow);
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -908,10 +1232,6 @@ namespace ILauncher.BootstrapperUi
             if (disposing)
             {
                 _statusTip.Dispose();
-                _dotFont.Dispose();
-                _stateFont.Dispose();
-                _statusFont.Dispose();
-                _runtimeFont.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -926,17 +1246,18 @@ namespace ILauncher.BootstrapperUi
         public string InstallActionColor { get { return ColorTranslator.ToHtml(_install.BackColor); } }
         public string InstallAccessibleName { get { return _install.AccessibleName; } }
         public string RunActionLabel { get { return _run.Text; } }
+        public string RunActionPlacement { get { return "right-side"; } }
+        public Rectangle RunActionBounds { get { return _run.Bounds; } }
+        public Rectangle InstallActionBounds { get { return _install.Bounds; } }
+        public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
         private readonly Button _install;
         private readonly Button _run;
         private readonly Label _status;
-        private readonly Label _downloadSize;
-        private readonly string _downloadSizeText;
         private readonly bool _actionsEnabled;
         private readonly ProgressBar _progress;
-        private bool _ready;
         private bool _installed;
-        public AppCard(BootstrapApp app, int width, long runtimeBytes, Action<BootstrapApp> install,
+        public AppCard(BootstrapApp app, int width, Action<BootstrapApp> install,
             Action<BootstrapApp> remove, Action<BootstrapApp> run, bool actionsEnabled)
         {
             App = app;
@@ -952,24 +1273,16 @@ namespace ILauncher.BootstrapperUi
             Controls.Add(name);
             Label category = new Label { Text = app.Category, Left = 80, Top = 48, Width = width - 142, Height = 20, ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
             Controls.Add(category);
-            Label description = new Label { Text = app.Description, Left = 16, Top = 76, Width = width - 36, Height = 40, ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
+            Label description = new Label { Text = app.Description, Left = 16, Top = 78, Width = width - 126, Height = 57, ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
             Controls.Add(description);
-            _downloadSizeText = "첫 다운로드: 앱 " + FormatMegabytes(app.Bytes) + " + 런타임 " + FormatMegabytes(runtimeBytes);
-            _downloadSize = new Label
-            {
-                Text = _downloadSizeText,
-                Left = 16, Top = 116, Width = width - 36, Height = 19,
-                ForeColor = Color.FromArgb(135, 165, 216), Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true
-            };
-            Controls.Add(_downloadSize);
-            _status = new Label { Text = "확인 중", Left = 16, Top = 137, Width = width - 36, Height = 22, ForeColor = Color.FromArgb(165, 175, 192), AutoEllipsis = true };
+            _status = new Label { Text = "", Left = 16, Top = 146, Width = width - 36, Height = 20, ForeColor = Color.FromArgb(165, 175, 192), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
-            _progress = new ProgressBar { Left = 16, Top = 160, Width = width - 36, Height = 4, Visible = false, Style = ProgressBarStyle.Marquee };
+            _progress = new ProgressBar { Left = 16, Top = 173, Width = width - 36, Height = 4, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
             _install = new Button { Text = "", Left = width - 54, Top = 14, Width = 36, Height = 32, UseVisualStyleBackColor = false };
-            _run = new Button { Text = "실행", Left = 16, Top = 166, Width = width - 36, Height = 30 };
+            _run = new Button { Text = "실행", Left = width - 96, Top = 83, Width = 78, Height = 32 };
             _run.AccessibleName = "실행 " + app.Name;
-            _run.AccessibleDescription = "설치 등록 없이 실행합니다. 필요한 파일은 처음에 다운로드할 수 있습니다.";
+            _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;
             _install.FlatAppearance.BorderSize = 1;
             _install.Cursor = Cursors.Hand;
@@ -988,10 +1301,8 @@ namespace ILauncher.BootstrapperUi
         }
         public void SetStatus(BootstrapperAppStatus status)
         {
-            _ready = status != null && status.IsReady;
             _installed = status != null && status.IsInstalled;
-            _downloadSize.Text = _ready ? "준비된 파일로 추가 다운로드 없이 실행합니다" : _downloadSizeText;
-            _status.Text = _installed ? "설치완료" : (_ready ? "준비됨" : "필요할 때 다운로드합니다" );
+            _status.Text = _installed ? "설치완료" : "";
             UpdateInstallActionSemantics(null);
             _run.Enabled = _actionsEnabled;
             _install.Enabled = _actionsEnabled;
@@ -999,9 +1310,7 @@ namespace ILauncher.BootstrapperUi
         }
         public void SetSmokeInstalledStatus()
         {
-            _ready = true;
             _installed = true;
-            _downloadSize.Text = "준비된 파일로 추가 다운로드 없이 실행합니다";
             _status.Text = "설치완료";
             UpdateInstallActionSemantics(null);
             _install.Enabled = _actionsEnabled;
@@ -1085,10 +1394,6 @@ namespace ILauncher.BootstrapperUi
         {
             if (disposing) _toolTip.Dispose();
             base.Dispose(disposing);
-        }
-        private static string FormatMegabytes(long bytes)
-        {
-            return string.Format("{0:0.0} MB", bytes / 1048576.0);
         }
         private static Image DecodeIcon(string text, out bool decoded)
         {
