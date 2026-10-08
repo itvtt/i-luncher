@@ -238,14 +238,13 @@ internal static class Program
                           && button.IsEnabled && button.Focusable && KeyboardNavigation.GetIsTabStop(button)
                           && ExpectedInstalledAwareInstallLabel(button, window.LauncherCards)),
                     "Every supported app exposes an enabled, accessible install action");
-                Check(launchButtons.All(button => Equals(button.Content, "포터블 실행")
-                                                   && AutomationProperties.GetName(button).EndsWith(" 포터블 실행", StringComparison.Ordinal)
+                Check(launchButtons.All(button => Equals(button.Content, "실행")
+                                                   && AutomationProperties.GetName(button).EndsWith(" 실행", StringComparison.Ordinal)
                                                    && Equals(button.ToolTip, "설치 등록 없이 바로 실행합니다.")
                                                    && button.Focusable && KeyboardNavigation.GetIsTabStop(button)),
-                    "Portable run actions explain install-free execution in accessible labels and tooltips");
-                Check(Descendants<TextBlock>(window).Any(text => text.Text.Contains("시작 메뉴에 등록", StringComparison.Ordinal)
-                                                                  && text.Text.Contains("포터블 실행", StringComparison.Ordinal)),
-                    "Visible launcher guidance distinguishes registration from portable execution");
+                    "Run actions use a concise accessible label and explain install-free execution in tooltips");
+                Check(Descendants<TextBlock>(window).Any(text => text.Text.Equals("오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.", StringComparison.Ordinal)),
+                    "Visible launcher guidance explains the top-right install icon");
                 Check(expectedSupportedAppIds.All(id =>
                 {
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
@@ -279,8 +278,8 @@ internal static class Program
                 Check(installButtons.All(button => button.IsVisible && !button.IsEnabled
                     && !AutomationProperties.GetName(button).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)),
                     "Run activity disables install actions without showing an install-in-progress label");
-                Check(launchButtons.All(button => Equals(button.Content, "\uD3EC\uD130\uBE14 \uC2E4\uD589 \uC911\u2026")),
-                    "Run activity shows the portable-run busy label");
+                Check(launchButtons.All(button => Equals(button.Content, "\uC2E4\uD589 \uC911\u2026")),
+                    "Run activity shows the run busy label");
                 Check(!firstLaunch.Focus(), "Disabled run action rejects keyboard focus");
                 foreach (MainWindow.LauncherCard card in window.LauncherCards)
                 {
@@ -301,7 +300,7 @@ internal static class Program
                 Check(!installingButton.IsEnabled && !installingRunButton.IsEnabled
                       && installButtons.Where(button => !ReferenceEquals(button, installingButton)).All(button => button.IsEnabled)
                       && AutomationProperties.GetName(installingButton).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)
-                      && Equals(installingRunButton.Content, "\uD3EC\uD130\uBE14 \uC2E4\uD589"),
+                      && Equals(installingRunButton.Content, "\uC2E4\uD589"),
                     "Install activity disables both actions for that card and shows the install-specific label");
                 installingCard.IsBusy = false;
                 installingCard.IsInstalling = false;

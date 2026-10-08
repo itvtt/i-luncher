@@ -444,7 +444,7 @@ namespace ILauncher.BootstrapperUi
             settings.Click += delegate { OpenSettings(); };
             Label usageHint = new Label
             {
-                Text = "설치: 개별 설치·시작 메뉴 바로가기 · 포터블 실행: 등록 없이 바로 실행",
+                Text = "오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.",
                 Left = 250, Top = 22, Height = 20, ForeColor = Color.FromArgb(157, 166, 182),
                 Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
@@ -791,8 +791,8 @@ namespace ILauncher.BootstrapperUi
             _progress = new ProgressBar { Left = 16, Top = 160, Width = width - 36, Height = 4, Visible = false, Style = ProgressBarStyle.Marquee };
             Controls.Add(_progress);
             _install = new Button { Text = "", Left = width - 54, Top = 14, Width = 36, Height = 32, UseVisualStyleBackColor = false };
-            _run = new Button { Text = "포터블 실행", Left = 16, Top = 166, Width = width - 36, Height = 30 };
-            _run.AccessibleName = "포터블 실행 " + app.Name;
+            _run = new Button { Text = "실행", Left = 16, Top = 166, Width = width - 36, Height = 30 };
+            _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = "설치 등록 없이 실행합니다. 필요한 파일은 처음에 다운로드할 수 있습니다.";
             _install.FlatStyle = FlatStyle.Flat;
             _install.FlatAppearance.BorderSize = 1;
@@ -806,7 +806,7 @@ namespace ILauncher.BootstrapperUi
             Controls.Add(_install); Controls.Add(_run);
             _run.Enabled = false;
             _install.Enabled = actionsEnabled;
-            _run.AccessibleName = "포터블 실행 " + app.Name;
+            _run.AccessibleName = "실행 " + app.Name;
             UpdateInstallActionSemantics(null);
             ApplyInstallActionStyle();
         }
@@ -814,7 +814,7 @@ namespace ILauncher.BootstrapperUi
         {
             _ready = status != null && status.IsReady;
             _installed = status != null && status.IsInstalled;
-            _downloadSize.Text = _ready ? "준비된 파일로 추가 다운로드 없이 포터블 실행합니다" : _downloadSizeText;
+            _downloadSize.Text = _ready ? "준비된 파일로 추가 다운로드 없이 실행합니다" : _downloadSizeText;
             _status.Text = _installed ? "설치완료" : (_ready ? "준비됨" : "필요할 때 다운로드합니다" );
             UpdateInstallActionSemantics(null);
             _run.Enabled = _actionsEnabled;
@@ -825,7 +825,7 @@ namespace ILauncher.BootstrapperUi
         {
             _ready = true;
             _installed = true;
-            _downloadSize.Text = "준비된 파일로 추가 다운로드 없이 포터블 실행합니다";
+            _downloadSize.Text = "준비된 파일로 추가 다운로드 없이 실행합니다";
             _status.Text = "설치완료";
             UpdateInstallActionSemantics(null);
             _install.Enabled = _actionsEnabled;
@@ -838,9 +838,9 @@ namespace ILauncher.BootstrapperUi
             _run.Enabled = !busy;
             _progress.Visible = busy;
             UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
-            _run.Text = busy && String.IsNullOrEmpty(busyLabel) ? "실행 중…" : "포터블 실행";
+            _run.Text = busy && String.IsNullOrEmpty(busyLabel) ? "실행 중…" : "실행";
             _run.AccessibleName = _run.Text + " " + App.Name;
-            if (busy) _status.Text = String.IsNullOrEmpty(busyLabel) ? "포터블 실행 중…" : busyLabel;
+            if (busy) _status.Text = String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel;
             ApplyInstallActionStyle();
         }
         private readonly ToolTip _toolTip;

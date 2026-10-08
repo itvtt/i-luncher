@@ -425,12 +425,12 @@ public partial class MainWindow : Window
         public Thickness RunMargin => InstallVisibility == Visibility.Visible ? new Thickness(8, 0, 0, 0) : new Thickness(0);
         public bool CanInstall => !IsBusy && Entry.CanInstall && (!IsInstalled || Entry.CanUninstall);
         public string RunLabel => IsBusy && !IsInstalling && !IsUninstalling
-            ? "\uD3EC\uD130\uBE14 \uC2E4\uD589 \uC911\u2026" : "\uD3EC\uD130\uBE14 \uC2E4\uD589";
+            ? "\uC2E4\uD589 \uC911\u2026" : "\uC2E4\uD589";
         public string InstallLabel => IsBusy && IsInstalling ? "\uC124\uCE58 \uC911\u2026"
             : IsBusy && IsUninstalling ? "\uC81C\uAC70 \uC911\u2026"
             : IsInstalled ? (Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC") : "\uC124\uCE58";
         public string InstallAutomationId => $"Install_{Entry.Id}";
-        public string RunAccessibleName => $"{Entry.Name} \uD3EC\uD130\uBE14 \uC2E4\uD589";
+        public string RunAccessibleName => $"{Entry.Name} \uC2E4\uD589";
         public string RunToolTip => "\uC124\uCE58 \uB4F1\uB85D \uC5C6\uC774 \uBC14\uB85C \uC2E4\uD589\uD569\uB2C8\uB2E4.";
         public string InstallAccessibleName => $"{Entry.Name} {InstallLabel}";
         public string InstallToolTip => IsInstalled && Entry.CanUninstall
@@ -453,7 +453,7 @@ public partial class MainWindow : Window
                 ? "M 5,16 L 12,22 L 27,7"
                 : "M 16,3 L 16,19 M 10,13 L 16,19 L 22,13 M 5,21 L 5,26 L 27,26 L 27,21";
         public string AutomationId => $"Launch_{Entry.Id}";
-        public string AccessibleName => $"{Entry.Name} \uD3EC\uD130\uBE14 \uC2E4\uD589. {Entry.Description}";
+        public string AccessibleName => $"{Entry.Name} \uC2E4\uD589. {Entry.Description}";
 
         public LauncherCard(LauncherEntry entry)
         {
