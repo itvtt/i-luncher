@@ -26,6 +26,7 @@ internal static class Program
         {
             TestZipRejections(root);
             TestInstallCacheAndLaunch(root).GetAwaiter().GetResult();
+            TestLegacyManagedCompatibility(root).GetAwaiter().GetResult();
             Console.WriteLine("Bootstrapper checks passed: " + _passed);
             return 0;
         }
@@ -94,6 +95,288 @@ internal static class Program
         {
             try { DeleteFixtureRoot(root); }
             catch { Console.Error.WriteLine("Payload smoke cleanup was incomplete: " + root); }
+        }
+    }
+
+    private static async Task TestLegacyManagedCompatibility(string fixture)
+    {
+        string root = Path.Combine(fixture, "legacy-compatibility");
+        string cache = Path.Combine(root, "cache");
+        string menu = Path.Combine(root, "StartMenu");
+        string mirror = Path.Combine(root, "mirror");
+        Directory.CreateDirectory(cache);
+        Directory.CreateDirectory(menu);
+        Directory.CreateDirectory(mirror);
+        string probeExe = BuildProbe(root);
+
+        byte[] terminalZipBytes = CreateFixturePackage(mirror, "terminalnotes.zip", "TerminalNotes.exe", probeExe);
+        byte[] folderZipBytes = CreateFixturePackage(mirror, "folder-compare.zip", "i-luncher.exe", probeExe);
+        byte[] extraZipBytes = CreateFixturePackage(mirror, "archive-app.zip", "archive-tool.exe", probeExe);
+        byte[] runtimeZipBytes = CreateRuntimePackage(mirror);
+        string catalogJson = LegacyCatalogJson(runtimeZipBytes, terminalZipBytes, folderZipBytes, extraZipBytes);
+
+        BootstrapperOptions options = new BootstrapperOptions(catalogJson,
+            Hash(new UTF8Encoding(false).GetBytes(catalogJson)), cache, probeExe)
+        {
+            StartMenuRoot = menu,
+            PackageMirrorBase = mirror
+        };
+
+        string terminalPayload = CreateLegacyPortableFixture(options, "terminalnotes", "TerminalNotes.exe",
+            "Terminal Notes (terminalnotes).lnk", probeExe, true);
+        string userData = Path.Combine(cache, "Apps", "terminalnotes", "user-data", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(userData));
+        File.WriteAllText(userData, "keep-user-data");
+        string folderPayload = CreateLegacySharedFixture(options, "folder-compare", "i-luncher.exe",
+            "FolderCompareWPF (folder-compare).lnk", probeExe, true);
+        string extraPayload = CreateLegacySharedExtraFixture(options, "archive-app", "archive-tool.exe",
+            "Custom Archive Tool (archive-app).lnk", probeExe);
+
+        int transportCreations = 0;
+        using (BootstrapperEngine engine = new BootstrapperEngine(options, NullBootstrapperCredentialProvider.Instance,
+            delegate { Interlocked.Increment(ref transportCreations); return new NoNetworkTransport(); },
+            delegate { Interlocked.Increment(ref transportCreations); return new NoNetworkTransport(); }))
+        {
+            BootstrapperCatalog catalog = await engine.LoadCatalogAsync(CancellationToken.None);
+            Check(catalog.Apps.Count == 3, "legacy compatibility fixture has portable, shared host, and shared extra apps");
+            foreach (string id in new[] { "terminalnotes", "folder-compare", "archive-app" })
+            {
+                BootstrapperAppStatus status = engine.GetStatus(id);
+                Check(status.IsInstalled && status.IsReady && File.Exists(status.ExecutablePath),
+                    "validated legacy WPF install is shown installed and ready: " + id);
+            }
+            Check(transportCreations == 0 &&
+                !Directory.Exists(Path.Combine(cache, "runtime", catalog.Runtime.Sha256)) &&
+                !Directory.Exists(Path.Combine(cache, "apps", "terminalnotes", catalog.FindApp("terminalnotes").Sha256)),
+                "legacy receipt detection does not fetch or create online app/runtime caches");
+
+            string output = Path.Combine(root, "legacy-child-env.txt");
+            Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", output);
+            try
+            {
+                foreach (string id in new[] { "terminalnotes", "folder-compare", "archive-app" })
+                {
+                    if (File.Exists(output)) File.Delete(output);
+                    BootstrapperLaunchResult launched = await engine.LaunchAsync(id, CancellationToken.None);
+                    Check(launched.ProcessId > 0 && File.Exists(launched.ExecutablePath),
+                        "validated legacy executable launches directly: " + id);
+                    WaitForFile(output, 15000);
+                    if (id != "terminalnotes")
+                    {
+                        string expectedRuntime = id == "folder-compare"
+                            ? Path.Combine(folderPayload, "runtime") : Path.Combine(extraPayload, "runtime");
+                        Check(ContainsLine(File.ReadAllText(output), "DOTNET_ROOT=" + expectedRuntime),
+                            "legacy shared-payload launch receives its verified runtime root: " + id);
+                    }
+                }
+            }
+            finally { Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", null); }
+            Check(transportCreations == 0, "legacy launch uses its existing executable without network activity");
+
+            BootstrapperInstallResult mixedInstall = await engine.InstallAsync("terminalnotes", CancellationToken.None);
+            string legacyTerminalShortcut = Path.Combine(menu, "Terminal Notes (terminalnotes).lnk");
+            Check(File.Exists(mixedInstall.ShortcutPath) && mixedInstall.ShortcutPath != legacyTerminalShortcut &&
+                File.Exists(legacyTerminalShortcut) && engine.GetStatus("terminalnotes").IsInstalled,
+                "distinct online and WPF receipts for one app are both recognized");
+            BootstrapperUninstallResult removedTerminal = await engine.UninstallAsync("terminalnotes", CancellationToken.None);
+            Check(removedTerminal.Removed && !engine.GetStatus("terminalnotes").IsInstalled &&
+                !File.Exists(mixedInstall.ReceiptPath) &&
+                !File.Exists(Path.Combine(cache, "Apps", "terminalnotes", "current.version")) &&
+                !File.Exists(mixedInstall.ShortcutPath) && !File.Exists(legacyTerminalShortcut),
+                "combined uninstall removes online and legacy registration records and both owned shortcuts");
+            Check(File.Exists(Path.Combine(terminalPayload, "TerminalNotes.exe")) && File.Exists(userData),
+                "legacy uninstall retains portable payload and user data");
+            Check(engine.GetStatus("folder-compare").IsInstalled && engine.GetStatus("archive-app").IsInstalled &&
+                File.Exists(Path.Combine(menu, "FolderCompareWPF (folder-compare).lnk")) &&
+                File.Exists(Path.Combine(menu, "Custom Archive Tool (archive-app).lnk")),
+                "removing one legacy app preserves other app receipts and shortcuts");
+
+            BootstrapperUninstallResult removedFolder = await engine.UninstallAsync("folder-compare", CancellationToken.None);
+            Check(removedFolder.Removed && !engine.GetStatus("folder-compare").IsInstalled &&
+                File.Exists(Path.Combine(folderPayload, "i-luncher.exe")) &&
+                File.Exists(Path.Combine(folderPayload, "runtime", "dotnet.exe")),
+                "legacy shared-host uninstall removes registration while retaining payload and runtime");
+            Check(engine.GetStatus("archive-app").IsInstalled &&
+                File.Exists(Path.Combine(extraPayload, "archive-app", "archive-tool.exe")),
+                "shared-extra install remains after removing the shared host app");
+
+            string archiveReceipt = Path.Combine(cache, "Apps", "archive-app", "current.version");
+            string archiveShortcut = Path.Combine(menu, "Custom Archive Tool (archive-app).lnk");
+            string validArchiveReceipt = File.ReadAllText(archiveReceipt);
+            File.WriteAllText(archiveReceipt, "not-a-version-hash");
+            Check(!engine.GetStatus("archive-app").IsInstalled,
+                "malformed legacy version receipt does not show installed");
+            await ExpectAsync<InvalidDataException>(async delegate
+            {
+                await engine.UninstallAsync("archive-app", CancellationToken.None);
+            }, "legacy uninstall refuses a malformed version receipt");
+            Check(File.Exists(archiveShortcut) && File.Exists(Path.Combine(extraPayload, "archive-app", "archive-tool.exe")),
+                "malformed legacy receipt preserves shortcut and payload");
+            File.WriteAllText(archiveReceipt, validArchiveReceipt);
+
+            string reparseTarget = Path.Combine(root, "legacy-shortcut-junction-target");
+            Directory.CreateDirectory(reparseTarget);
+            string sentinel = Path.Combine(reparseTarget, "keep.txt");
+            File.WriteAllText(sentinel, "outside Start Menu");
+            File.Delete(archiveShortcut);
+            CreateJunction(archiveShortcut, reparseTarget);
+            try
+            {
+                Check(!engine.GetStatus("archive-app").IsInstalled,
+                    "legacy shortcut reparse point is not trusted as an install");
+                await ExpectAsync<InvalidDataException>(async delegate
+                {
+                    await engine.UninstallAsync("archive-app", CancellationToken.None);
+                }, "legacy uninstall rejects a reparse-point shortcut");
+                Check(File.Exists(archiveReceipt) && File.Exists(sentinel),
+                    "legacy reparse rejection preserves receipt and external target");
+            }
+            finally
+            {
+                Directory.Delete(archiveShortcut, false);
+                CreateLegacyShortcut(archiveShortcut,
+                    Path.Combine(extraPayload, "archive-app", "archive-tool.exe"),
+                    Path.Combine(extraPayload, "archive-app"), String.Empty);
+            }
+
+            string archiveNameReceipt = Path.Combine(cache, "Apps", "archive-app", "shortcut.name");
+            FileAttributes originalNameAttributes = File.GetAttributes(archiveNameReceipt);
+            File.SetAttributes(archiveNameReceipt, originalNameAttributes | FileAttributes.ReadOnly);
+            try
+            {
+                await ExpectAsync<UnauthorizedAccessException>(async delegate
+                {
+                    await engine.UninstallAsync("archive-app", CancellationToken.None);
+                }, "legacy registration deletion failure is reported");
+                Check(File.Exists(archiveReceipt) && File.Exists(archiveShortcut) &&
+                    engine.GetStatus("archive-app").IsInstalled,
+                    "failed legacy unregister restores previously removed receipt");
+            }
+            finally { File.SetAttributes(archiveNameReceipt, originalNameAttributes); }
+
+            BootstrapperUninstallResult removedExtra = await engine.UninstallAsync("archive-app", CancellationToken.None);
+            Check(removedExtra.Removed && !engine.GetStatus("archive-app").IsInstalled &&
+                File.Exists(Path.Combine(extraPayload, "archive-app", "archive-tool.exe")) &&
+                File.Exists(Path.Combine(extraPayload, "runtime", "dotnet.exe")),
+                "legacy shared-extra uninstall removes registration and retains app/runtime payload");
+
+            BootstrapperInstallResult reinstalled = await engine.InstallAsync("terminalnotes", CancellationToken.None);
+            Check(File.Exists(reinstalled.ReceiptPath) && engine.GetStatus("terminalnotes").IsInstalled &&
+                engine.GetStatus("terminalnotes").IsReady && File.Exists(reinstalled.ShortcutPath),
+                "online reinstall works after removing legacy registration");
+            Check(File.Exists(terminalPayload + "\\TerminalNotes.exe") && File.Exists(userData),
+                "online reinstall leaves the previous legacy payload and data untouched");
+        }
+    }
+
+    private static byte[] CreateFixturePackage(string mirror, string asset, string executableName, string executableSource)
+    {
+        string path = Path.Combine(mirror, asset);
+        CreateZip(path, new Dictionary<string, byte[]> { { executableName, File.ReadAllBytes(executableSource) } }, false);
+        return File.ReadAllBytes(path);
+    }
+
+    private static byte[] CreateRuntimePackage(string mirror)
+    {
+        string path = Path.Combine(mirror, "runtime-test.zip");
+        CreateZip(path, RuntimeFiles(), false);
+        return File.ReadAllBytes(path);
+    }
+
+    private static string LegacyCatalogJson(byte[] runtime, byte[] terminal, byte[] folder, byte[] extra)
+    {
+        return "{\"schemaVersion\":1,\"version\":\"1.0.0\",\"source\":{" +
+            "\"serverUrl\":\"https://github.com\",\"apiUrl\":\"https://api.github.com\",\"repository\":\"fixture/repo\",\"tagName\":\"v1.0.0\"}," +
+            "\"runtime\":{\"version\":\"10.0.4\",\"asset\":\"runtime-test.zip\",\"sha256\":\"" + Hash(runtime) + "\",\"bytes\":" + runtime.Length + "}," +
+            "\"apps\":[" +
+            AppJson("terminalnotes", "Online Terminal Notes", "terminalnotes.zip", terminal, "TerminalNotes.exe") + "," +
+            AppJson("folder-compare", "Folder Compare", "folder-compare.zip", folder, "i-luncher.exe") + "," +
+            AppJson("archive-app", "Archive Tool", "archive-app.zip", extra, "archive-tool.exe") + "]}";
+    }
+
+    private static string CreateLegacyPortableFixture(BootstrapperOptions options, string appId,
+        string executableName, string shortcutName, string probeExe, bool addIcon)
+    {
+        string appsRoot = Path.Combine(options.CacheRoot, "Apps");
+        string appDirectory = Path.Combine(appsRoot, appId);
+        string version = Hash(File.ReadAllBytes(probeExe));
+        string versionDirectory = Path.Combine(appDirectory, version);
+        Directory.CreateDirectory(versionDirectory);
+        File.Copy(probeExe, Path.Combine(versionDirectory, executableName));
+        File.WriteAllText(Path.Combine(versionDirectory, ".install-complete"), "complete");
+        File.WriteAllText(Path.Combine(appDirectory, "current.version"), version);
+        File.WriteAllText(Path.Combine(appDirectory, "shortcut.name"), shortcutName);
+        if (addIcon) File.WriteAllBytes(Path.Combine(appDirectory, "shortcut-icon.png"),
+            new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a });
+        CreateLegacyShortcut(Path.Combine(options.StartMenuRoot, shortcutName), Path.Combine(versionDirectory, executableName),
+            versionDirectory, String.Empty);
+        return versionDirectory;
+    }
+
+    private static string CreateLegacySharedFixture(BootstrapperOptions options, string appId,
+        string executableName, string shortcutName, string probeExe, bool includeRuntime)
+    {
+        string appsRoot = Path.Combine(options.CacheRoot, "Apps");
+        string appDirectory = Path.Combine(appsRoot, appId);
+        string version = Hash(Bytes(appId + File.GetLastWriteTimeUtc(probeExe).Ticks.ToString()));
+        string versionDirectory = Path.Combine(appsRoot, "_shared-payloads", version);
+        Directory.CreateDirectory(versionDirectory);
+        Directory.CreateDirectory(appDirectory);
+        File.Copy(probeExe, Path.Combine(versionDirectory, executableName));
+        File.WriteAllText(Path.Combine(versionDirectory, ".install-complete"), "complete");
+        File.WriteAllText(Path.Combine(appDirectory, "current.version"), version);
+        File.WriteAllText(Path.Combine(appDirectory, "shortcut.name"), shortcutName);
+        if (includeRuntime) CreateRuntimeDirectory(Path.Combine(versionDirectory, "runtime"));
+        CreateLegacyShortcut(Path.Combine(options.StartMenuRoot, shortcutName), Path.Combine(versionDirectory, executableName),
+            versionDirectory, "--app " + appId);
+        return versionDirectory;
+    }
+
+    private static string CreateLegacySharedExtraFixture(BootstrapperOptions options, string appId,
+        string executableName, string shortcutName, string probeExe)
+    {
+        string appsRoot = Path.Combine(options.CacheRoot, "Apps");
+        string appDirectory = Path.Combine(appsRoot, appId);
+        string version = Hash(Bytes(appId + File.GetLastWriteTimeUtc(probeExe).Ticks.ToString()));
+        string versionDirectory = Path.Combine(appsRoot, "_shared-payloads", version);
+        string moduleDirectory = Path.Combine(versionDirectory, appId);
+        Directory.CreateDirectory(moduleDirectory);
+        Directory.CreateDirectory(appDirectory);
+        File.Copy(probeExe, Path.Combine(moduleDirectory, executableName));
+        File.WriteAllText(Path.Combine(versionDirectory, ".install-complete"), "complete");
+        File.WriteAllText(Path.Combine(appDirectory, "current.version"), version);
+        File.WriteAllText(Path.Combine(appDirectory, "shortcut.name"), shortcutName);
+        CreateRuntimeDirectory(Path.Combine(versionDirectory, "runtime"));
+        CreateLegacyShortcut(Path.Combine(options.StartMenuRoot, shortcutName), Path.Combine(moduleDirectory, executableName),
+            Path.GetDirectoryName(Path.Combine(moduleDirectory, executableName)), String.Empty);
+        return versionDirectory;
+    }
+
+    private static void CreateRuntimeDirectory(string runtime)
+    {
+        Directory.CreateDirectory(Path.Combine(runtime, "host", "fxr", "10.0.4"));
+        File.WriteAllText(Path.Combine(runtime, "dotnet.exe"), "fixture runtime host");
+        File.WriteAllText(Path.Combine(runtime, "host", "fxr", "10.0.4", "hostfxr.dll"), "fixture hostfxr");
+    }
+
+    private static void CreateLegacyShortcut(string path, string target, string workingDirectory, string arguments)
+    {
+        Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+        object shell = Activator.CreateInstance(shellType);
+        object link = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null,
+            shell, new object[] { path });
+        try
+        {
+            Type type = link.GetType();
+            type.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { target });
+            type.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { workingDirectory });
+            type.InvokeMember("Arguments", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { arguments });
+            type.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, link, null);
+        }
+        finally
+        {
+            if (System.Runtime.InteropServices.Marshal.IsComObject(link)) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(link);
+            if (System.Runtime.InteropServices.Marshal.IsComObject(shell)) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
         }
     }
 
@@ -512,7 +795,12 @@ internal static class Program
 
     private static string AppJson(string id, string name, string asset, byte[] zip)
     {
-        return "{\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"description\":\"fixture\",\"category\":\"Tests\",\"executable\":\"probe.exe\",\"asset\":\"" + asset + "\",\"sha256\":\"" + Hash(zip) + "\",\"bytes\":" + zip.Length + "}";
+        return AppJson(id, name, asset, zip, "probe.exe");
+    }
+
+    private static string AppJson(string id, string name, string asset, byte[] zip, string executable)
+    {
+        return "{\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"description\":\"fixture\",\"category\":\"Tests\",\"executable\":\"" + executable + "\",\"asset\":\"" + asset + "\",\"sha256\":\"" + Hash(zip) + "\",\"bytes\":" + zip.Length + "}";
     }
 
     private static BootstrapperApp App(string id, string exe, string hash)

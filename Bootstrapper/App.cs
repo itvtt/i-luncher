@@ -46,6 +46,7 @@ namespace ILauncher.BootstrapperUi
 
                 string appId = null;
                 bool smokeUi = args.Any(a => string.Equals(a, "--smoke-ui", StringComparison.OrdinalIgnoreCase));
+                bool smokeRealProfile = args.Any(a => string.Equals(a, "--smoke-real-profile", StringComparison.OrdinalIgnoreCase));
                 string smokeInstalledAppId = GetArgument(args, "--smoke-installed-card");
                 string reportPath = GetArgument(args, "--report-path");
                 for (int i = 0; i + 1 < args.Length; i++)
@@ -59,16 +60,20 @@ namespace ILauncher.BootstrapperUi
 
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                BootstrapperEngine engine = EngineFactory.Create(catalog, smokeUi);
+                if (smokeRealProfile && !smokeUi)
+                    throw new ArgumentException("--smoke-real-profile requires --smoke-ui.");
+                BootstrapperEngine engine = EngineFactory.Create(catalog, smokeUi && !smokeRealProfile);
                 if (!string.IsNullOrEmpty(appId))
                 {
+                    if (smokeUi)
+                        throw new ArgumentException("App shortcuts cannot be launched in smoke mode.");
                     return RunAppShortcut(engine, appId);
                 }
                 if (smokeUi && string.IsNullOrWhiteSpace(reportPath))
                     throw new ArgumentException("--smoke-ui requires --report-path <file>.");
                 if (!string.IsNullOrWhiteSpace(smokeInstalledAppId) && !smokeUi)
                     throw new ArgumentException("--smoke-installed-card requires --smoke-ui.");
-                Application.Run(new LauncherForm(catalog, engine, smokeUi, startup, reportPath, smokeInstalledAppId));
+                Application.Run(new LauncherForm(catalog, engine, smokeUi, smokeRealProfile, startup, reportPath, smokeInstalledAppId));
                 return 0;
             }
             catch (Exception ex)
@@ -384,19 +389,23 @@ namespace ILauncher.BootstrapperUi
         private readonly HashSet<string> _inFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Label _status;
         private readonly bool _smokeUi;
+        private readonly bool _smokeRealProfile;
         private readonly Stopwatch _startup;
         private readonly string _reportPath;
         private readonly string _smokeInstalledAppId;
         private readonly System.Windows.Forms.Timer _smokeTimer;
+        private Icon _ownedWindowIcon;
+        private string _windowIconSource;
         private long _firstPaintMs = -1;
 
-        public LauncherForm(BootstrapCatalog catalog, BootstrapperEngine engine, bool smokeUi, Stopwatch startup,
+        public LauncherForm(BootstrapCatalog catalog, BootstrapperEngine engine, bool smokeUi, bool smokeRealProfile, Stopwatch startup,
             string reportPath, string smokeInstalledAppId)
         {
             _catalog = catalog;
             _engine = engine;
             _credentials = EngineFactory.Credentials;
             _smokeUi = smokeUi;
+            _smokeRealProfile = smokeRealProfile;
             _startup = startup;
             _reportPath = reportPath;
             _smokeInstalledAppId = smokeInstalledAppId;
@@ -412,7 +421,8 @@ namespace ILauncher.BootstrapperUi
             MinimumSize = new Size(720, 520);
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(1240, 840);
-            Icon = LoadIconFile();
+            _ownedWindowIcon = LoadWindowIcon();
+            Icon = _ownedWindowIcon;
             ClampToWorkArea();
 
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = BackColor };
@@ -428,6 +438,7 @@ namespace ILauncher.BootstrapperUi
             Label build = new Label { Text = "버전 " + catalog.Version, AutoSize = true, ForeColor = Color.FromArgb(157, 166, 182), Location = new Point(140, 24) };
             header.Controls.Add(build);
             Button settings = new Button { Text = "설정", Width = 82, Height = 32, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(Width - 142, 14) };
+            settings.Enabled = !_smokeUi;
             StyleButton(settings, false);
             settings.Click += delegate { OpenSettings(); };
             header.Resize += delegate { settings.Left = header.ClientSize.Width - settings.Width - 18; };
@@ -438,7 +449,7 @@ namespace ILauncher.BootstrapperUi
             int cardWidth = 360;
             foreach (BootstrapApp app in catalog.Apps)
             {
-                AppCard card = new AppCard(app, cardWidth, catalog.RuntimeBytes, InstallClicked, RemoveClicked, RunClicked);
+                AppCard card = new AppCard(app, cardWidth, catalog.RuntimeBytes, InstallClicked, RemoveClicked, RunClicked, !_smokeUi);
                 _cards.Add(app.Id, card);
                 grid.Controls.Add(card);
             }
@@ -488,11 +499,23 @@ namespace ILauncher.BootstrapperUi
                 { "firstPaintMs", _firstPaintMs < 0 ? _startup.ElapsedMilliseconds : _firstPaintMs },
                 { "bounds", new Dictionary<string, int> { { "x", bounds.X }, { "y", bounds.Y }, { "width", bounds.Width }, { "height", bounds.Height } } },
                 { "cards", _cards.Count },
+                { "appStatuses", _cards.Values.OrderBy(card => card.App.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(card => new Dictionary<string, object>
+                    {
+                        { "appId", card.App.Id },
+                        { "installed", card.IsInstalled },
+                        { "action", card.InstallActionLabel },
+                        { "status", card.StatusLabel }
+                    }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
                 { "iconsDecoded", _cards.Values.Count(card => card.HasDecodedIcon) },
                 { "smokeInstalledAppId", _smokeInstalledAppId },
                 { "smokeInstalledAction", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].InstallActionLabel },
                 { "smokeInstalledStatus", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].StatusLabel },
+                { "windowIconSource", _windowIconSource },
+                { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
+                { "profileMode", _smokeRealProfile ? "current-user-read-only" : "isolated-temporary" },
+                { "statusOnly", _smokeUi },
                 { "workingSetBytes", process.WorkingSet64 },
                 { "networkUsed", false },
                 { "appsLaunched", false },
@@ -516,10 +539,39 @@ namespace ILauncher.BootstrapperUi
             Width = width;
             Height = height;
         }
-        private Icon LoadIconFile()
+        private Icon LoadWindowIcon()
         {
-            try { return new Icon(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ILauncher.ico")); }
-            catch { return SystemIcons.Application; }
+            try
+            {
+                Icon embedded = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (embedded != null)
+                {
+                    _windowIconSource = "embedded-executable";
+                    return embedded;
+                }
+            }
+            catch { }
+            try
+            {
+                Icon sidecar = new Icon(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ILauncher.ico"));
+                _windowIconSource = "sidecar-ico";
+                return sidecar;
+            }
+            catch
+            {
+                _windowIconSource = "system-fallback";
+                return (Icon)SystemIcons.Application.Clone();
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _ownedWindowIcon != null)
+            {
+                _ownedWindowIcon.Dispose();
+                _ownedWindowIcon = null;
+            }
+            base.Dispose(disposing);
         }
         private async Task LoadStatusesAsync()
         {
@@ -542,6 +594,7 @@ namespace ILauncher.BootstrapperUi
         }
         private async void InstallClicked(BootstrapApp app)
         {
+            if (_smokeUi) return;
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, "설치 중…");
             _status.Text = app.Name + " 설치를 준비하고 있습니다…";
@@ -560,6 +613,7 @@ namespace ILauncher.BootstrapperUi
         }
         private async void RemoveClicked(BootstrapApp app)
         {
+            if (_smokeUi) return;
             string confirmation = "\"" + app.Name + "\" 앱을 제거할까요?\r\n\r\n" +
                 "이 앱의 개별 설치 등록과 시작 메뉴 바로가기만 제거합니다. " +
                 "다운로드한 파일, 공용 실행 환경, 사용자 데이터는 유지됩니다.";
@@ -584,6 +638,7 @@ namespace ILauncher.BootstrapperUi
         }
         private async void RunClicked(BootstrapApp app)
         {
+            if (_smokeUi) return;
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, null);
             _status.Text = app.Name + "을(를) 확인하고 있습니다…";
@@ -614,6 +669,7 @@ namespace ILauncher.BootstrapperUi
         }
         private void OpenSettings()
         {
+            if (_smokeUi) return;
             BootstrapSettings settings = BootstrapSettings.Load();
             using (Form dialog = new Form { Text = "설정", FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, ClientSize = new Size(520, 260), MaximizeBox = false, MinimizeBox = false, BackColor = Color.FromArgb(24, 28, 37), ForeColor = ForeColor })
             using (TextBox mirror = new TextBox { Text = settings.MirrorBase, Left = 20, Top = 44, Width = 470 })
@@ -670,18 +726,21 @@ namespace ILauncher.BootstrapperUi
     {
         public BootstrapApp App { get; private set; }
         public bool HasDecodedIcon { get; private set; }
+        public bool IsInstalled { get { return _installed; } }
         public string InstallActionLabel { get { return _install.Text; } }
         public string StatusLabel { get { return _status.Text; } }
         private readonly Button _install;
         private readonly Button _run;
         private readonly Label _status;
+        private readonly bool _actionsEnabled;
         private readonly ProgressBar _progress;
         private bool _ready;
         private bool _installed;
         public AppCard(BootstrapApp app, int width, long runtimeBytes, Action<BootstrapApp> install,
-            Action<BootstrapApp> remove, Action<BootstrapApp> run)
+            Action<BootstrapApp> remove, Action<BootstrapApp> run, bool actionsEnabled)
         {
             App = app;
+            _actionsEnabled = actionsEnabled;
             Width = width; Height = 206; Margin = new Padding(8); Padding = new Padding(16);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.FixedSingle;
             PictureBox icon = new PictureBox { Left = 14, Top = 14, Width = 52, Height = 52, SizeMode = PictureBoxSizeMode.Zoom };
@@ -713,6 +772,7 @@ namespace ILauncher.BootstrapperUi
             _run.Click += delegate { run(App); };
             Controls.Add(_install); Controls.Add(_run);
             _run.Enabled = false;
+            _install.Enabled = actionsEnabled;
         }
         public void SetStatus(BootstrapperAppStatus status)
         {
@@ -720,8 +780,8 @@ namespace ILauncher.BootstrapperUi
             _installed = status != null && status.IsInstalled;
             _status.Text = _installed ? "설치완료" : (_ready ? "준비됨" : "필요할 때 다운로드합니다" );
             _install.Text = _installed ? "제거" : "설치";
-            _run.Enabled = true;
-            _install.Enabled = true;
+            _run.Enabled = _actionsEnabled;
+            _install.Enabled = _actionsEnabled;
         }
         public void SetSmokeInstalledStatus()
         {
@@ -729,8 +789,8 @@ namespace ILauncher.BootstrapperUi
             _installed = true;
             _status.Text = "설치완료";
             _install.Text = "제거";
-            _install.Enabled = true;
-            _run.Enabled = true;
+            _install.Enabled = _actionsEnabled;
+            _run.Enabled = _actionsEnabled;
         }
         public void SetBusy(bool busy, string busyLabel)
         {

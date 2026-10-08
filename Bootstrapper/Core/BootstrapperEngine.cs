@@ -72,7 +72,10 @@ namespace ILauncher.Bootstrapper
             string receipt = ReceiptPath(app);
             string ownedShortcut;
             bool installed = TryGetValidInstallReceipt(app, receipt, out ownedShortcut);
-            return new BootstrapperAppStatus(app, ready, installed, ready ? executable : null, null);
+            LegacyManagedInstall legacy = TryFindLegacyInstall(app);
+            string statusExecutable = ready ? executable : legacy == null ? null : legacy.ExecutablePath;
+            return new BootstrapperAppStatus(app, ready || legacy != null, installed || legacy != null,
+                statusExecutable, null);
         }
 
         public async Task<BootstrapperReadyApp> EnsureReadyAsync(string appId, CancellationToken cancellationToken)
@@ -93,26 +96,68 @@ namespace ILauncher.Bootstrapper
 
         public async Task<BootstrapperLaunchResult> LaunchAsync(string appId, CancellationToken cancellationToken)
         {
+            BootstrapperCatalog catalog = GetCatalog();
+            BootstrapperApp app = FindApp(catalog, appId);
+            string currentAppDirectory = AppCachePath(app);
+            string currentExecutable = SafeFiles.CombineContained(currentAppDirectory, app.Executable, "App executable");
+            string currentRuntime = RuntimeCachePath(catalog.Runtime);
+            bool currentCacheReady = IsValidAppCache(app, currentAppDirectory, currentExecutable) &&
+                                     IsValidRuntimeCache(catalog.Runtime, currentRuntime);
+            if (!currentCacheReady)
+            {
+                LegacyManagedInstall legacy = TryFindLegacyInstall(app);
+                if (legacy != null)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    int legacyProcessId = StartShellProcess(legacy.ExecutablePath, legacy.WorkingDirectory,
+                        legacy.Arguments, legacy.RuntimeDirectory);
+                    return new BootstrapperLaunchResult(legacyProcessId, legacy.ExecutablePath);
+                }
+            }
+
             BootstrapperReadyApp ready = await EnsureReadyAsync(appId, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            int processId;
+            int processId = StartShellProcess(ready.ExecutablePath, ready.WorkingDirectory,
+                new string[0], ready.RuntimeDirectory);
+            return new BootstrapperLaunchResult(processId, ready.ExecutablePath);
+        }
+
+        private LegacyManagedInstall TryFindLegacyInstall(BootstrapperApp app)
+        {
+            try { return new LegacyManagedInstallStore(_options).Find(app); }
+            catch { return null; }
+        }
+
+        private static int StartShellProcess(string executablePath, string workingDirectory,
+            string[] arguments, string runtimeDirectory)
+        {
+            if (String.IsNullOrEmpty(executablePath) || !File.Exists(executablePath))
+                throw new FileNotFoundException("The installed app executable is missing.", executablePath);
+            if (String.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
+                throw new DirectoryNotFoundException("The installed app working directory is missing.");
+
             lock (ProcessEnvironmentGate)
             {
                 string oldRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
                 string oldRootX64 = Environment.GetEnvironmentVariable("DOTNET_ROOT_X64");
                 try
                 {
-                    Environment.SetEnvironmentVariable("DOTNET_ROOT", ready.RuntimeDirectory, EnvironmentVariableTarget.Process);
-                    Environment.SetEnvironmentVariable("DOTNET_ROOT_X64", ready.RuntimeDirectory, EnvironmentVariableTarget.Process);
-                    using (Process process = Process.Start(new ProcessStartInfo
+                    if (!String.IsNullOrEmpty(runtimeDirectory))
                     {
-                        FileName = ready.ExecutablePath,
-                        WorkingDirectory = ready.WorkingDirectory,
-                        UseShellExecute = true
-                    }))
+                        Environment.SetEnvironmentVariable("DOTNET_ROOT", runtimeDirectory, EnvironmentVariableTarget.Process);
+                        Environment.SetEnvironmentVariable("DOTNET_ROOT_X64", runtimeDirectory, EnvironmentVariableTarget.Process);
+                    }
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = executablePath,
+                        WorkingDirectory = workingDirectory,
+                        UseShellExecute = true,
+                        Arguments = BuildArguments(arguments)
+                    };
+                    using (Process process = Process.Start(startInfo))
                     {
                         if (process == null) throw new InvalidOperationException("Windows did not start the app process.");
-                        processId = process.Id;
+                        return process.Id;
                     }
                 }
                 finally
@@ -121,7 +166,18 @@ namespace ILauncher.Bootstrapper
                     Environment.SetEnvironmentVariable("DOTNET_ROOT_X64", oldRootX64, EnvironmentVariableTarget.Process);
                 }
             }
-            return new BootstrapperLaunchResult(processId, ready.ExecutablePath);
+        }
+
+        private static string BuildArguments(string[] arguments)
+        {
+            if (arguments == null || arguments.Length == 0) return String.Empty;
+            var builder = new StringBuilder();
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0) builder.Append(' ');
+                builder.Append(QuoteArgument(arguments[i] ?? String.Empty));
+            }
+            return builder.ToString();
         }
 
         public async Task<BootstrapperInstallResult> InstallAsync(string appId, CancellationToken cancellationToken)
@@ -198,44 +254,107 @@ namespace ILauncher.Bootstrapper
             try
             {
                 string receipt = ReceiptPath(app);
-                bool hasReceipt = File.Exists(receipt);
-                string shortcut;
-                if (!hasReceipt)
+                var registrationFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+                if (File.Exists(receipt))
+                {
+                    string shortcut;
+                    if (!TryGetValidInstallReceipt(app, receipt, out shortcut))
+                        throw new InvalidDataException("The app installation record or shortcut failed validation; it was preserved.");
+                    AddRegistrationSnapshot(registrationFiles, receipt, Path.Combine(_options.CacheRoot, "installed"));
+                    AddRegistrationSnapshot(registrationFiles, shortcut, _options.StartMenuRoot);
+                    string appIcon = SafeFiles.CombineContained(Path.GetDirectoryName(receipt), "app-icon.ico", "Installed shortcut icon");
+                    SafeFiles.EnsureExistingPathHasNoReparsePoints(appIcon, false);
+                    if (File.Exists(appIcon))
+                    {
+                        byte[] icon = File.ReadAllBytes(appIcon);
+                        if (!IsIconFile(icon)) throw new InvalidDataException("The installed shortcut icon failed validation; it was preserved.");
+                        AddRegistrationSnapshot(registrationFiles, appIcon, Path.Combine(_options.CacheRoot, "installed"));
+                    }
+                }
+
+                LegacyManagedInstall legacy = new LegacyManagedInstallStore(_options).Find(app);
+                if (legacy != null)
+                {
+                    foreach (KeyValuePair<string, byte[]> snapshot in legacy.RegistrationFiles)
+                    {
+                        string ownedFileName = Path.GetFileName(snapshot.Key);
+                        if (ownedFileName.StartsWith("shortcut-icon.", StringComparison.OrdinalIgnoreCase) &&
+                            !IsSupportedLegacyIcon(ownedFileName, snapshot.Value))
+                            throw new InvalidDataException("A legacy shortcut icon failed validation; it was preserved.");
+                        string root = SafeFiles.IsWithinOrEqual(_options.StartMenuRoot, snapshot.Key)
+                            ? _options.StartMenuRoot : Path.Combine(_options.CacheRoot, "Apps");
+                        AddRegistrationSnapshot(registrationFiles, snapshot.Key, root, snapshot.Value);
+                    }
+                }
+
+                if (registrationFiles.Count == 0)
                 {
                     if (FindOwnedShortcuts(app.Id).Length != 0)
                         throw new InvalidDataException("The app shortcut exists without a valid install receipt; it was preserved.");
                     return new BootstrapperUninstallResult(app.Id, false);
                 }
-                if (!TryGetValidInstallReceipt(app, receipt, out shortcut))
-                    throw new InvalidDataException("The app installation record or shortcut failed validation; it was preserved.");
 
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.StartMenuRoot, false);
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(receipt, false);
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcut, false);
-                string appIcon = SafeFiles.CombineContained(Path.GetDirectoryName(receipt), "app-icon.ico", "Installed shortcut icon");
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(appIcon, false);
-                byte[] oldReceipt = File.ReadAllBytes(receipt);
-                byte[] oldShortcut = File.ReadAllBytes(shortcut);
-                byte[] oldIcon = File.Exists(appIcon) ? File.ReadAllBytes(appIcon) : null;
-                if (oldIcon != null && !IsIconFile(oldIcon))
-                    throw new InvalidDataException("The installed shortcut icon failed validation; it was preserved.");
+                foreach (string path in registrationFiles.Keys)
+                    SafeFiles.EnsureExistingPathHasNoReparsePoints(path, false);
+                foreach (string candidateShortcut in FindOwnedShortcuts(app.Id))
+                    if (!registrationFiles.ContainsKey(Path.GetFullPath(candidateShortcut)))
+                        throw new InvalidDataException("An app shortcut without a matching managed receipt was preserved.");
                 try
                 {
-                    File.Delete(shortcut);
-                    if (oldIcon != null) File.Delete(appIcon);
-                    File.Delete(receipt);
+                    foreach (string path in registrationFiles.Keys)
+                        File.Delete(path);
                 }
-                catch
+                catch (Exception uninstallError)
                 {
-                    RestoreFile(shortcut, oldShortcut);
-                    RestoreFile(appIcon, oldIcon);
-                    RestoreFile(receipt, oldReceipt);
+                    var rollbackErrors = new List<Exception>();
+                    foreach (KeyValuePair<string, byte[]> snapshot in registrationFiles)
+                    {
+                        try
+                        {
+                            if (!File.Exists(snapshot.Key))
+                            {
+                                string root = SafeFiles.IsWithinOrEqual(_options.StartMenuRoot, snapshot.Key)
+                                    ? _options.StartMenuRoot : _options.CacheRoot;
+                                SafeFiles.EnsureSafeDirectory(root, Path.GetDirectoryName(snapshot.Key), true);
+                                SafeFiles.EnsureExistingPathHasNoReparsePoints(snapshot.Key, false);
+                                SafeFiles.WriteAtomic(snapshot.Key, snapshot.Value);
+                            }
+                        }
+                        catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
+                    }
+                    if (rollbackErrors.Count > 0)
+                    {
+                        rollbackErrors.Insert(0, uninstallError);
+                        throw new AggregateException("Uninstall failed and one or more install records could not be restored.",
+                            rollbackErrors.ToArray());
+                    }
                     throw;
                 }
                 return new BootstrapperUninstallResult(app.Id, true);
             }
             finally { gate.Release(); }
+        }
+
+        private static void AddRegistrationSnapshot(IDictionary<string, byte[]> snapshots, string path, string allowedRoot,
+            byte[] knownBytes = null)
+        {
+            string fullRoot = Path.GetFullPath(allowedRoot);
+            string fullPath = Path.GetFullPath(path);
+            if (!SafeFiles.IsWithinOrEqual(fullRoot, fullPath) || String.Equals(fullRoot, fullPath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("An install registration file is outside its owned directory.");
+            SafeFiles.EnsureExistingPathHasNoReparsePoints(fullRoot, false);
+            SafeFiles.EnsureExistingPathHasNoReparsePoints(fullPath, false);
+            byte[] bytes = knownBytes ?? File.ReadAllBytes(fullPath);
+            byte[] existing;
+            if (snapshots.TryGetValue(fullPath, out existing))
+            {
+                if (!BytesEqual(existing, bytes))
+                    throw new InvalidDataException("Two install receipts claim different contents for one registration file.");
+                return;
+            }
+            snapshots.Add(fullPath, bytes);
         }
 
         private async Task EnsureRuntimeAsync(BootstrapperCatalog catalog, string destination,
@@ -429,35 +548,49 @@ namespace ILauncher.Bootstrapper
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(stableBootstrapper, false);
 
                 string[] shortcuts = FindOwnedShortcuts(app.Id);
-                if (shortcuts.Length != 1) return false;
-                string shortcutPath = shortcuts[0];
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcutPath, false);
-
-                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
-                if (shellType == null) return false;
-                object shell = Activator.CreateInstance(shellType);
-                object link = null;
-                try
+                string matchingShortcut = null;
+                foreach (string shortcutPath in shortcuts)
                 {
-                    link = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
-                        new object[] { shortcutPath });
-                    Type linkType = link.GetType();
-                    string target = (string)linkType.InvokeMember("TargetPath", BindingFlags.GetProperty, null, link, null);
-                    string arguments = (string)linkType.InvokeMember("Arguments", BindingFlags.GetProperty, null, link, null);
-                    if (!String.Equals(Path.GetFullPath(target), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase) ||
-                        !String.Equals(arguments, "--app " + QuoteArgument(app.Id) + " --noUI", StringComparison.Ordinal)) return false;
-                    ownedShortcut = shortcutPath;
-                    return true;
+                    try
+                    {
+                        SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcutPath, false);
+                        if (!IsOnlineShortcut(shortcutPath, stableBootstrapper, app.Id)) continue;
+                        if (matchingShortcut != null) return false;
+                        matchingShortcut = shortcutPath;
+                    }
+                    catch { }
                 }
-                finally
-                {
-                    if (link != null && System.Runtime.InteropServices.Marshal.IsComObject(link))
-                        System.Runtime.InteropServices.Marshal.FinalReleaseComObject(link);
-                    if (System.Runtime.InteropServices.Marshal.IsComObject(shell))
-                        System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
-                }
+                if (matchingShortcut == null) return false;
+                ownedShortcut = matchingShortcut;
+                return true;
             }
             catch { return false; }
+        }
+
+        private static bool IsOnlineShortcut(string shortcutPath, string stableBootstrapper, string appId)
+        {
+            Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType == null) return false;
+            object shell = Activator.CreateInstance(shellType);
+            object link = null;
+            try
+            {
+                link = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
+                    new object[] { shortcutPath });
+                Type linkType = link.GetType();
+                string target = (string)linkType.InvokeMember("TargetPath", BindingFlags.GetProperty, null, link, null);
+                string arguments = (string)linkType.InvokeMember("Arguments", BindingFlags.GetProperty, null, link, null);
+                return !String.IsNullOrEmpty(target) &&
+                       String.Equals(Path.GetFullPath(target), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase) &&
+                       String.Equals(arguments, "--app " + QuoteArgument(appId) + " --noUI", StringComparison.Ordinal);
+            }
+            finally
+            {
+                if (link != null && System.Runtime.InteropServices.Marshal.IsComObject(link))
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(link);
+                if (System.Runtime.InteropServices.Marshal.IsComObject(shell))
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+            }
         }
 
         private string[] FindOwnedShortcuts(string appId)
@@ -553,6 +686,19 @@ namespace ILauncher.Bootstrapper
         {
             return bytes != null && bytes.Length >= 6 && bytes[0] == 0 && bytes[1] == 0 &&
                    bytes[2] == 1 && bytes[3] == 0;
+        }
+
+        private static bool IsSupportedLegacyIcon(string fileName, byte[] bytes)
+        {
+            if (bytes == null) return false;
+            string extension = Path.GetExtension(fileName);
+            if (String.Equals(extension, ".ico", StringComparison.OrdinalIgnoreCase)) return IsIconFile(bytes);
+            if (String.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
+                return bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4e &&
+                       bytes[3] == 0x47 && bytes[4] == 0x0d && bytes[5] == 0x0a && bytes[6] == 0x1a && bytes[7] == 0x0a;
+            if (String.Equals(extension, ".bmp", StringComparison.OrdinalIgnoreCase))
+                return bytes.Length >= 2 && bytes[0] == 0x42 && bytes[1] == 0x4d;
+            return false;
         }
 
         private void Progress(string appId, long transferred, long total)
