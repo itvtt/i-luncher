@@ -12,8 +12,8 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         Width="1240"
-        Height="840"
-        MinWidth="680"
+        Height="580"
+        MinWidth="720"
         MinHeight="420"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
@@ -25,8 +25,8 @@
                 <ResourceDictionary Source="LauncherResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <Style x:Key="RegistrationActionButtonStyle" TargetType="Button">
-                <Setter Property="Width" Value="36" />
-                <Setter Property="Height" Value="36" />
+                <Setter Property="Width" Value="34" />
+                <Setter Property="Height" Value="34" />
                 <Setter Property="Padding" Value="6" />
                 <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
                 <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -298,34 +298,30 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="374" Margin="0,0,14,14" Padding="16,13,16,10"
-                                    Background="{StaticResource RaisedSurfaceBrush}" BorderBrush="#FF354359"
-                                    BorderThickness="1" CornerRadius="16">
+                            <Border Width="374" Height="112" Margin="0,0,12,12" Padding="13"
+                                    Background="{StaticResource RaisedSurfaceBrush}" BorderBrush="#FF2F3847"
+                                    BorderThickness="1" CornerRadius="10">
                                 <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="82" />
-                                        <RowDefinition Height="24" />
-                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="58" />
+                                        <ColumnDefinition Width="50" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="78" />
+                                        <ColumnDefinition Width="118" />
                                     </Grid.ColumnDefinitions>
 
-                                    <Button Width="50" Height="50" Padding="0" HorizontalAlignment="Left"
-                                            VerticalAlignment="Center" Click="LauncherCard_Click" Tag="{Binding}"
+                                    <Button Width="40" Height="40" Padding="0" HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            VerticalAlignment="Top" Click="LauncherCard_Click" Tag="{Binding}"
                                             IsEnabled="{Binding CanRun}" Style="{StaticResource ToolbarButtonStyle}"
                                             AutomationProperties.Name="{Binding AccessibleName}" ToolTip="{Binding RunToolTip}">
-                                    <Border Width="48"
-                                            Height="48"
+                                    <Border Width="40"
+                                            Height="40"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"
                                             Background="#FF222A3A"
                                             BorderBrush="#FF343F55"
                                             BorderThickness="1"
-                                            CornerRadius="13">
+                                            CornerRadius="9">
                                         <Grid>
-                                            <Image Margin="8"
+                                            <Image Margin="4"
                                                    Source="{Binding IconSource}"
                                                    Stretch="Uniform"
                                                    Visibility="{Binding IconVisibility}" />
@@ -340,40 +336,42 @@
                                     </Border>
                                     </Button>
 
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,42,0">
-                                        <TextBlock FontSize="15.5"
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                                        <TextBlock FontSize="14.7" Height="23"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}"
                                                    Text="{Binding Entry.Name}"
+                                                   ToolTip="{Binding Entry.Name}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Margin="0,2,2,0"
+                                        <TextBlock Margin="0,1,0,0" Height="17"
                                                    FontSize="10.5"
                                                    Foreground="{StaticResource AccentBrush}"
                                                    Text="{Binding Entry.Category}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Margin="0,3,2,0"
+                                        <TextBlock Margin="0,5,0,0"
                                                    MaxHeight="34"
                                                    FontSize="11.5"
                                                    Foreground="{StaticResource MutedTextBrush}"
                                                    LineHeight="15"
-                                                   Text="{Binding Entry.Description}"
+                                                   Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}"
+                                                   AutomationProperties.LiveSetting="Polite"
                                                    TextTrimming="CharacterEllipsis"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <Button Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right"
-                                            VerticalAlignment="Top" Margin="0,2,0,0"
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button VerticalAlignment="Center"
                                             Tag="{Binding}" Visibility="{Binding InstallVisibility}"
                                             Click="InstallButton_Click" IsEnabled="{Binding CanInstall}"
                                             ToolTipService.ShowOnDisabled="True"
                                             AutomationProperties.AutomationId="{Binding InstallAutomationId}"
                                             AutomationProperties.Name="{Binding InstallAccessibleName}"
                                             ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
-                                        <Path Width="18" Height="18" Data="{Binding RegistrationGlyphData}"
+                                        <Path Width="18" Height="18" Stretch="Uniform" Data="{Binding RegistrationGlyphData}"
                                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                               StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                               StrokeLineJoin="Round" />
                                     </Button>
-                                    <Button Grid.Row="0" Grid.Column="2" Width="72" Height="34"
+                                    <Button Width="66" Height="34" Margin="6,0,0,0"
                                             HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Content="{Binding RunLabel}"
                                             Tag="{Binding}" Click="LauncherCard_Click"
@@ -383,10 +381,21 @@
                                             Padding="8,5"
                                             Background="#FF3864D9" BorderBrush="#FF6C91FA" Foreground="White"
                                             Style="{StaticResource ToolbarButtonStyle}" />
-                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Margin="1,5,0,0"
-                                               Text="{Binding StatusMessage}" ToolTip="{Binding StatusMessage}"
-                                               TextTrimming="CharacterEllipsis" FontSize="11"
-                                               Foreground="#FFB6C9EA" AutomationProperties.LiveSetting="Polite" />
+                                    </StackPanel>
+                                    <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="0,0,0,-8"
+                                                 VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False"
+                                                 AutomationProperties.Name="작업 진행 상황">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
                                 </Grid>
                             </Border>
                         </DataTemplate>

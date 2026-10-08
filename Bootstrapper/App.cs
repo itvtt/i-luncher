@@ -434,9 +434,9 @@ namespace ILauncher.BootstrapperUi
             Font = new Font("Segoe UI", 9F);
             KeyPreview = true;
             KeyDown += Form_KeyDown;
-            MinimumSize = new Size(720, 520);
+            MinimumSize = new Size(720, 420);
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(1240, 840);
+            Size = new Size(1240, 480);
             _ownedWindowIcon = LoadWindowIcon();
             Icon = _ownedWindowIcon;
             ClampToWorkArea();
@@ -481,7 +481,7 @@ namespace ILauncher.BootstrapperUi
 
             _grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
             root.Controls.Add(_grid, 0, 1);
-            int cardWidth = 360;
+            int cardWidth = 374;
             foreach (BootstrapApp app in catalog.Apps)
             {
                 AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
@@ -726,6 +726,7 @@ namespace ILauncher.BootstrapperUi
         private void WriteSmokeReportAndClose()
         {
             Dictionary<string, object> chromeChecks = RunChromeSmokeChecks();
+            Dictionary<string, object> cardChecks = RunCardSmokeChecks();
             Rectangle bounds = Bounds;
             Process process = Process.GetCurrentProcess();
             string screenshotPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".png");
@@ -753,13 +754,15 @@ namespace ILauncher.BootstrapperUi
                         { "action", card.InstallActionLabel },
                         { "actionColor", card.InstallActionColor },
                         { "actionAccessibleName", card.InstallAccessibleName },
-                        { "actionPlacement", "top-right-icon" },
+                        { "actionPlacement", "grouped-right-icon" },
                         { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
                         { "portableAction", card.RunActionLabel },
                         { "portablePlacement", card.RunActionPlacement },
                         { "runBounds", RectangleToDictionary(card.RunActionBounds) },
                         { "cardBounds", RectangleToDictionary(card.CardBounds) },
-                        { "status", card.StatusLabel }
+                        { "status", card.StatusLabel },
+                        { "actionsShareBaseline", card.InstallActionBounds.Top == card.RunActionBounds.Top },
+                        { "titleHasFullTooltip", card.TitleHasFullTooltip }
                     }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
                 { "iconsDecoded", _cards.Values.Count(card => card.HasDecodedIcon) },
@@ -789,6 +792,7 @@ namespace ILauncher.BootstrapperUi
                         { "close", RectangleToDictionary(_closeButton.Bounds) }
                     } },
                 { "smokeChromeChecks", chromeChecks },
+                { "smokeCardChecks", cardChecks },
                 { "windowIconSource", _windowIconSource },
                 { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
                 { "profileMode", _smokeRealProfile ? "current-user-read-only" : "isolated-temporary" },
@@ -805,6 +809,51 @@ namespace ILauncher.BootstrapperUi
             File.WriteAllText(_reportPath, reportJson, new UTF8Encoding(false));
             _smokeTimer.Dispose();
             Close();
+        }
+
+        private Dictionary<string, object> RunCardSmokeChecks()
+        {
+            List<AppCard> fixtures = new List<AppCard>();
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            if (_cards.Count == 0) return result;
+            AppCard sample = _cards.Values.First();
+            try
+            {
+                sample.SetBusy(true, "설치 중…");
+                result["busyReplacesDescription"] = sample.HasCompactBusyState;
+                sample.SetBusy(false, null);
+                result["idleRestoresDescription"] = sample.HasCompactIdleState;
+                while (_grid.Controls.Count < 9)
+                {
+                    BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
+                    AppCard fixture = new AppCard(fixtureApp, 374, delegate { }, delegate { }, delegate { }, true);
+                    fixture.SetStatus(null);
+                    fixtures.Add(fixture);
+                    _grid.Controls.Add(fixture);
+                }
+                _grid.PerformLayout();
+                Application.DoEvents();
+                AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
+                result["compactCardHeight"] = all.All(card => card.Height == 112);
+                result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
+                    all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
+                    all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
+                string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".nine-cards.png");
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                using (Bitmap screenshot = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
+                    screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                result["nineCardScreenshotPath"] = path;
+            }
+            finally
+            {
+                sample.SetBusy(false, null);
+                foreach (AppCard fixture in fixtures) { _grid.Controls.Remove(fixture); fixture.Dispose(); }
+                _grid.PerformLayout();
+            }
+            return result;
         }
 
         private Dictionary<string, object> RunChromeSmokeChecks()
@@ -897,8 +946,8 @@ namespace ILauncher.BootstrapperUi
         {
             Rectangle area = Screen.FromPoint(Cursor.Position).WorkingArea;
             int width = Math.Max(480, Math.Min(1240, area.Width - 24));
-            int height = Math.Max(360, Math.Min(840, area.Height - 24));
-            MinimumSize = new Size(Math.Min(720, width), Math.Min(520, height));
+            int height = Math.Max(360, Math.Min(480, area.Height - 24));
+            MinimumSize = new Size(Math.Min(720, width), Math.Min(420, height));
             Width = width;
             Height = height;
         }
@@ -1251,6 +1300,11 @@ namespace ILauncher.BootstrapperUi
         public Rectangle InstallActionBounds { get { return _install.Bounds; } }
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
+        public bool HasCompactBusyState { get { return _status.Visible && !_description.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Bounds == _description.Bounds; } }
+        public bool HasCompactIdleState { get { return !_status.Visible && _description.Visible && !_progress.Visible && _status.Text.Length == 0; } }
+        private readonly Label _description;
+        private readonly Label _name;
+        public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly Button _install;
         private readonly Button _run;
         private readonly Label _status;
@@ -1262,25 +1316,26 @@ namespace ILauncher.BootstrapperUi
         {
             App = app;
             _actionsEnabled = actionsEnabled;
-            Width = width; Height = 206; Margin = new Padding(8); Padding = new Padding(16);
-            BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.FixedSingle;
-            PictureBox icon = new PictureBox { Left = 14, Top = 14, Width = 52, Height = 52, SizeMode = PictureBoxSizeMode.Zoom };
+            Width = width; Height = 112; Margin = new Padding(6); Padding = new Padding(14);
+            BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
+            DoubleBuffered = true;
+            PictureBox icon = new PictureBox { Left = 14, Top = 18, Width = 40, Height = 40, SizeMode = PictureBoxSizeMode.Zoom };
             bool iconDecoded;
             icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(icon);
-            Label name = new Label { Text = app.Name, Left = 80, Top = 17, Width = width - 142, Height = 29, Font = new Font("Segoe UI Semibold", 14F), ForeColor = Color.White, AutoEllipsis = true };
-            Controls.Add(name);
-            Label category = new Label { Text = app.Category, Left = 80, Top = 48, Width = width - 142, Height = 20, ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 64, Top = 15, Width = width - 196, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            Controls.Add(_name);
+            Label category = new Label { Text = app.Category, Left = 64, Top = 39, Width = width - 196, Height = 17, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
             Controls.Add(category);
-            Label description = new Label { Text = app.Description, Left = 16, Top = 78, Width = width - 126, Height = 57, ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
-            Controls.Add(description);
-            _status = new Label { Text = "", Left = 16, Top = 146, Width = width - 36, Height = 20, ForeColor = Color.FromArgb(165, 175, 192), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _description = new Label { Text = app.Description, Left = 64, Top = 60, Width = width - 196, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
+            Controls.Add(_description);
+            _status = new Label { Text = "", Bounds = _description.Bounds, Font = _description.Font, Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
-            _progress = new ProgressBar { Left = 16, Top = 173, Width = width - 36, Height = 4, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
+            _progress = new ProgressBar { Left = 14, Top = 104, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new Button { Text = "", Left = width - 54, Top = 14, Width = 36, Height = 32, UseVisualStyleBackColor = false };
-            _run = new Button { Text = "실행", Left = width - 96, Top = 83, Width = 78, Height = 32 };
+            _install = new Button { Text = "", Left = width - 120, Top = 39, Width = 34, Height = 34, UseVisualStyleBackColor = false };
+            _run = new Button { Text = "실행", Left = width - 80, Top = 39, Width = 66, Height = 34 };
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;
@@ -1289,6 +1344,8 @@ namespace ILauncher.BootstrapperUi
             _install.Paint += DrawInstallActionIcon;
             _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
             _toolTip = new ToolTip { ShowAlways = true };
+            _toolTip.SetToolTip(_name, app.Name);
+            _toolTip.SetToolTip(_description, app.Description);
             LauncherFormStyle(_run, true);
             _install.Click += delegate { if (_installed) remove(App); else install(App); };
             _run.Click += delegate { run(App); };
@@ -1302,7 +1359,7 @@ namespace ILauncher.BootstrapperUi
         public void SetStatus(BootstrapperAppStatus status)
         {
             _installed = status != null && status.IsInstalled;
-            _status.Text = _installed ? "설치완료" : "";
+            _status.Text = "";
             UpdateInstallActionSemantics(null);
             _run.Enabled = _actionsEnabled;
             _install.Enabled = _actionsEnabled;
@@ -1311,7 +1368,7 @@ namespace ILauncher.BootstrapperUi
         public void SetSmokeInstalledStatus()
         {
             _installed = true;
-            _status.Text = "설치완료";
+            _status.Text = "";
             UpdateInstallActionSemantics(null);
             _install.Enabled = _actionsEnabled;
             _run.Enabled = _actionsEnabled;
@@ -1319,13 +1376,15 @@ namespace ILauncher.BootstrapperUi
         }
         public void SetBusy(bool busy, string busyLabel)
         {
-            _install.Enabled = !busy;
-            _run.Enabled = !busy;
+            _install.Enabled = _actionsEnabled && !busy;
+            _run.Enabled = _actionsEnabled && !busy;
             _progress.Visible = busy;
+            _description.Visible = !busy;
+            _status.Visible = busy;
             UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
-            _run.Text = busy && String.IsNullOrEmpty(busyLabel) ? "실행 중…" : "실행";
+            _run.Text = "실행";
             _run.AccessibleName = _run.Text + " " + App.Name;
-            if (busy) _status.Text = String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel;
+            _status.Text = busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : "";
             ApplyInstallActionStyle();
         }
         private readonly ToolTip _toolTip;
@@ -1344,7 +1403,7 @@ namespace ILauncher.BootstrapperUi
         {
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Color color = _install.Enabled ? Color.White : (_installed ? Color.FromArgb(190, 164, 166) : Color.FromArgb(154, 160, 171));
+            Color color = _install.ForeColor;
             using (Pen pen = new Pen(color, 2.1F))
             {
                 pen.StartCap = LineCap.Round;
@@ -1375,20 +1434,26 @@ namespace ILauncher.BootstrapperUi
         {
             if (_installed)
             {
-                _install.BackColor = _install.Enabled ? Color.FromArgb(151, 51, 60) : Color.FromArgb(76, 47, 52);
-                _install.ForeColor = _install.Enabled ? Color.White : Color.FromArgb(190, 164, 166);
-                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(186, 77, 86) : Color.FromArgb(103, 65, 70);
-                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(174, 62, 72) : _install.BackColor;
-                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(126, 40, 48) : _install.BackColor;
+                _install.BackColor = _install.Enabled ? Color.FromArgb(56, 35, 42) : Color.FromArgb(42, 33, 38);
+                _install.ForeColor = _install.Enabled ? Color.FromArgb(255, 193, 201) : Color.FromArgb(150, 125, 133);
+                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(140, 70, 85) : Color.FromArgb(83, 56, 65);
+                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(81, 43, 54) : _install.BackColor;
+                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(41, 26, 31) : _install.BackColor;
             }
             else
             {
-                _install.BackColor = _install.Enabled ? Color.FromArgb(50, 91, 168) : Color.FromArgb(47, 53, 65);
+                _install.BackColor = _install.Enabled ? Color.FromArgb(22, 27, 36) : Color.FromArgb(27, 32, 42);
                 _install.ForeColor = _install.Enabled ? Color.White : Color.FromArgb(154, 160, 171);
-                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(74, 112, 183) : Color.FromArgb(63, 70, 82);
-                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(62, 108, 193) : _install.BackColor;
-                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(41, 76, 143) : _install.BackColor;
+                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(54, 63, 78) : Color.FromArgb(40, 47, 59);
+                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(36, 44, 58) : _install.BackColor;
+                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(17, 21, 29) : _install.BackColor;
             }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (Pen border = new Pen(Color.FromArgb(47, 56, 71)))
+                e.Graphics.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
         }
         protected override void Dispose(bool disposing)
         {

@@ -205,7 +205,7 @@ public partial class MainWindow : Window
         try
         {
             await _catalog.LaunchAsync(card.Entry);
-            card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
+            card.StatusMessage = string.Empty;
         }
         catch (Exception ex)
         {
@@ -236,17 +236,17 @@ public partial class MainWindow : Window
             {
                 await _catalog.UninstallAsync(card.Entry);
                 card.RefreshInstalledState();
-                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70 완료";
+                card.StatusMessage = string.Empty;
             }
             catch (OperationCanceledException)
             {
                 card.RefreshInstalledState();
-                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70\uB97C \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.";
+                card.StatusMessage = string.Empty;
             }
             catch (Exception ex)
             {
                 card.RefreshInstalledState();
-                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
+                card.StatusMessage = "\uC81C\uAC70\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
                 ShowError($"{card.Entry.Name} \uC81C\uAC70: {GetFriendlyMessage(ex)}");
             }
             finally
@@ -266,7 +266,7 @@ public partial class MainWindow : Window
         {
             string result = await _catalog.InstallAsync(card.Entry);
             card.RefreshInstalledState();
-            card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : result;
+            card.StatusMessage = string.Empty;
         }
         catch (OperationCanceledException)
         {
@@ -386,7 +386,7 @@ public partial class MainWindow : Window
             set
             {
                 _isBusy = value;
-                foreach (string name in new[] { nameof(IsBusy), nameof(CanRun), nameof(CanInstall), nameof(RunLabel), nameof(InstallLabel), nameof(InstallAccessibleName), nameof(InstallToolTip), nameof(IsAvailable) })
+                foreach (string name in new[] { nameof(IsBusy), nameof(DescriptionText), nameof(CanRun), nameof(CanInstall), nameof(RunLabel), nameof(InstallLabel), nameof(InstallAccessibleName), nameof(InstallToolTip), nameof(IsAvailable) })
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
             }
         }
@@ -416,16 +416,23 @@ public partial class MainWindow : Window
         public string StatusMessage
         {
             get => _statusMessage;
-            set { _statusMessage = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusMessage))); }
+            set
+            {
+                _statusMessage = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusMessage)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DescriptionText)));
+            }
         }
+        public string DescriptionText => IsBusy
+            ? string.IsNullOrWhiteSpace(StatusMessage) ? "작업 중…" : StatusMessage
+            : Entry.Description;
         public bool CanRun => !IsBusy && Entry.IsAvailable;
         public Visibility InstallVisibility => Entry.CanInstall ? Visibility.Visible : Visibility.Collapsed;
         public int RunColumn => InstallVisibility == Visibility.Visible ? 1 : 0;
         public int RunColumnSpan => InstallVisibility == Visibility.Visible ? 1 : 2;
         public Thickness RunMargin => InstallVisibility == Visibility.Visible ? new Thickness(8, 0, 0, 0) : new Thickness(0);
         public bool CanInstall => !IsBusy && Entry.CanInstall && (!IsInstalled || Entry.CanUninstall);
-        public string RunLabel => IsBusy && !IsInstalling && !IsUninstalling
-            ? "\uC2E4\uD589 \uC911\u2026" : "\uC2E4\uD589";
+        public string RunLabel => "\uC2E4\uD589";
         public string InstallLabel => IsBusy && IsInstalling ? "\uC124\uCE58 \uC911\u2026"
             : IsBusy && IsUninstalling ? "\uC81C\uAC70 \uC911\u2026"
             : IsInstalled ? (Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC") : "\uC124\uCE58";
@@ -458,7 +465,7 @@ public partial class MainWindow : Window
         {
             Entry = entry;
             _isInstalled = entry.TryGetInstalledExecutablePath() is not null;
-            _statusMessage = _isInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
+            _statusMessage = string.Empty;
             IconSource = LoadIcon(entry.IconPath);
             Initials = GetInitials(entry.Name);
         }
@@ -475,7 +482,7 @@ public partial class MainWindow : Window
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallToolTip)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsManagedInstalled)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegistrationGlyphData)));
-            StatusMessage = isInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
+            StatusMessage = string.Empty;
         }
 
         public bool Matches(string query)

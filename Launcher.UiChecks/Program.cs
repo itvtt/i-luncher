@@ -75,7 +75,7 @@ internal static class Program
                     "Delayed catalog load did not populate launcher cards.");
                 responsivenessWindow.UpdateLayout();
                 Button runOnlyButton = ActionButtons(responsivenessWindow, "Launch_").Single();
-                Check(runOnlyButton.ActualWidth is >= 68 and <= 80
+                Check(runOnlyButton.ActualWidth is >= 64 and <= 68
                       && ActionButtons(responsivenessWindow, "Install_").All(button =>
                           !button.IsVisible || !KeyboardNavigation.GetIsTabStop(button)),
                     "Run-only app keeps the compact right-side action and no install tab stop");
@@ -257,11 +257,19 @@ internal static class Program
                     TextBlock description = Descendants<TextBlock>(window).Single(text =>
                         ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Description);
                     Rect descriptionBounds = BoundsInWindow(description, window);
-                    return installBounds.Top < runBounds.Top && install.ActualWidth <= 44
-                        && runBounds.Left >= descriptionBounds.Right - 2
-                        && run.ActualWidth is >= 68 and <= 80
+                    return Math.Abs(installBounds.Top - runBounds.Top) < 1 && install.ActualWidth == 34
+                        && Math.Abs(runBounds.Left - installBounds.Right - 6) < 1
+                        && installBounds.Left >= descriptionBounds.Right + 10
+                        && run.ActualWidth is >= 64 and <= 68
                         && run.ActualHeight >= 32 && runBounds.Top < descriptionBounds.Bottom;
-                }), "Install icons stay above the compact Run action beside each description");
+                }), "Install and Run actions share one compact right-side group and baseline");
+                Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
+                    && card.DescriptionText == card.Entry.Description
+                    && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
+                        && text.Text == card.Entry.Name && Equals(text.ToolTip, card.Entry.Name)
+                        && text.TextTrimming == TextTrimming.CharacterEllipsis))
+                    && !Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "설치완료"),
+                    "Idle cards omit installed labels and retain full-title ellipsis tooltips");
 
                 Button firstLaunch = launchButtons[0];
                 window.ShowActivated = true;
@@ -290,8 +298,10 @@ internal static class Program
                 Check(installButtons.All(button => button.IsVisible && !button.IsEnabled
                     && !AutomationProperties.GetName(button).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)),
                     "Run activity disables install actions without showing an install-in-progress label");
-                Check(launchButtons.All(button => Equals(button.Content, "\uC2E4\uD589 \uC911\u2026")),
-                    "Run activity shows the run busy label");
+                Check(launchButtons.All(button => Equals(button.Content, "실행"))
+                    && window.LauncherCards.All(card => card.DescriptionText == card.StatusMessage)
+                    && Descendants<ProgressBar>(window).Count(progress => progress.IsVisible) == window.LauncherCards.Count,
+                    "Busy text replaces descriptions while short Run labels and thin progress remain visible");
                 Check(!firstLaunch.Focus(), "Disabled run action rejects keyboard focus");
                 foreach (MainWindow.LauncherCard card in window.LauncherCards)
                 {
@@ -300,6 +310,9 @@ internal static class Program
                 }
                 await Idle(window);
                 Check(launchButtons.All(button => button.IsEnabled), "Run actions recover after busy state");
+                Check(window.LauncherCards.All(card => card.DescriptionText == card.Entry.Description)
+                    && !Descendants<ProgressBar>(window).Any(progress => progress.IsVisible),
+                    "Idle descriptions return without reserved status rows or progress bars");
                 typeof(MainWindow).GetMethod("ShowError", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(window, new object?[] { "Fixture error status" });
                 await Idle(window);
@@ -334,6 +347,27 @@ internal static class Program
                     && ExpectedInstalledAwareInstallLabel(button, window.LauncherCards)),
                     "Install actions recover with their accessible labels after busy state");
 
+                var gridFixtures = new List<MainWindow.LauncherCard>();
+                while (window.LauncherCards.Count < 9)
+                {
+                    var fixture = new MainWindow.LauncherCard(window.LauncherCards[gridFixtures.Count % expectedAppIds.Length].Entry);
+                    gridFixtures.Add(fixture);
+                    window.LauncherCards.Add(fixture);
+                }
+                window.UpdateLayout();
+                await Idle(window);
+                var nineBounds = ActionButtons(window, "Launch_").Select(button => BoundsInWindow(button, window)).ToList();
+                ScrollViewer cardScroll = Descendants<ScrollViewer>(window).Single(scroll =>
+                    Descendants<ItemsControl>(scroll).Any(items => ReferenceEquals(items, window.FindName("LauncherItems"))));
+                Check(nineBounds.Select(bounds => Math.Round(bounds.Left)).Distinct().Count() == 3
+                    && nineBounds.Select(bounds => Math.Round(bounds.Top)).Distinct().Count() == 3
+                    && Descendants<Border>(window).Count(border => border.Width == 374 && border.ActualHeight == 112) == 9
+                    && cardScroll.ScrollableHeight < 1,
+                    "Nine fixture cards fit three columns and three rows at the default window size");
+                Directory.CreateDirectory(imageDirectory);
+                SaveScreenshot(window, Path.Combine(imageDirectory, "i-luncher-nine-cards-preview.png"));
+                foreach (var fixture in gridFixtures) window.LauncherCards.Remove(fixture);
+
                 window.Width = window.MinWidth;
                 window.Height = window.MinHeight;
                 window.UpdateLayout();
@@ -352,7 +386,7 @@ internal static class Program
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
-                    return run.ActualWidth is >= 68 and <= 80 && run.ActualHeight >= 32
+                    return run.ActualWidth is >= 64 and <= 68 && run.ActualHeight >= 32
                            && install.ActualWidth >= 32 && install.ActualHeight >= 32
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;
@@ -360,13 +394,18 @@ internal static class Program
                 Check(Math.Abs(window.ActualWidth - window.MinWidth) < 1
                       && Math.Abs(window.ActualHeight - window.MinHeight) < 1 && usable,
                     "Minimum window size preserves usable Run and Install actions");
+                cardScroll.ScrollToBottom();
+                await Idle(window);
+                Check(cardScroll.ScrollableHeight > 0 && Math.Abs(cardScroll.VerticalOffset - cardScroll.ScrollableHeight) < 1,
+                    "Minimum window scrolls all cards into reach");
+                cardScroll.ScrollToTop();
 
                 Directory.CreateDirectory(imageDirectory);
                 string minimumPreview = Path.Combine(imageDirectory, "i-luncher-minimum-preview.png");
                 SaveScreenshot(window, minimumPreview);
                 Check(File.Exists(minimumPreview), "Minimum-size RenderTargetBitmap screenshot saved");
-                window.Width = 860;
-                window.Height = 640;
+                window.Width = 1240;
+                window.Height = 580;
                 window.UpdateLayout();
                 await Idle(window);
                 string previewPath = Path.Combine(imageDirectory, "i-luncher-preview.png");
