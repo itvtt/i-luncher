@@ -164,7 +164,10 @@ internal static class Program
         byte[] runtimeBytes = File.ReadAllBytes(runtimeZip);
         byte[] oneBytes = File.ReadAllBytes(appOneZip);
         byte[] twoBytes = File.ReadAllBytes(appTwoZip);
-        string json = CatalogJson(runtimeBytes, oneBytes, twoBytes);
+        string fixtureIcon = Convert.ToBase64String(new byte[] { 0, 0, 1, 0, 1, 0, 1, 2, 3, 4 });
+        string json = CatalogJson(runtimeBytes, oneBytes, twoBytes)
+            .Replace("\"asset\":\"module-one.zip\"", "\"iconBase64\":\"" + fixtureIcon + "\",\"asset\":\"module-one.zip\"")
+            .Replace("\"asset\":\"module-two.zip\"", "\"iconBase64\":\"" + fixtureIcon + "\",\"asset\":\"module-two.zip\"");
         byte[] catalogBytes = Encoding.UTF8.GetBytes(json);
         string catalogHash = Hash(catalogBytes);
         string id80 = "a" + new string('b', 79);
@@ -282,7 +285,7 @@ internal static class Program
         longPathOptions.EmbeddedCatalogJson = longCatalogJson;
         longPathOptions.ExpectedCatalogSha256 = Hash(Encoding.UTF8.GetBytes(longCatalogJson));
         longPathOptions.BootstrapperExecutablePath = probeExe;
-        longPathOptions.StartMenuRoot = menu;
+        longPathOptions.StartMenuRoot = Path.Combine(fixture, "unicode-menu");
         longPathOptions.PackageMirrorBase = mirror;
         string longPathStage = "engine construction";
         try
@@ -343,7 +346,8 @@ internal static class Program
         Check(offline.ExecutablePath == one.ExecutablePath, "valid cached app launches without its package source");
 
         string nextJson = json.Replace("\"version\":\"1.0.0\",\"source\"", "\"version\":\"1.0.1\",\"source\"")
-            .Replace("\"tagName\":\"v1.0.0\"", "\"tagName\":\"v1.0.1\"");
+            .Replace("\"tagName\":\"v1.0.0\"", "\"tagName\":\"v1.0.1\"")
+            .Replace("\"name\":\"Same Name\"", "\"name\":\"Renamed Tool\"");
         BootstrapperOptions nextOptions = Limits(cache);
         nextOptions.EmbeddedCatalogJson = nextJson;
         nextOptions.ExpectedCatalogSha256 = Hash(Encoding.UTF8.GetBytes(nextJson));
@@ -359,6 +363,83 @@ internal static class Program
             BootstrapperReadyApp samePayload = await nextEngine.EnsureReadyAsync("module-one", CancellationToken.None);
             Check(samePayload.ExecutablePath == one.ExecutablePath, "same package hash reuses app cache across catalog versions");
             Check(nextTransportCreations == 0, "unchanged app and runtime hashes need no downloads in a new catalog");
+            Check(nextEngine.GetStatus("module-one").IsInstalled && nextEngine.GetStatus("module-two").IsInstalled,
+                "valid install receipts remain visible across catalog updates");
+            BootstrapperInstallResult refreshedTwo = await nextEngine.InstallAsync("module-two", CancellationToken.None);
+            Check(refreshedTwo.ShortcutPath == installedTwo.ShortcutPath && nextEngine.GetStatus("module-two").IsInstalled,
+                "reinstall after a display-name update reuses the existing owned shortcut");
+            installedTwo = refreshedTwo;
+            string iconOne = Path.Combine(cache, "installed", "module-one", "app-icon.ico");
+            string iconTwo = Path.Combine(cache, "installed", "module-two", "app-icon.ico");
+            byte[] iconTwoBytes = File.ReadAllBytes(iconTwo);
+
+            BootstrapperUninstallResult removedOne = await nextEngine.UninstallAsync("module-one", CancellationToken.None);
+            Check(removedOne.Removed && removedOne.AppId == "module-one" &&
+                !File.Exists(installedOne.ReceiptPath) && !File.Exists(installedOne.ShortcutPath) && !File.Exists(iconOne),
+                "remove deletes the selected app receipt, shortcut, and owned icon");
+            Check(nextEngine.GetStatus("module-one").IsReady && !nextEngine.GetStatus("module-one").IsInstalled &&
+                Directory.Exists(Path.GetDirectoryName(one.ExecutablePath)) && Directory.Exists(one.RuntimeDirectory),
+                "remove keeps app run cache and shared runtime ready");
+            Check(nextEngine.GetStatus("module-two").IsInstalled && File.Exists(installedTwo.ReceiptPath) &&
+                File.Exists(installedTwo.ShortcutPath) && File.Exists(installedOne.InstalledBootstrapperPath),
+                "remove preserves another app, its shortcut, and the shared launcher");
+            BootstrapperUninstallResult removedAgain = await nextEngine.UninstallAsync("module-one", CancellationToken.None);
+            Check(!removedAgain.Removed, "repeat remove is idempotent");
+
+            string validTwoReceipt = File.ReadAllText(installedTwo.ReceiptPath);
+            File.WriteAllText(installedTwo.ReceiptPath, "appId=module-two\r\n");
+            await ExpectAsync<InvalidDataException>(async delegate
+            {
+                await nextEngine.UninstallAsync("module-two", CancellationToken.None);
+            }, "remove refuses a malformed receipt");
+            Check(File.Exists(installedTwo.ReceiptPath) && File.Exists(installedTwo.ShortcutPath),
+                "malformed receipt and shortcut are preserved");
+            File.WriteAllText(installedTwo.ReceiptPath, validTwoReceipt);
+
+            WriteTestShortcut(installedTwo.ShortcutPath, probeExe, "module-two");
+            await ExpectAsync<InvalidDataException>(async delegate
+            {
+                await nextEngine.UninstallAsync("module-two", CancellationToken.None);
+            }, "remove refuses a shortcut with a foreign target");
+            Check(File.Exists(installedTwo.ReceiptPath) && File.Exists(installedTwo.ShortcutPath),
+                "foreign shortcut and receipt are preserved");
+            await nextEngine.InstallAsync("module-two", CancellationToken.None);
+
+            string shortcutLinkTarget = Path.Combine(fixture, "shortcut-link-target");
+            Directory.CreateDirectory(shortcutLinkTarget);
+            string shortcutSentinel = Path.Combine(shortcutLinkTarget, "keep.txt");
+            File.WriteAllText(shortcutSentinel, "outside Start Menu");
+            File.Delete(installedTwo.ShortcutPath);
+            CreateJunction(installedTwo.ShortcutPath, shortcutLinkTarget);
+            try
+            {
+                await ExpectAsync<InvalidDataException>(async delegate
+                {
+                    await nextEngine.UninstallAsync("module-two", CancellationToken.None);
+                }, "remove rejects a reparse-point shortcut");
+                Check(File.Exists(installedTwo.ReceiptPath) && File.Exists(shortcutSentinel),
+                    "reparse shortcut rejection preserves receipt and external target");
+            }
+            finally { Directory.Delete(installedTwo.ShortcutPath, false); }
+            installedTwo = await nextEngine.InstallAsync("module-two", CancellationToken.None);
+
+            using (FileStream preventReceiptDelete = new FileStream(installedTwo.ReceiptPath,
+                FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                await ExpectAsync<IOException>(async delegate
+                {
+                    await nextEngine.UninstallAsync("module-two", CancellationToken.None);
+                }, "failed receipt deletion rolls back shortcut removal");
+                Check(File.Exists(installedTwo.ReceiptPath) && File.Exists(installedTwo.ShortcutPath) &&
+                    nextEngine.GetStatus("module-two").IsInstalled,
+                    "failed remove preserves the original receipt and shortcut");
+                Check(File.Exists(iconTwo) && BytesEqual(File.ReadAllBytes(iconTwo), iconTwoBytes),
+                    "failed remove preserves the owned shortcut icon");
+            }
+            BootstrapperUninstallResult removedTwo = await nextEngine.UninstallAsync("module-two", CancellationToken.None);
+            Check(removedTwo.Removed && !nextEngine.GetStatus("module-two").IsInstalled &&
+                Directory.Exists(Path.GetDirectoryName(two.ExecutablePath)) && Directory.Exists(two.RuntimeDirectory) && !File.Exists(iconTwo),
+                "remove deletes owned metadata and leaves app run cache and shared runtime intact");
         }
 
         string readyMarker = Path.Combine(Path.GetDirectoryName(one.ExecutablePath), ".ready");
@@ -467,6 +548,29 @@ internal static class Program
         }
     }
 
+    private static void WriteTestShortcut(string path, string target, string appId)
+    {
+        Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+        object shell = Activator.CreateInstance(shellType);
+        object link = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null,
+            shell, new object[] { path });
+        try
+        {
+            Type type = link.GetType();
+            type.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, link, new object[] { target });
+            type.InvokeMember("Arguments", System.Reflection.BindingFlags.SetProperty, null, link,
+                new object[] { "--app \"" + appId + "\" --noUI" });
+            type.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, link,
+                new object[] { Path.GetDirectoryName(target) });
+            type.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, link, null);
+        }
+        finally
+        {
+            if (System.Runtime.InteropServices.Marshal.IsComObject(link)) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(link);
+            if (System.Runtime.InteropServices.Marshal.IsComObject(shell)) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
     private static void CreateZip(string path, IDictionary<string, byte[]> files, bool useBackslashes)
     {
         using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
@@ -482,6 +586,13 @@ internal static class Program
     private static string Hash(byte[] bytes)
     {
         using (SHA256 sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+    }
+    private static bool BytesEqual(byte[] left, byte[] right)
+    {
+        if (left.Length != right.Length) return false;
+        for (int i = 0; i < left.Length; i++)
+            if (left[i] != right[i]) return false;
+        return true;
     }
     private static bool ContainsLine(string text, string line) { return text.Replace("\r", "").Split('\n').Contains(line, StringComparer.Ordinal); }
     private static void WaitForFile(string path, int milliseconds)

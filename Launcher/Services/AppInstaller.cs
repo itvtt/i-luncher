@@ -38,6 +38,183 @@ internal sealed class AppInstaller
             CancellationToken.None).ConfigureAwait(false);
     }
 
+    internal Task<string> UninstallAsync(LauncherEntry entry) =>
+        Task.Run(() => UninstallManagedInstall(entry), CancellationToken.None);
+
+    private string UninstallManagedInstall(LauncherEntry entry)
+    {
+        var installType = entry.InstallDefinition?.Type;
+        if (installType is not (LauncherInstallType.Portable or LauncherInstallType.SharedPayload))
+            throw new InvalidOperationException("This installer does not own an uninstallable app receipt.");
+        if (entry.InstalledAppDirectory is null || entry.InstalledExecutableRelativePath is null)
+            throw new InvalidOperationException("The app's managed install paths are incomplete.");
+
+        string appDirectory = Path.GetFullPath(entry.InstalledAppDirectory);
+        EnsureContained(_appsBaseDirectory, appDirectory, "app install receipt directory");
+        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
+        if (!Directory.Exists(appDirectory))
+            return $"{entry.Name} is already removed.";
+        EnsureNoReparsePoints(_appsBaseDirectory, appDirectory);
+
+        string versionReceipt = Path.Combine(appDirectory, "current.version");
+        EnsureContained(appDirectory, versionReceipt, "install version receipt");
+        EnsureNoReparsePoints(appDirectory, versionReceipt);
+        if (!File.Exists(versionReceipt))
+            return $"{entry.Name} is already removed.";
+
+        byte[] versionReceiptBytes = File.ReadAllBytes(versionReceipt);
+        string version = new UTF8Encoding(false, true).GetString(versionReceiptBytes).Trim();
+        if (version.Length != 64 || version.Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidDataException("The app install receipt contains an invalid version hash.");
+
+        string payloadDirectory = installType == LauncherInstallType.SharedPayload
+            ? entry.InstalledSharedPayloadDirectory ?? throw new InvalidDataException("The shared payload directory is missing.")
+            : appDirectory;
+        string versionDirectory = Path.Combine(payloadDirectory, version);
+        EnsureContained(payloadDirectory, versionDirectory, "installed app version");
+        string completionMarker = Path.Combine(versionDirectory, CompletionMarker);
+        EnsureContained(versionDirectory, completionMarker, "installed completion marker");
+        EnsureNoReparsePoints(payloadDirectory, completionMarker);
+        if (!File.Exists(completionMarker) ||
+            !string.Equals(File.ReadAllText(completionMarker), "complete", StringComparison.Ordinal))
+            throw new InvalidDataException("The installed app version is incomplete; its receipt was preserved.");
+
+        string installedExecutable = entry.TryGetInstalledExecutablePath()
+            ?? throw new InvalidDataException("The install receipt does not resolve to an executable; it was preserved.");
+        string expectedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, versionDirectory);
+        if (!Path.GetFullPath(installedExecutable).Equals(expectedExecutable, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The install receipt resolves to an unexpected executable.");
+        EnsureNoReparsePoints(payloadDirectory, installedExecutable);
+        string workingDirectory = ResolveInstalledWorkingDirectory(entry, versionDirectory);
+        IReadOnlyList<string> arguments = installType == LauncherInstallType.SharedPayload
+            ? entry.InstallShortcutArguments : entry.Arguments;
+        string expectedArguments = arguments.Count == 0 ? "" : BuildWindowsCommandLine(arguments);
+
+        string shortcutNameReceipt = Path.Combine(appDirectory, "shortcut.name");
+        EnsureContained(appDirectory, shortcutNameReceipt, "shortcut name receipt");
+        EnsureNoReparsePoints(appDirectory, shortcutNameReceipt);
+        string shortcutFileName = File.Exists(shortcutNameReceipt)
+            ? File.ReadAllText(shortcutNameReceipt).Trim()
+            : SafeShortcutName(entry.Name, entry.Id) + " (" + SafeShortcutName(entry.Id, entry.Id) + ").lnk";
+        if (!shortcutFileName.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(Path.GetFileName(shortcutFileName), shortcutFileName, StringComparison.Ordinal))
+            throw new InvalidDataException("The shortcut receipt contains an unsafe file name.");
+
+        EnsureExistingAncestorsAreNotReparsePoints(_startMenuDirectory);
+        string shortcutPath = Path.Combine(_startMenuDirectory, shortcutFileName);
+        EnsureContained(_startMenuDirectory, shortcutPath, "Start Menu shortcut");
+        EnsureNoReparsePoints(_startMenuDirectory, shortcutPath);
+        byte[]? shortcutBytes = null;
+        if (File.Exists(shortcutPath))
+        {
+            VerifyOwnedShortcut(shortcutPath, installedExecutable, workingDirectory, expectedArguments);
+            shortcutBytes = File.ReadAllBytes(shortcutPath);
+        }
+
+        var receiptBackups = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            [versionReceipt] = versionReceiptBytes
+        };
+        if (File.Exists(shortcutNameReceipt))
+            receiptBackups[shortcutNameReceipt] = File.ReadAllBytes(shortcutNameReceipt);
+        foreach (string iconPath in Directory.EnumerateFiles(appDirectory, "shortcut-icon.*", SearchOption.TopDirectoryOnly))
+        {
+            EnsureContained(appDirectory, iconPath, "shortcut icon receipt");
+            EnsureNoReparsePoints(appDirectory, iconPath);
+            receiptBackups[iconPath] = File.ReadAllBytes(iconPath);
+        }
+
+        try
+        {
+            if (shortcutBytes is not null) File.Delete(shortcutPath);
+            foreach (string receiptPath in receiptBackups.Keys
+                         .Where(path => !path.Equals(versionReceipt, StringComparison.OrdinalIgnoreCase)))
+                File.Delete(receiptPath);
+            File.Delete(versionReceipt);
+        }
+        catch (Exception uninstallError)
+        {
+            var rollbackErrors = new List<Exception>();
+            foreach ((string path, byte[] contents) in receiptBackups)
+            {
+                try
+                {
+                    if (!File.Exists(path))
+                    {
+                        EnsureContained(appDirectory, path, "install receipt rollback path");
+                        EnsureNoReparsePoints(_appsBaseDirectory, appDirectory);
+                        WriteBytesAtomically(path, contents);
+                    }
+                }
+                catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
+            }
+            if (shortcutBytes is not null)
+            {
+                try
+                {
+                    if (!File.Exists(shortcutPath))
+                    {
+                        EnsureContained(_startMenuDirectory, shortcutPath, "shortcut rollback path");
+                        EnsureNoReparsePoints(_startMenuDirectory, shortcutPath);
+                        WriteBytesAtomically(shortcutPath, shortcutBytes);
+                    }
+                }
+                catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
+            }
+            if (rollbackErrors.Count > 0)
+                throw new AggregateException("Uninstall failed and its receipt or shortcut could not be fully restored.",
+                    [uninstallError, .. rollbackErrors]);
+            throw;
+        }
+
+        try
+        {
+            if (!Directory.EnumerateFileSystemEntries(appDirectory).Any())
+                Directory.Delete(appDirectory, recursive: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An empty receipt directory is optional; payloads and unknown files remain untouched.
+        }
+
+        return $"{entry.Name} was removed from the Start Menu. Installed files and user data were preserved.";
+    }
+
+    private static void VerifyOwnedShortcut(string shortcutPath, string expectedExecutable,
+        string expectedWorkingDirectory, string expectedArguments)
+    {
+        object? shell = null;
+        object? shortcut = null;
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell", throwOnError: true)
+                ?? throw new PlatformNotSupportedException("Windows Script Host is unavailable.");
+            shell = Activator.CreateInstance(shellType)
+                ?? throw new InvalidOperationException("Could not create Windows Script Host.");
+            shortcut = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod,
+                null, shell, [shortcutPath]);
+            var shortcutType = shortcut?.GetType() ?? throw new InvalidDataException("The recorded shortcut is invalid.");
+            string target = (string?)shortcutType.InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty,
+                null, shortcut, null) ?? "";
+            string working = (string?)shortcutType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.GetProperty,
+                null, shortcut, null) ?? "";
+            string arguments = (string?)shortcutType.InvokeMember("Arguments", System.Reflection.BindingFlags.GetProperty,
+                null, shortcut, null) ?? "";
+            if (!Path.IsPathRooted(target) || !Path.IsPathRooted(working) ||
+                !Path.GetFullPath(target).Equals(Path.GetFullPath(expectedExecutable), StringComparison.OrdinalIgnoreCase) ||
+                !Path.GetFullPath(working).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Equals(Path.GetFullPath(expectedWorkingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(arguments, expectedArguments, StringComparison.Ordinal))
+                throw new InvalidDataException("The recorded Start Menu shortcut does not match this app; it was preserved.");
+        }
+        finally
+        {
+            if (shortcut is not null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
+            if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
     private async Task<string> InstallCommandAsync(LauncherEntry entry, LauncherInstallDefinition definition)
     {
         var executablePath = definition.ExecutablePath

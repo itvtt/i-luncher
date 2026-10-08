@@ -28,6 +28,8 @@ public sealed class LauncherEntry
     internal string? InstalledWorkingDirectoryRelativePath { get; init; }
 
     public bool CanInstall => InstallDefinition is not null;
+    public bool CanUninstall => InstallDefinition?.Type is LauncherInstallType.Portable or LauncherInstallType.SharedPayload
+        && TryGetInstalledExecutablePath() is not null;
     public bool HasInstallFiles => InstallDefinition switch
     {
         { Type: LauncherInstallType.Command } install => File.Exists(install.ExecutablePath),

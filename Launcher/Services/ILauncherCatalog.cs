@@ -7,6 +7,7 @@ public interface ILauncherCatalog
     string RootDirectory { get; }
     CatalogResult Load();
     Task<string> InstallAsync(LauncherEntry entry);
+    Task<string> UninstallAsync(LauncherEntry entry);
     void Launch(LauncherEntry entry);
     Task LaunchAsync(LauncherEntry entry);
 }

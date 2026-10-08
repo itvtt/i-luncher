@@ -95,6 +95,28 @@ void WriteManifest(string appDirectory, object manifest)
     }
 }
 
+void SetShortcutTarget(string shortcutPath, string targetPath)
+{
+    object? shell = null;
+    object? shortcut = null;
+    try
+    {
+        var shellType = Type.GetTypeFromProgID("WScript.Shell", throwOnError: true)
+            ?? throw new PlatformNotSupportedException("Windows Script Host is unavailable.");
+        shell = Activator.CreateInstance(shellType)
+            ?? throw new InvalidOperationException("Could not create Windows Script Host.");
+        shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, [shortcutPath]);
+        var shortcutType = shortcut?.GetType() ?? throw new InvalidOperationException("Could not open the shortcut.");
+        shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, [targetPath]);
+        shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+    }
+    finally
+    {
+        if (shortcut is not null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
+        if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
+    }
+}
+
 string CopyCheckHost(string destinationDirectory)
 {
     Directory.CreateDirectory(destinationDirectory);
@@ -450,6 +472,19 @@ try
         catalog.Launch(firstEntry);
         Assert(provider.Launches.SequenceEqual(["folder-compare", "folder-compare"]),
             "Integrated launch did not route exclusively through the provider.");
+
+        Assert(firstEntry.CanUninstall, "Installed integrated app did not expose managed uninstall.");
+        await catalog.UninstallAsync(firstEntry);
+        Assert(!File.Exists(Path.Combine(appsBase, firstEntry.Id, "current.version")) &&
+               !File.Exists(Path.Combine(startMenu, firstEntry.Name + " (" + firstEntry.Id + ").lnk")),
+            "Uninstall did not remove the selected integrated app's receipt and shortcut.");
+        Assert(entries.Where(entry => entry.Id != firstEntry.Id)
+                .All(entry => File.Exists(Path.Combine(appsBase, entry.Id, "current.version")) && entry.CanUninstall),
+            "Uninstalling one integrated app removed another app's per-app installation state.");
+        Assert(Directory.Exists(sharedSnapshot) && File.Exists(Path.Combine(sharedSnapshot, hostFileName)),
+            "Uninstall removed the shared host payload needed by other apps or future launches.");
+        Assert(!firstEntry.CanUninstall, "Removed integrated app still reports a managed installation.");
+        await catalog.UninstallAsync(firstEntry);
     });
 
     await Check("distribution runs bundled apps and installs without source builds", async () =>
@@ -1182,6 +1217,106 @@ try
             "Failed portable update damaged the previous completed version.");
         Assert(!Directory.EnumerateDirectories(installedApp, ".staging-*", SearchOption.TopDirectoryOnly).Any(),
             "Failed portable update left a staging directory behind.");
+    });
+
+    await Check("portable uninstall rejects tampering and preserves payload, data, and other apps", async () =>
+    {
+        var root = CreateRoot("portable uninstall");
+        var firstApp = Path.Combine(root, "First App");
+        var firstPublish = Path.Combine(firstApp, "dist", "win-x64");
+        CopyCheckHost(firstPublish);
+        WriteManifest(firstApp, new
+        {
+            id = "uninstall-first",
+            name = "Uninstall First",
+            executable = "dist/win-x64/Launcher.Checks.exe",
+            install = new { type = "portable" }
+        });
+        var secondApp = Path.Combine(root, "Second App");
+        var secondPublish = Path.Combine(secondApp, "dist", "win-x64");
+        CopyCheckHost(secondPublish);
+        WriteManifest(secondApp, new
+        {
+            id = "uninstall-second",
+            name = "Uninstall Second",
+            executable = "dist/win-x64/Launcher.Checks.exe",
+            install = new { type = "portable" }
+        });
+
+        var appsBase = CreateDirectory("portable uninstall apps");
+        var startMenu = CreateDirectory("portable uninstall menu");
+        var catalog = new LauncherCatalog(root, appsBase, startMenu);
+        var entries = catalog.Load().Entries.ToDictionary(entry => entry.Id);
+        var first = entries["uninstall-first"];
+        var second = entries["uninstall-second"];
+        Assert(!first.CanUninstall && !second.CanUninstall, "Uninstalled portable apps reported uninstall readiness.");
+        await catalog.InstallAsync(first);
+        await catalog.InstallAsync(second);
+        Assert(first.CanUninstall && second.CanUninstall, "Installed portable apps did not expose uninstall readiness.");
+
+        string firstInstall = Path.Combine(appsBase, first.Id);
+        string secondInstall = Path.Combine(appsBase, second.Id);
+        string firstVersion = File.ReadAllText(Path.Combine(firstInstall, "current.version")).Trim();
+        string secondVersion = File.ReadAllText(Path.Combine(secondInstall, "current.version")).Trim();
+        string firstPayload = Path.Combine(firstInstall, firstVersion);
+        string preservedData = Path.Combine(firstPayload, "user-data.txt");
+        File.WriteAllText(preservedData, "keep user data");
+        string firstShortcut = Path.Combine(startMenu, "Uninstall First (uninstall-first).lnk");
+        string secondShortcut = Path.Combine(startMenu, "Uninstall Second (uninstall-second).lnk");
+
+        string shortcutReceipt = Path.Combine(firstInstall, "shortcut.name");
+        string safeReceipt = File.ReadAllText(shortcutReceipt);
+        File.WriteAllText(shortcutReceipt, "..\\outside.lnk");
+        try
+        {
+            await catalog.UninstallAsync(first);
+            throw new InvalidOperationException("Uninstall accepted a path-traversing shortcut receipt.");
+        }
+        catch (InvalidDataException)
+        {
+        }
+        Assert(File.Exists(Path.Combine(firstInstall, "current.version")) && File.Exists(firstShortcut),
+            "Rejected shortcut receipt tampering changed the installation.");
+        File.WriteAllText(shortcutReceipt, safeReceipt);
+
+        SetShortcutTarget(firstShortcut, Path.Combine(workspace, "unowned-target.exe"));
+        try
+        {
+            await catalog.UninstallAsync(first);
+            throw new InvalidOperationException("Uninstall accepted a shortcut that targets another file.");
+        }
+        catch (InvalidDataException)
+        {
+        }
+        Assert(File.Exists(Path.Combine(firstInstall, "current.version")) && File.Exists(firstShortcut),
+            "Rejected shortcut tampering changed the installation.");
+
+        SetShortcutTarget(firstShortcut, first.TryGetInstalledExecutablePath()
+            ?? throw new InvalidOperationException("The installed executable disappeared during tamper checks."));
+        using (File.Open(Path.Combine(firstInstall, "current.version"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            try
+            {
+                await catalog.UninstallAsync(first);
+                throw new InvalidOperationException("Uninstall unexpectedly removed a locked receipt.");
+            }
+            catch (IOException)
+            {
+            }
+        }
+        Assert(File.Exists(Path.Combine(firstInstall, "current.version")) && File.Exists(firstShortcut),
+            "A failed uninstall did not restore its receipt and shortcut.");
+        await catalog.UninstallAsync(first);
+        Assert(!File.Exists(Path.Combine(firstInstall, "current.version")) && !File.Exists(firstShortcut),
+            "Portable uninstall left the selected app receipt or shortcut behind.");
+        Assert(Directory.Exists(firstPayload) && File.Exists(preservedData) &&
+               File.ReadAllText(preservedData) == "keep user data",
+            "Portable uninstall removed installed payload files or user data.");
+        Assert(File.Exists(Path.Combine(secondInstall, "current.version")) && File.Exists(secondShortcut) &&
+               Directory.Exists(Path.Combine(secondInstall, secondVersion)),
+            "Uninstalling one portable app affected another app's files or shortcut.");
+        Assert(!first.CanUninstall && second.CanUninstall, "Uninstall readiness did not update per app.");
+        await catalog.UninstallAsync(first);
     });
 
     await Check("failed portable receipt commit preserves the previous shortcut and version", async () =>

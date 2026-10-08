@@ -202,6 +202,18 @@ namespace ILauncher.Bootstrapper
         public string InstalledBootstrapperPath { get; private set; }
     }
 
+    public sealed class BootstrapperUninstallResult
+    {
+        internal BootstrapperUninstallResult(string appId, bool removed)
+        {
+            AppId = appId;
+            Removed = removed;
+        }
+
+        public string AppId { get; private set; }
+        public bool Removed { get; private set; }
+    }
+
     public sealed class BootstrapperProgressEventArgs : EventArgs
     {
         internal BootstrapperProgressEventArgs(string appId, string phase, long bytesTransferred,
@@ -230,6 +242,8 @@ namespace ILauncher.Bootstrapper
         System.Threading.Tasks.Task<BootstrapperLaunchResult> LaunchAsync(string appId,
             System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<BootstrapperInstallResult> InstallAsync(string appId,
+            System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<BootstrapperUninstallResult> UninstallAsync(string appId,
             System.Threading.CancellationToken cancellationToken);
     }
 }

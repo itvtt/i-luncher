@@ -14,6 +14,7 @@ namespace ILauncher;
 public partial class MainWindow : Window
 {
     private readonly ILauncherCatalog _catalog;
+    private readonly Func<LauncherEntry, string, bool> _confirmUninstall;
     private readonly List<LauncherCard> _allCards = [];
     private int _activeOperations;
     private bool _catalogRefreshPending;
@@ -26,9 +27,10 @@ public partial class MainWindow : Window
     {
     }
 
-    public MainWindow(ILauncherCatalog catalog)
+    public MainWindow(ILauncherCatalog catalog, Func<LauncherEntry, string, bool>? confirmUninstall = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _confirmUninstall = confirmUninstall ?? ConfirmUninstall;
         InitializeComponent();
         Rect workArea = SystemParameters.WorkArea;
         Width = Math.Min(Width, workArea.Width);
@@ -203,7 +205,7 @@ public partial class MainWindow : Window
         try
         {
             await _catalog.LaunchAsync(card.Entry);
-            card.StatusMessage = string.Empty;
+            card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
         }
         catch (Exception ex)
         {
@@ -221,14 +223,50 @@ public partial class MainWindow : Window
     private async void InstallButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: LauncherCard card } || !card.CanInstall) return;
+        if (card.IsInstalled)
+        {
+            if (!card.Entry.CanUninstall) return;
+            string confirmation = BuildUninstallConfirmationMessage(card.Entry);
+            if (!_confirmUninstall(card.Entry, confirmation)) return;
+            card.IsUninstalling = true;
+            card.IsBusy = true;
+            card.StatusMessage = "\uC81C\uAC70\uB97C \uC900\uBE44\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4\u2026";
+            BeginOperation();
+            try
+            {
+                await _catalog.UninstallAsync(card.Entry);
+                card.RefreshInstalledState();
+                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70 완료";
+            }
+            catch (OperationCanceledException)
+            {
+                card.RefreshInstalledState();
+                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70\uB97C \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.";
+            }
+            catch (Exception ex)
+            {
+                card.RefreshInstalledState();
+                card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : "\uC81C\uAC70\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.";
+                ShowError($"{card.Entry.Name} \uC81C\uAC70: {GetFriendlyMessage(ex)}");
+            }
+            finally
+            {
+                card.IsBusy = false;
+                card.IsUninstalling = false;
+                EndOperation();
+            }
+            return;
+        }
+
         card.IsInstalling = true;
         card.IsBusy = true;
         card.StatusMessage = "설치를 준비하고 있습니다…";
         BeginOperation();
         try
         {
-            card.StatusMessage = await _catalog.InstallAsync(card.Entry);
+            string result = await _catalog.InstallAsync(card.Entry);
             card.RefreshInstalledState();
+            card.StatusMessage = card.IsInstalled ? "\uC124\uCE58\uC644\uB8CC" : result;
         }
         catch (OperationCanceledException)
         {
@@ -258,6 +296,15 @@ public partial class MainWindow : Window
         _activeOperations--;
         RefreshButton.IsEnabled = _activeOperations == 0;
     }
+
+    private static bool ConfirmUninstall(LauncherEntry entry, string message) =>
+        MessageBox.Show(message, "\uC571 \uC81C\uAC70", MessageBoxButton.YesNo,
+            MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    private static string BuildUninstallConfirmationMessage(LauncherEntry entry) =>
+        $"\"{entry.Name}\" \uC571\uC744 \uC81C\uAC70\uD560\uAE4C\uC694?\n\n" +
+        "\uC774 \uC571\uC758 \uAC1C\uBCC4 \uC124\uCE58 \uB4F1\uB85D\uACFC \uC2DC\uC791 \uBA54\uB274 \uBC14\uB85C\uAC00\uAE30\uB9CC \uC81C\uAC70\uD569\uB2C8\uB2E4. " +
+        "\uB2E4\uC6B4\uB85C\uB4DC\uD55C \uD30C\uC77C, \uACF5\uC6A9 \uC2E4\uD589 \uD658\uACBD, \uC0AC\uC6A9\uC790 \uB370\uC774\uD130\uB294 \uC720\uC9C0\uB429\uB2C8\uB2E4.";
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
     {
@@ -330,6 +377,7 @@ public partial class MainWindow : Window
         public event PropertyChangedEventHandler? PropertyChanged;
         private bool _isBusy;
         private bool _isInstalling;
+        private bool _isUninstalling;
         private bool _isInstalled;
         private string _statusMessage = "";
         public bool IsBusy
@@ -354,6 +402,17 @@ public partial class MainWindow : Window
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallAccessibleName)));
             }
         }
+        public bool IsUninstalling
+        {
+            get => _isUninstalling;
+            set
+            {
+                _isUninstalling = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsUninstalling)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallAccessibleName)));
+            }
+        }
         public string StatusMessage
         {
             get => _statusMessage;
@@ -364,15 +423,20 @@ public partial class MainWindow : Window
         public int RunColumn => InstallVisibility == Visibility.Visible ? 1 : 0;
         public int RunColumnSpan => InstallVisibility == Visibility.Visible ? 1 : 2;
         public Thickness RunMargin => InstallVisibility == Visibility.Visible ? new Thickness(8, 0, 0, 0) : new Thickness(0);
-        public bool CanInstall => !IsBusy && Entry.CanInstall;
-        public string RunLabel => IsBusy && !IsInstalling ? "\uC2E4\uD589 \uC911\u2026" : "\uC2E4\uD589";
-        public string InstallLabel => IsBusy && IsInstalling ? "\uC124\uCE58 \uC911\u2026" : IsInstalled ? "\uC124\uCE58 \uC644\uB8CC" : "\uC124\uCE58";
+        public bool CanInstall => !IsBusy && Entry.CanInstall && (!IsInstalled || Entry.CanUninstall);
+        public string RunLabel => IsBusy && !IsInstalling && !IsUninstalling ? "\uC2E4\uD589 \uC911\u2026" : "\uC2E4\uD589";
+        public string InstallLabel => IsBusy && IsInstalling ? "\uC124\uCE58 \uC911\u2026"
+            : IsBusy && IsUninstalling ? "\uC81C\uAC70 \uC911\u2026"
+            : IsInstalled ? (Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC") : "\uC124\uCE58";
         public string InstallAutomationId => $"Install_{Entry.Id}";
         public string RunAccessibleName => $"{Entry.Name} 실행";
         public string InstallAccessibleName => $"{Entry.Name} {InstallLabel}";
-        public string InstallToolTip => Entry.CanInstall
-            ? "\uC774 PC\uC5D0 \uC571\uC744 \uC124\uCE58\uD558\uACE0 \uBC14\uB85C \uC2E4\uD589\uD560 \uC218 \uC788\uB294 \uBC14\uB85C \uAC00\uAE30\uB97C \uB9CC\uB4ED\uB2C8\uB2E4."
-            : "\uC124\uCE58 \uAE30\uB2A5\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uC571\uC785\uB2C8\uB2E4.";
+        public string InstallToolTip => IsInstalled && Entry.CanUninstall
+            ? "\uAC1C\uBCC4 \uC124\uCE58 \uB4F1\uB85D\uACFC \uC2DC\uC791 \uBA54\uB274 \uBC14\uB85C\uAC00\uAE30\uB9CC \uC81C\uAC70\uD558\uACE0, \uB2E4\uC6B4\uB85C\uB4DC\uD55C \uD30C\uC77C\uACFC \uACF5\uC6A9 \uC2E4\uD589 \uD658\uACBD, \uC0AC\uC6A9\uC790 \uB370\uC774\uD130\uB294 \uC720\uC9C0\uD569\uB2C8\uB2E4."
+            : IsInstalled ? "\uC774 \uC571\uC740 \uC124\uCE58\uB418\uC5B4 \uC788\uC9C0\uB9CC, \uC774 \uC2E4\uD589 \uC720\uD615\uC5D0\uC11C\uB294 \uC81C\uAC70\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+            : Entry.CanInstall
+                ? "\uC774 PC\uC5D0 \uC571\uC744 \uC124\uCE58\uD558\uACE0 \uBC14\uB85C \uC2E4\uD589\uD560 \uC218 \uC788\uB294 \uBC14\uB85C \uAC00\uAE30\uB97C \uB9CC\uB4ED\uB2C8\uB2E4."
+                : "\uC124\uCE58 \uAE30\uB2A5\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uC571\uC785\uB2C8\uB2E4.";
         public LauncherEntry Entry { get; }
         public ImageSource? IconSource { get; }
         public Visibility IconVisibility => IconSource is null ? Visibility.Collapsed : Visibility.Visible;
@@ -387,6 +451,7 @@ public partial class MainWindow : Window
         {
             Entry = entry;
             _isInstalled = entry.TryGetInstalledExecutablePath() is not null;
+            _statusMessage = _isInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
             IconSource = LoadIcon(entry.IconPath);
             Initials = GetInitials(entry.Name);
         }
@@ -397,8 +462,11 @@ public partial class MainWindow : Window
             if (_isInstalled == isInstalled) return;
             _isInstalled = isInstalled;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsInstalled)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanInstall)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallAccessibleName)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InstallToolTip)));
+            StatusMessage = isInstalled ? "\uC124\uCE58\uC644\uB8CC" : string.Empty;
         }
 
         public bool Matches(string query)

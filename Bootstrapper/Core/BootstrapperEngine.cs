@@ -70,7 +70,8 @@ namespace ILauncher.Bootstrapper
             string runtimeDirectory = RuntimeCachePath(catalog.Runtime);
             bool ready = IsValidAppCache(app, appDirectory, executable) && IsValidRuntimeCache(catalog.Runtime, runtimeDirectory);
             string receipt = ReceiptPath(app);
-            bool installed = ready && IsValidInstallReceipt(app, catalog, receipt, ShortcutPath(app), StableBootstrapperPath(catalog));
+            string ownedShortcut;
+            bool installed = TryGetValidInstallReceipt(app, receipt, out ownedShortcut);
             return new BootstrapperAppStatus(app, ready, installed, ready ? executable : null, null);
         }
 
@@ -146,6 +147,10 @@ namespace ILauncher.Bootstrapper
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                string previousOwnedShortcut;
+                if (TryGetValidInstallReceipt(app, receipt, out previousOwnedShortcut))
+                    shortcut = previousOwnedShortcut;
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcut, false);
                 Directory.CreateDirectory(Path.GetDirectoryName(stableBootstrapper));
                 if (!File.Exists(stableBootstrapper) ||
                     !String.Equals(SafeFiles.Sha256File(stableBootstrapper), SafeFiles.Sha256File(_options.BootstrapperExecutablePath), StringComparison.OrdinalIgnoreCase))
@@ -180,6 +185,55 @@ namespace ILauncher.Bootstrapper
                     throw;
                 }
                 return new BootstrapperInstallResult(shortcut, receipt, stableBootstrapper);
+            }
+            finally { gate.Release(); }
+        }
+
+        public async Task<BootstrapperUninstallResult> UninstallAsync(string appId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BootstrapperApp app = FindApp(GetCatalog(), appId);
+            SemaphoreSlim gate = InstallLocks.GetOrAdd("install:" + app.Id, delegate { return new SemaphoreSlim(1, 1); });
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                string receipt = ReceiptPath(app);
+                bool hasReceipt = File.Exists(receipt);
+                string shortcut;
+                if (!hasReceipt)
+                {
+                    if (FindOwnedShortcuts(app.Id).Length != 0)
+                        throw new InvalidDataException("The app shortcut exists without a valid install receipt; it was preserved.");
+                    return new BootstrapperUninstallResult(app.Id, false);
+                }
+                if (!TryGetValidInstallReceipt(app, receipt, out shortcut))
+                    throw new InvalidDataException("The app installation record or shortcut failed validation; it was preserved.");
+
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.StartMenuRoot, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(receipt, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcut, false);
+                string appIcon = SafeFiles.CombineContained(Path.GetDirectoryName(receipt), "app-icon.ico", "Installed shortcut icon");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(appIcon, false);
+                byte[] oldReceipt = File.ReadAllBytes(receipt);
+                byte[] oldShortcut = File.ReadAllBytes(shortcut);
+                byte[] oldIcon = File.Exists(appIcon) ? File.ReadAllBytes(appIcon) : null;
+                if (oldIcon != null && !IsIconFile(oldIcon))
+                    throw new InvalidDataException("The installed shortcut icon failed validation; it was preserved.");
+                try
+                {
+                    File.Delete(shortcut);
+                    if (oldIcon != null) File.Delete(appIcon);
+                    File.Delete(receipt);
+                }
+                catch
+                {
+                    RestoreFile(shortcut, oldShortcut);
+                    RestoreFile(appIcon, oldIcon);
+                    RestoreFile(receipt, oldReceipt);
+                    throw;
+                }
+                return new BootstrapperUninstallResult(app.Id, true);
             }
             finally { gate.Release(); }
         }
@@ -334,17 +388,15 @@ namespace ILauncher.Bootstrapper
                 Path.Combine("launcher", catalog.Sha256, "i-luncher.exe"), "Stable launcher");
         }
 
-        private bool IsValidInstallReceipt(BootstrapperApp app, BootstrapperCatalog catalog,
-            string receiptPath, string shortcutPath, string stableBootstrapper)
+        private bool TryGetValidInstallReceipt(BootstrapperApp app, string receiptPath, out string ownedShortcut)
         {
+            ownedShortcut = null;
             try
             {
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.StartMenuRoot, false);
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(receiptPath, false);
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcutPath, false);
-                SafeFiles.EnsureExistingPathHasNoReparsePoints(stableBootstrapper, false);
-                if (!File.Exists(receiptPath) || !File.Exists(shortcutPath) || !File.Exists(stableBootstrapper)) return false;
+                if (!File.Exists(receiptPath)) return false;
                 Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.Ordinal);
                 string[] lines = File.ReadAllLines(receiptPath, new UTF8Encoding(false, true));
                 for (int i = 0; i < lines.Length; i++)
@@ -357,12 +409,29 @@ namespace ILauncher.Bootstrapper
                     !fields.ContainsKey("packageSha256") || !fields.ContainsKey("runtimeSha256") ||
                     !fields.ContainsKey("executable") || !fields.ContainsKey("launcher")) return false;
                 if (!String.Equals(fields["appId"], app.Id, StringComparison.Ordinal) ||
-                    !String.Equals(fields["packageSha256"], app.Sha256, StringComparison.OrdinalIgnoreCase) ||
-                    !String.Equals(fields["runtimeSha256"], catalog.Runtime.Sha256, StringComparison.OrdinalIgnoreCase) ||
-                    !String.Equals(fields["executable"], app.Executable, StringComparison.Ordinal) ||
-                    !SafeFiles.IsHash(fields["catalogSha256"]) ||
-                    !String.Equals(Path.GetFullPath(fields["launcher"]), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase))
+                    !SafeFiles.IsHash(fields["catalogSha256"]) || !SafeFiles.IsHash(fields["packageSha256"]) ||
+                    !SafeFiles.IsHash(fields["runtimeSha256"])) return false;
+
+                string appDirectory = SafeFiles.CombineContained(_options.CacheRoot,
+                    Path.Combine("apps", app.Id, fields["packageSha256"]), "Installed app cache");
+                string executable = SafeFiles.CombineContained(appDirectory, fields["executable"], "Installed app executable");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(appDirectory, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(executable, false);
+
+                string runtimeDirectory = SafeFiles.CombineContained(_options.CacheRoot,
+                    Path.Combine("runtime", fields["runtimeSha256"]), "Installed runtime cache");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(runtimeDirectory, false);
+
+                string stableBootstrapper = SafeFiles.CombineContained(_options.CacheRoot,
+                    Path.Combine("launcher", fields["catalogSha256"], "i-luncher.exe"), "Installed launcher");
+                if (!String.Equals(Path.GetFullPath(fields["launcher"]), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase))
                     return false;
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(stableBootstrapper, false);
+
+                string[] shortcuts = FindOwnedShortcuts(app.Id);
+                if (shortcuts.Length != 1) return false;
+                string shortcutPath = shortcuts[0];
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcutPath, false);
 
                 Type shellType = Type.GetTypeFromProgID("WScript.Shell");
                 if (shellType == null) return false;
@@ -375,8 +444,10 @@ namespace ILauncher.Bootstrapper
                     Type linkType = link.GetType();
                     string target = (string)linkType.InvokeMember("TargetPath", BindingFlags.GetProperty, null, link, null);
                     string arguments = (string)linkType.InvokeMember("Arguments", BindingFlags.GetProperty, null, link, null);
-                    return String.Equals(Path.GetFullPath(target), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase) &&
-                        String.Equals(arguments, "--app " + QuoteArgument(app.Id) + " --noUI", StringComparison.Ordinal);
+                    if (!String.Equals(Path.GetFullPath(target), Path.GetFullPath(stableBootstrapper), StringComparison.OrdinalIgnoreCase) ||
+                        !String.Equals(arguments, "--app " + QuoteArgument(app.Id) + " --noUI", StringComparison.Ordinal)) return false;
+                    ownedShortcut = shortcutPath;
+                    return true;
                 }
                 finally
                 {
@@ -387,6 +458,20 @@ namespace ILauncher.Bootstrapper
                 }
             }
             catch { return false; }
+        }
+
+        private string[] FindOwnedShortcuts(string appId)
+        {
+            if (!Directory.Exists(_options.StartMenuRoot)) return new string[0];
+            SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.StartMenuRoot, false);
+            string suffix = " (" + appId + ").lnk";
+            List<string> matches = new List<string>();
+            foreach (string entry in Directory.GetFileSystemEntries(_options.StartMenuRoot))
+            {
+                if (Path.GetFileName(entry).EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    matches.Add(entry);
+            }
+            return matches.ToArray();
         }
 
         private static void CreateShortcut(string shortcutPath, string target, string appId, string iconPath)
@@ -445,7 +530,29 @@ namespace ILauncher.Bootstrapper
             {
                 if (File.Exists(path)) File.Delete(path);
             }
-            else SafeFiles.WriteAtomic(path, previous);
+            else
+            {
+                if (File.Exists(path))
+                {
+                    byte[] current = File.ReadAllBytes(path);
+                    if (BytesEqual(current, previous)) return;
+                }
+                SafeFiles.WriteAtomic(path, previous);
+            }
+        }
+
+        private static bool BytesEqual(byte[] left, byte[] right)
+        {
+            if (left == null || right == null || left.Length != right.Length) return false;
+            for (int i = 0; i < left.Length; i++)
+                if (left[i] != right[i]) return false;
+            return true;
+        }
+
+        private static bool IsIconFile(byte[] bytes)
+        {
+            return bytes != null && bytes.Length >= 6 && bytes[0] == 0 && bytes[1] == 0 &&
+                   bytes[2] == 1 && bytes[3] == 0;
         }
 
         private void Progress(string appId, long transferred, long total)

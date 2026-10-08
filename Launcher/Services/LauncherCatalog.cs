@@ -307,6 +307,20 @@ public sealed class LauncherCatalog : ILauncherCatalog
         }
     }
 
+    public async Task<string> UninstallAsync(LauncherEntry entry)
+    {
+        var installLock = _launchLocks.GetOrAdd(entry.Id, static _ => new SemaphoreSlim(1, 1));
+        await installLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await _installer.UninstallAsync(entry).ConfigureAwait(false);
+        }
+        finally
+        {
+            installLock.Release();
+        }
+    }
+
     public void Launch(LauncherEntry entry) => LaunchAsync(entry).GetAwaiter().GetResult();
 
     public async Task LaunchAsync(LauncherEntry entry)

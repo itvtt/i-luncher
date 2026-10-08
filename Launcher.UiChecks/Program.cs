@@ -80,6 +80,51 @@ internal static class Program
                       && runOnlyButton.ActualWidth >= 180,
                     "Run-only app keeps a full-width action and has no install tab stop");
                 responsivenessWindow.Close();
+
+                string uninstallAppsRoot = Path.Combine(testState, "UninstallFixtureApps");
+                string uninstallMenuRoot = Path.Combine(testState, "UninstallFixtureStartMenu");
+                ILauncher.Models.LauncherEntry sourceDeskCal = new()
+                {
+                    Id = "deskcal", Name = "DeskCal", Description = "Isolated uninstall UI fixture",
+                    Category = "Checks", IsIntegrated = true,
+                    ExecutablePath = Path.Combine(AppContext.BaseDirectory, "i-luncher.exe"),
+                    WorkingDirectory = AppContext.BaseDirectory
+                };
+                var uninstallCatalog = new ILauncher.Services.LauncherCatalog(sourceRoot, uninstallAppsRoot,
+                    uninstallMenuRoot, new FixtureIntegratedAppProvider(sourceDeskCal));
+                ILauncher.Models.LauncherEntry uninstallEntry = uninstallCatalog.Load().Entries
+                    .Single(entry => entry.Id == "deskcal");
+                await uninstallCatalog.InstallAsync(uninstallEntry);
+                bool confirmRemoval = false;
+                int confirmationCount = 0;
+                var uninstallWindow = new MainWindow(uninstallCatalog, (_, prompt) =>
+                {
+                    confirmationCount++;
+                    Check(prompt.Contains(uninstallEntry.Name, StringComparison.Ordinal)
+                          && prompt.Contains("\uB2E4\uC6B4\uB85C\uB4DC\uD55C \uD30C\uC77C", StringComparison.Ordinal)
+                          && prompt.Contains("\uC0AC\uC6A9\uC790 \uB370\uC774\uD130\uB294 \uC720\uC9C0", StringComparison.Ordinal),
+                        "Uninstall confirmation names the app and explains retained data");
+                    return confirmRemoval;
+                }) { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 };
+                uninstallWindow.Show();
+                await Idle(uninstallWindow);
+                MainWindow.LauncherCard uninstallCard = uninstallWindow.LauncherCards.Single(card => card.Entry.Id == "deskcal");
+                Button uninstallButton = ActionButtons(uninstallWindow, "Install_")
+                    .Single(button => AutomationProperties.GetAutomationId(button) == "Install_deskcal");
+                Check(uninstallCard.IsInstalled && uninstallCard.Entry.CanUninstall
+                      && Equals(uninstallButton.Content, "\uC81C\uAC70"),
+                    "Managed installed app exposes Remove in the existing left action slot");
+                uninstallButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(confirmationCount == 1 && uninstallCard.IsInstalled,
+                    "Declining uninstall confirmation leaves the managed installation intact");
+                confirmRemoval = true;
+                uninstallButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WithTimeout(WaitForUninstall(uninstallCard), TimeSpan.FromSeconds(15),
+                    "Isolated uninstall fixture did not finish removing its registration.");
+                Check(!uninstallCard.IsInstalled && Equals(uninstallButton.Content, "\uC124\uCE58")
+                      && Directory.Exists(Path.Combine(uninstallAppsRoot, "_shared-payloads")),
+                    "Confirmed removal refreshes the action and retains the shared app payload");
+                uninstallWindow.Close();
                 await Idle(window);
                 string[] expectedAppIds = ["folder-compare", "swift-copy", "disk-atlas", "deskcal"];
                 string[] expectedSupportedAppIds = expectedAppIds
@@ -480,6 +525,13 @@ internal static class Program
             await Task.Delay(20);
     }
 
+    private static async Task WaitForUninstall(MainWindow.LauncherCard card)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+        while (card.IsBusy && DateTime.UtcNow < deadline) await Task.Delay(25);
+        if (card.IsBusy) throw new TimeoutException("Uninstall action remained busy.");
+    }
+
     private static List<Button> ActionButtons(DependencyObject root, string prefix) =>
         Descendants<Button>(root)
             .Where(button => AutomationProperties.GetAutomationId(button).StartsWith(prefix, StringComparison.Ordinal))
@@ -497,7 +549,9 @@ internal static class Program
         MainWindow.LauncherCard card = cards.Single(candidate => candidate.Entry.Id == appId);
         return Equals(button.Content, card.InstallLabel)
             && AutomationProperties.GetName(button) == card.InstallAccessibleName
-            && Equals(button.Content, card.IsInstalled ? "\uC124\uCE58 \uC644\uB8CC" : "\uC124\uCE58");
+            && Equals(button.Content, card.IsInstalled
+                ? card.Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC"
+                : "\uC124\uCE58");
     }
 
     private static void SaveScreenshot(Window window, string path)
@@ -555,7 +609,16 @@ internal static class Program
 
         public Task<string> InstallAsync(ILauncher.Models.LauncherEntry entry) =>
             throw new NotSupportedException();
+        public Task<string> UninstallAsync(ILauncher.Models.LauncherEntry entry) =>
+            throw new NotSupportedException();
         public void Launch(ILauncher.Models.LauncherEntry entry) => throw new NotSupportedException();
         public Task LaunchAsync(ILauncher.Models.LauncherEntry entry) => throw new NotSupportedException();
+    }
+
+    private sealed class FixtureIntegratedAppProvider(ILauncher.Models.LauncherEntry entry)
+        : ILauncher.Services.IIntegratedAppProvider
+    {
+        public IReadOnlyList<ILauncher.Models.LauncherEntry> Entries => [entry];
+        public Task LaunchAsync(string appId) => throw new NotSupportedException();
     }
 }
