@@ -451,7 +451,7 @@ namespace ILauncher.BootstrapperUi
             root.Controls.Add(_headerPanel, 0, 0);
             Label title = new Label { Text = "i-luncher", AutoSize = true, Font = new Font("Segoe UI Semibold", 15F), ForeColor = Color.White, Location = new Point(20, 11) };
             _headerPanel.Controls.Add(title);
-            _settingsButton = new Button { Text = "설정", Width = 72, Height = 30, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(Width - 260, 9), AccessibleName = "설정" };
+            _settingsButton = new RoundedActionButton { Text = "설정", Width = 72, Height = 30, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(Width - 260, 9), AccessibleName = "설정" };
             _settingsButton.Enabled = !_smokeUi;
             StyleButton(_settingsButton, false);
             _settingsButton.Click += delegate { OpenSettings(); };
@@ -835,6 +835,7 @@ namespace ILauncher.BootstrapperUi
                 Application.DoEvents();
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
                 result["compactCardHeight"] = all.All(card => card.Height == 112);
+                result["categoryBadgesClearTitlesAndActions"] = all.All(card => card.CategoryBadgeClearsContent);
                 result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
                     all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
@@ -907,6 +908,13 @@ namespace ILauncher.BootstrapperUi
                     new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.RunActionBounds) &&
                     new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.InstallActionBounds));
                 _grid.AutoScrollPosition = Point.Empty;
+                using (Bitmap screenshot = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
+                    string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".minimum.png");
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                }
                 Bounds = originalBounds;
                 PerformLayout();
                 _grid.PerformLayout();
@@ -1286,6 +1294,103 @@ namespace ILauncher.BootstrapperUi
         }
     }
 
+    internal static class RoundedDrawing
+    {
+        internal static GraphicsPath CreatePath(RectangleF bounds, float radius)
+        {
+            float diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
+            GraphicsPath path = new GraphicsPath();
+            path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    internal sealed class RoundedActionButton : Button
+    {
+        private bool _hovered;
+        private bool _pressed;
+        internal event PaintEventHandler PaintGlyph;
+
+        public RoundedActionButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            FlatStyle = FlatStyle.Flat;
+            UseVisualStyleBackColor = false;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent == null ? SystemColors.Control : Parent.BackColor);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics graphics = e.Graphics;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Color fill = BackColor;
+            if (Enabled && _pressed)
+                fill = FlatAppearance.MouseDownBackColor.IsEmpty ? ControlPaint.Dark(BackColor, 0.12F) : FlatAppearance.MouseDownBackColor;
+            else if (Enabled && _hovered)
+                fill = FlatAppearance.MouseOverBackColor.IsEmpty ? ControlPaint.Light(BackColor, 0.12F) : FlatAppearance.MouseOverBackColor;
+            bool focused = Enabled && Focused;
+            float inset = focused ? 1F : 0.5F;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(inset, inset, Width - inset * 2 - 1, Height - inset * 2 - 1), 11))
+            using (SolidBrush brush = new SolidBrush(fill))
+            using (Pen border = new Pen(focused ? Color.FromArgb(124, 156, 255) : FlatAppearance.BorderColor, focused ? 2F : 1F))
+            {
+                graphics.FillPath(brush, path);
+                graphics.DrawPath(border, path);
+            }
+            TextRenderer.DrawText(graphics, Text, Font, ClientRectangle,
+                Enabled ? ForeColor : Color.FromArgb(137, 146, 163),
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                (ShowKeyboardCues ? TextFormatFlags.Default : TextFormatFlags.HidePrefix));
+            PaintEventHandler painter = PaintGlyph;
+            if (painter != null) painter(this, e);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { _hovered = true; base.OnMouseEnter(e); Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e) { _hovered = false; _pressed = false; base.OnMouseLeave(e); Invalidate(); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) _pressed = true; base.OnMouseDown(e); Invalidate(); }
+        protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; base.OnMouseUp(e); Invalidate(); }
+        protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) _pressed = true; base.OnKeyDown(e); Invalidate(); }
+        protected override void OnKeyUp(KeyEventArgs e) { _pressed = false; base.OnKeyUp(e); Invalidate(); }
+        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { _pressed = false; base.OnLostFocus(e); Invalidate(); }
+        protected override void OnEnabledChanged(EventArgs e) { _pressed = false; base.OnEnabledChanged(e); Invalidate(); }
+    }
+
+    internal sealed class CategoryBadge : Control
+    {
+        public CategoryBadge()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            AccessibleRole = AccessibleRole.StaticText;
+            TabStop = false;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent == null ? SystemColors.Control : Parent.BackColor);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), Height / 2F))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(34, 43, 58)))
+                e.Graphics.FillPath(fill, path);
+            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(9, 0, Width - 18, Height), ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        }
+    }
+
     internal sealed class AppCard : Panel
     {
         public BootstrapApp App { get; private set; }
@@ -1304,9 +1409,11 @@ namespace ILauncher.BootstrapperUi
         public bool HasCompactIdleState { get { return !_status.Visible && _description.Visible && !_progress.Visible && _status.Text.Length == 0; } }
         private readonly Label _description;
         private readonly Label _name;
+        private readonly CategoryBadge _category;
+        public bool CategoryBadgeClearsContent { get { return _category.Left >= _name.Right + 10 && _category.Right == Width - 14 && _category.Bottom + 10 <= _install.Top; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
-        private readonly Button _install;
-        private readonly Button _run;
+        private readonly RoundedActionButton _install;
+        private readonly RoundedActionButton _run;
         private readonly Label _status;
         private readonly bool _actionsEnabled;
         private readonly ProgressBar _progress;
@@ -1319,33 +1426,36 @@ namespace ILauncher.BootstrapperUi
             Width = width; Height = 112; Margin = new Padding(6); Padding = new Padding(14);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            PictureBox icon = new PictureBox { Left = 14, Top = 18, Width = 40, Height = 40, SizeMode = PictureBoxSizeMode.Zoom };
+            PictureBox icon = new PictureBox { Left = 14, Top = 24, Width = 40, Height = 40, SizeMode = PictureBoxSizeMode.Zoom };
             bool iconDecoded;
             icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(icon);
-            _name = new Label { Text = app.Name, Left = 64, Top = 15, Width = width - 196, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 64, Top = 20, Width = width - 196, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
-            Label category = new Label { Text = app.Category, Left = 64, Top = 39, Width = width - 196, Height = 17, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
-            Controls.Add(category);
-            _description = new Label { Text = app.Description, Left = 64, Top = 60, Width = width - 196, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
+            _category = new CategoryBadge { Text = app.Category, Top = 14, Height = 22, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(157, 181, 221) };
+            _category.Width = Math.Min(106, TextRenderer.MeasureText(app.Category, _category.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + 20);
+            _category.Left = width - 14 - _category.Width;
+            Controls.Add(_category);
+            _description = new Label { Text = app.Description, Left = 64, Top = 51, Width = width - 196, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
             Controls.Add(_description);
             _status = new Label { Text = "", Bounds = _description.Bounds, Font = _description.Font, Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 14, Top = 104, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new Button { Text = "", Left = width - 120, Top = 39, Width = 34, Height = 34, UseVisualStyleBackColor = false };
-            _run = new Button { Text = "실행", Left = width - 80, Top = 39, Width = 66, Height = 34 };
+            _install = new RoundedActionButton { Text = "", Left = width - 120, Top = 51, Width = 34, Height = 34 };
+            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 51, Width = 66, Height = 34 };
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;
             _install.FlatAppearance.BorderSize = 1;
             _install.Cursor = Cursors.Hand;
-            _install.Paint += DrawInstallActionIcon;
+            _install.PaintGlyph += DrawInstallActionIcon;
             _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
             _toolTip = new ToolTip { ShowAlways = true };
             _toolTip.SetToolTip(_name, app.Name);
             _toolTip.SetToolTip(_description, app.Description);
+            _toolTip.SetToolTip(_category, app.Category);
             LauncherFormStyle(_run, true);
             _install.Click += delegate { if (_installed) remove(App); else install(App); };
             _run.Click += delegate { run(App); };
@@ -1449,15 +1559,33 @@ namespace ILauncher.BootstrapperUi
                 _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(17, 21, 29) : _install.BackColor;
             }
         }
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent == null ? Color.FromArgb(17, 20, 27) : Parent.BackColor);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 16))
+            using (SolidBrush fill = new SolidBrush(BackColor))
+                e.Graphics.FillPath(fill, path);
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 16))
             using (Pen border = new Pen(Color.FromArgb(47, 56, 71)))
-                e.Graphics.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+                e.Graphics.DrawPath(border, path);
         }
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _toolTip.Dispose();
+            if (disposing)
+            {
+                _toolTip.Dispose();
+                _name.Font.Dispose();
+                _description.Font.Dispose();
+                _category.Font.Dispose();
+                foreach (PictureBox icon in Controls.OfType<PictureBox>())
+                    if (icon.Image != null) icon.Image.Dispose();
+            }
             base.Dispose(disposing);
         }
         private static Image DecodeIcon(string text, out bool decoded)

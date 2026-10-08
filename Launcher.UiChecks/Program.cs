@@ -257,12 +257,21 @@ internal static class Program
                     TextBlock description = Descendants<TextBlock>(window).Single(text =>
                         ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Description);
                     Rect descriptionBounds = BoundsInWindow(description, window);
+                    TextBlock title = Descendants<TextBlock>(window).Single(text =>
+                        ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Name);
+                    TextBlock category = Descendants<TextBlock>(window).Single(text =>
+                        ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category);
+                    Rect titleBounds = BoundsInWindow(title, window);
+                    Rect badgeBounds = BoundsInWindow((Border)category.Parent, window);
                     return Math.Abs(installBounds.Top - runBounds.Top) < 1 && install.ActualWidth == 34
                         && Math.Abs(runBounds.Left - installBounds.Right - 6) < 1
                         && installBounds.Left >= descriptionBounds.Right + 10
+                        && badgeBounds.Left >= titleBounds.Right + 10
+                        && Math.Abs(badgeBounds.Right - runBounds.Right) < 1
+                        && badgeBounds.Bottom + 10 <= runBounds.Top
                         && run.ActualWidth is >= 64 and <= 68
                         && run.ActualHeight >= 32 && runBounds.Top < descriptionBounds.Bottom;
-                }), "Install and Run actions share one compact right-side group and baseline");
+                }), "Upper-right category badges clear titles and the aligned action group below");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
@@ -399,6 +408,7 @@ internal static class Program
                 Check(cardScroll.ScrollableHeight > 0 && Math.Abs(cardScroll.VerticalOffset - cardScroll.ScrollableHeight) < 1,
                     "Minimum window scrolls all cards into reach");
                 cardScroll.ScrollToTop();
+                await Idle(window);
 
                 Directory.CreateDirectory(imageDirectory);
                 string minimumPreview = Path.Combine(imageDirectory, "i-luncher-minimum-preview.png");
