@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -441,15 +442,28 @@ namespace ILauncher.BootstrapperUi
             settings.Enabled = !_smokeUi;
             StyleButton(settings, false);
             settings.Click += delegate { OpenSettings(); };
-            header.Resize += delegate { settings.Left = header.ClientSize.Width - settings.Width - 18; };
+            Label usageHint = new Label
+            {
+                Text = "설치: 개별 설치·시작 메뉴 바로가기 · 포터블 실행: 등록 없이 바로 실행",
+                Left = 250, Top = 22, Height = 20, ForeColor = Color.FromArgb(157, 166, 182),
+                Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true, Anchor = AnchorStyles.Top | AnchorStyles.Left
+            };
+            Action layoutHeaderActions = delegate
+            {
+                settings.Left = header.ClientSize.Width - settings.Width - 18;
+                usageHint.Width = Math.Max(0, settings.Left - usageHint.Left - 12);
+            };
+            header.Resize += delegate { layoutHeaderActions(); };
             header.Controls.Add(settings);
+            header.Controls.Add(usageHint);
+            layoutHeaderActions();
 
             FlowLayoutPanel grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
             root.Controls.Add(grid, 0, 1);
             int cardWidth = 360;
             foreach (BootstrapApp app in catalog.Apps)
             {
-                AppCard card = new AppCard(app, cardWidth, catalog.RuntimeBytes, InstallClicked, RemoveClicked, RunClicked, !_smokeUi);
+                AppCard card = new AppCard(app, cardWidth, catalog.RuntimeBytes, InstallClicked, RemoveClicked, RunClicked, true);
                 _cards.Add(app.Id, card);
                 grid.Controls.Add(card);
             }
@@ -505,6 +519,11 @@ namespace ILauncher.BootstrapperUi
                         { "appId", card.App.Id },
                         { "installed", card.IsInstalled },
                         { "action", card.InstallActionLabel },
+                        { "actionColor", card.InstallActionColor },
+                        { "actionAccessibleName", card.InstallAccessibleName },
+                        { "actionPlacement", "top-right-icon" },
+                        { "portableAction", card.RunActionLabel },
+                        { "portablePlacement", "full-width-bottom" },
                         { "status", card.StatusLabel }
                     }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
@@ -727,11 +746,16 @@ namespace ILauncher.BootstrapperUi
         public BootstrapApp App { get; private set; }
         public bool HasDecodedIcon { get; private set; }
         public bool IsInstalled { get { return _installed; } }
-        public string InstallActionLabel { get { return _install.Text; } }
+        public string InstallActionLabel { get { return _installed ? "제거" : "설치"; } }
+        public string InstallActionColor { get { return ColorTranslator.ToHtml(_install.BackColor); } }
+        public string InstallAccessibleName { get { return _install.AccessibleName; } }
+        public string RunActionLabel { get { return _run.Text; } }
         public string StatusLabel { get { return _status.Text; } }
         private readonly Button _install;
         private readonly Button _run;
         private readonly Label _status;
+        private readonly Label _downloadSize;
+        private readonly string _downloadSizeText;
         private readonly bool _actionsEnabled;
         private readonly ProgressBar _progress;
         private bool _ready;
@@ -748,57 +772,143 @@ namespace ILauncher.BootstrapperUi
             icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(icon);
-            Label name = new Label { Text = app.Name, Left = 80, Top = 17, Width = width - 114, Height = 29, Font = new Font("Segoe UI Semibold", 14F), ForeColor = Color.White, AutoEllipsis = true };
+            Label name = new Label { Text = app.Name, Left = 80, Top = 17, Width = width - 142, Height = 29, Font = new Font("Segoe UI Semibold", 14F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(name);
-            Label category = new Label { Text = app.Category, Left = 80, Top = 48, Width = width - 114, Height = 20, ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
+            Label category = new Label { Text = app.Category, Left = 80, Top = 48, Width = width - 142, Height = 20, ForeColor = Color.FromArgb(135, 165, 216), AutoEllipsis = true };
             Controls.Add(category);
             Label description = new Label { Text = app.Description, Left = 16, Top = 76, Width = width - 36, Height = 40, ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
             Controls.Add(description);
-            Label downloadSize = new Label
+            _downloadSizeText = "첫 다운로드: 앱 " + FormatMegabytes(app.Bytes) + " + 런타임 " + FormatMegabytes(runtimeBytes);
+            _downloadSize = new Label
             {
-                Text = "첫 다운로드: 앱 " + FormatMegabytes(app.Bytes) + " + 런타임 " + FormatMegabytes(runtimeBytes),
+                Text = _downloadSizeText,
                 Left = 16, Top = 116, Width = width - 36, Height = 19,
                 ForeColor = Color.FromArgb(135, 165, 216), Font = new Font("Segoe UI", 8.25F), AutoEllipsis = true
             };
-            Controls.Add(downloadSize);
+            Controls.Add(_downloadSize);
             _status = new Label { Text = "확인 중", Left = 16, Top = 137, Width = width - 36, Height = 22, ForeColor = Color.FromArgb(165, 175, 192), AutoEllipsis = true };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 16, Top = 160, Width = width - 36, Height = 4, Visible = false, Style = ProgressBarStyle.Marquee };
             Controls.Add(_progress);
-            _install = new Button { Text = "설치", Left = 16, Top = 166, Width = (width - 48) / 2, Height = 30 };
-            _run = new Button { Text = "실행", Left = 24 + (width - 48) / 2, Top = 166, Width = (width - 48) / 2, Height = 30 };
-            LauncherFormStyle(_install, true); LauncherFormStyle(_run, false);
+            _install = new Button { Text = "", Left = width - 54, Top = 14, Width = 36, Height = 32, UseVisualStyleBackColor = false };
+            _run = new Button { Text = "포터블 실행", Left = 16, Top = 166, Width = width - 36, Height = 30 };
+            _run.AccessibleName = "포터블 실행 " + app.Name;
+            _run.AccessibleDescription = "설치 등록 없이 실행합니다. 필요한 파일은 처음에 다운로드할 수 있습니다.";
+            _install.FlatStyle = FlatStyle.Flat;
+            _install.FlatAppearance.BorderSize = 1;
+            _install.Cursor = Cursors.Hand;
+            _install.Paint += DrawInstallActionIcon;
+            _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
+            _toolTip = new ToolTip { ShowAlways = true };
+            LauncherFormStyle(_run, true);
             _install.Click += delegate { if (_installed) remove(App); else install(App); };
             _run.Click += delegate { run(App); };
             Controls.Add(_install); Controls.Add(_run);
             _run.Enabled = false;
             _install.Enabled = actionsEnabled;
+            _run.AccessibleName = "포터블 실행 " + app.Name;
+            UpdateInstallActionSemantics(null);
+            ApplyInstallActionStyle();
         }
         public void SetStatus(BootstrapperAppStatus status)
         {
             _ready = status != null && status.IsReady;
             _installed = status != null && status.IsInstalled;
+            _downloadSize.Text = _ready ? "준비된 파일로 추가 다운로드 없이 포터블 실행합니다" : _downloadSizeText;
             _status.Text = _installed ? "설치완료" : (_ready ? "준비됨" : "필요할 때 다운로드합니다" );
-            _install.Text = _installed ? "제거" : "설치";
+            UpdateInstallActionSemantics(null);
             _run.Enabled = _actionsEnabled;
             _install.Enabled = _actionsEnabled;
+            ApplyInstallActionStyle();
         }
         public void SetSmokeInstalledStatus()
         {
             _ready = true;
             _installed = true;
+            _downloadSize.Text = "준비된 파일로 추가 다운로드 없이 포터블 실행합니다";
             _status.Text = "설치완료";
-            _install.Text = "제거";
+            UpdateInstallActionSemantics(null);
             _install.Enabled = _actionsEnabled;
             _run.Enabled = _actionsEnabled;
+            ApplyInstallActionStyle();
         }
         public void SetBusy(bool busy, string busyLabel)
         {
             _install.Enabled = !busy;
             _run.Enabled = !busy;
             _progress.Visible = busy;
-            _install.Text = busy && !String.IsNullOrEmpty(busyLabel) ? busyLabel : (_installed ? "제거" : "설치");
-            if (busy) _status.Text = "작업 중…";
+            UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
+            _run.Text = busy && String.IsNullOrEmpty(busyLabel) ? "실행 중…" : "포터블 실행";
+            _run.AccessibleName = _run.Text + " " + App.Name;
+            if (busy) _status.Text = String.IsNullOrEmpty(busyLabel) ? "포터블 실행 중…" : busyLabel;
+            ApplyInstallActionStyle();
+        }
+        private readonly ToolTip _toolTip;
+        private void UpdateInstallActionSemantics(string busyLabel)
+        {
+            string action = busyLabel ?? (_installed ? "제거" : "설치");
+            string description = busyLabel != null ? action : (_installed
+                ? "설치 등록과 시작 메뉴 바로가기를 제거합니다. 다운로드 파일과 사용자 데이터는 유지됩니다."
+                : "개별 설치와 시작 메뉴 바로가기를 추가합니다.");
+            _install.AccessibleName = action + " " + App.Name;
+            _install.AccessibleDescription = description;
+            _toolTip.SetToolTip(_install, busyLabel != null ? action : App.Name + " " + action + ": " + description);
+            _install.Invalidate();
+        }
+        private void DrawInstallActionIcon(object sender, PaintEventArgs e)
+        {
+            Graphics graphics = e.Graphics;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Color color = _install.Enabled ? Color.White : (_installed ? Color.FromArgb(190, 164, 166) : Color.FromArgb(154, 160, 171));
+            using (Pen pen = new Pen(color, 2.1F))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                float cx = _install.ClientSize.Width / 2F;
+                if (_installed)
+                {
+                    graphics.DrawLine(pen, cx - 7, 11, cx + 7, 11);
+                    graphics.DrawLine(pen, cx - 4, 8, cx + 4, 8);
+                    graphics.DrawLine(pen, cx - 5, 13, cx - 4, 23);
+                    graphics.DrawLine(pen, cx + 5, 13, cx + 4, 23);
+                    graphics.DrawLine(pen, cx - 4, 23, cx + 4, 23);
+                    graphics.DrawLine(pen, cx - 1, 15, cx - 1, 20);
+                    graphics.DrawLine(pen, cx + 2, 15, cx + 2, 20);
+                }
+                else
+                {
+                    graphics.DrawLine(pen, cx - 8, 20, cx - 8, 24);
+                    graphics.DrawLine(pen, cx - 8, 24, cx + 8, 24);
+                    graphics.DrawLine(pen, cx + 8, 24, cx + 8, 20);
+                    graphics.DrawLine(pen, cx, 7, cx, 19);
+                    graphics.DrawLine(pen, cx, 19, cx - 5, 14);
+                    graphics.DrawLine(pen, cx, 19, cx + 5, 14);
+                }
+            }
+        }
+        private void ApplyInstallActionStyle()
+        {
+            if (_installed)
+            {
+                _install.BackColor = _install.Enabled ? Color.FromArgb(151, 51, 60) : Color.FromArgb(76, 47, 52);
+                _install.ForeColor = _install.Enabled ? Color.White : Color.FromArgb(190, 164, 166);
+                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(186, 77, 86) : Color.FromArgb(103, 65, 70);
+                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(174, 62, 72) : _install.BackColor;
+                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(126, 40, 48) : _install.BackColor;
+            }
+            else
+            {
+                _install.BackColor = _install.Enabled ? Color.FromArgb(50, 91, 168) : Color.FromArgb(47, 53, 65);
+                _install.ForeColor = _install.Enabled ? Color.White : Color.FromArgb(154, 160, 171);
+                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(74, 112, 183) : Color.FromArgb(63, 70, 82);
+                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(62, 108, 193) : _install.BackColor;
+                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(41, 76, 143) : _install.BackColor;
+            }
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _toolTip.Dispose();
+            base.Dispose(disposing);
         }
         private static string FormatMegabytes(long bytes)
         {

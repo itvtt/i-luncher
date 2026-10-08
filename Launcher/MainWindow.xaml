@@ -24,6 +24,62 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="LauncherResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="RegistrationActionButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="6" />
+                <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder" Padding="{TemplateBinding Padding}"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="9">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF202635" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF46516A" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF111520" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                                    <Setter Property="Cursor" Value="Arrow" />
+                                </Trigger>
+                                <DataTrigger Binding="{Binding IsManagedInstalled}" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF38232A" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF8C4655" />
+                                    <Setter Property="Foreground" Value="#FFFFC1C9" />
+                                </DataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsManagedInstalled}" Value="True" />
+                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF512B36" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FFB45A6D" />
+                                </MultiDataTrigger>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsManagedInstalled}" Value="True" />
+                                        <Condition Binding="{Binding IsPressed, RelativeSource={RelativeSource Self}}" Value="True" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF291A1F" />
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF8C4655" />
+                                </MultiDataTrigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
@@ -123,7 +179,7 @@
                 <TextBlock Margin="0,3,0,0"
                            FontSize="12.5"
                            Foreground="{StaticResource MutedTextBrush}"
-                           Text="필요한 도구를 빠르게 시작하세요" />
+                           Text="설치하면 시작 메뉴에 등록됩니다. 포터블 실행은 설치 등록 없이 바로 시작합니다." />
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -262,7 +318,7 @@
                                     <Button Width="50" Height="50" Padding="0" HorizontalAlignment="Left"
                                             VerticalAlignment="Center" Click="LauncherCard_Click" Tag="{Binding}"
                                             IsEnabled="{Binding CanRun}" Style="{StaticResource ToolbarButtonStyle}"
-                                            AutomationProperties.Name="{Binding AccessibleName}" ToolTip="앱 실행">
+                                            AutomationProperties.Name="{Binding AccessibleName}" ToolTip="{Binding RunToolTip}">
                                     <Border Width="48"
                                             Height="48"
                                             HorizontalAlignment="Left"
@@ -287,7 +343,7 @@
                                     </Border>
                                     </Button>
 
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,44,0">
                                         <TextBlock FontSize="15.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}"
@@ -302,28 +358,27 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
-                                    <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,4,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" Content="{Binding InstallLabel}" Tag="{Binding}"
-                                                Visibility="{Binding InstallVisibility}"
-                                                Click="InstallButton_Click" IsEnabled="{Binding CanInstall}"
-                                                ToolTipService.ShowOnDisabled="True"
-                                                AutomationProperties.AutomationId="{Binding InstallAutomationId}"
-                                                AutomationProperties.Name="{Binding InstallAccessibleName}"
-                                                ToolTip="{Binding InstallToolTip}" Padding="12,6"
-                                                Style="{StaticResource ToolbarButtonStyle}" />
-                                        <Button Content="{Binding RunLabel}" Tag="{Binding}" Click="LauncherCard_Click"
-                                                AutomationProperties.AutomationId="{Binding AutomationId}"
-                                                AutomationProperties.Name="{Binding RunAccessibleName}"
-                                                IsEnabled="{Binding CanRun}" Margin="{Binding RunMargin}" Padding="12,6"
-                                                Grid.Column="{Binding RunColumn}"
-                                                Grid.ColumnSpan="{Binding RunColumnSpan}"
-                                                Background="#FF3864D9" BorderBrush="#FF6C91FA" Foreground="White"
-                                                Style="{StaticResource ToolbarButtonStyle}" />
-                                    </Grid>
+                                    <Button Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right"
+                                            VerticalAlignment="Top" Margin="0,2,0,0"
+                                            Tag="{Binding}" Visibility="{Binding InstallVisibility}"
+                                            Click="InstallButton_Click" IsEnabled="{Binding CanInstall}"
+                                            ToolTipService.ShowOnDisabled="True"
+                                            AutomationProperties.AutomationId="{Binding InstallAutomationId}"
+                                            AutomationProperties.Name="{Binding InstallAccessibleName}"
+                                            ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
+                                        <Path Width="18" Height="18" Data="{Binding RegistrationGlyphData}"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              StrokeLineJoin="Round" />
+                                    </Button>
+                                    <Button Grid.Row="1" Grid.ColumnSpan="2" Content="{Binding RunLabel}"
+                                            Tag="{Binding}" Click="LauncherCard_Click"
+                                            AutomationProperties.AutomationId="{Binding AutomationId}"
+                                            AutomationProperties.Name="{Binding RunAccessibleName}"
+                                            ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}"
+                                            Margin="0,4,0,0" Padding="12,6"
+                                            Background="#FF3864D9" BorderBrush="#FF6C91FA" Foreground="White"
+                                            Style="{StaticResource ToolbarButtonStyle}" />
                                     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="1,7,0,0"
                                                Text="{Binding StatusMessage}" ToolTip="{Binding StatusMessage}"
                                                TextTrimming="CharacterEllipsis" FontSize="11"

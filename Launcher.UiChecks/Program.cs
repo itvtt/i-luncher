@@ -112,8 +112,13 @@ internal static class Program
                 Button uninstallButton = ActionButtons(uninstallWindow, "Install_")
                     .Single(button => AutomationProperties.GetAutomationId(button) == "Install_deskcal");
                 Check(uninstallCard.IsInstalled && uninstallCard.Entry.CanUninstall
-                      && Equals(uninstallButton.Content, "\uC81C\uAC70"),
-                    "Managed installed app exposes Remove in the existing left action slot");
+                      && AutomationProperties.GetName(uninstallButton).EndsWith(" \uC81C\uAC70", StringComparison.Ordinal),
+                    "Managed installed app exposes an accessible Remove icon");
+                var removeBorder = (Border?)uninstallButton.Template.FindName("ButtonBorder", uninstallButton);
+                Check(ReferenceEquals(uninstallButton.Style, uninstallWindow.FindResource("RegistrationActionButtonStyle"))
+                      && removeBorder?.Background is SolidColorBrush removeBrush
+                      && removeBrush.Color == Color.FromRgb(56, 35, 42),
+                    "Managed Remove uses the red registration icon style and state triggers");
                 uninstallButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Check(confirmationCount == 1 && uninstallCard.IsInstalled,
                     "Declining uninstall confirmation leaves the managed installation intact");
@@ -121,7 +126,8 @@ internal static class Program
                 uninstallButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await WithTimeout(WaitForUninstall(uninstallCard), TimeSpan.FromSeconds(15),
                     "Isolated uninstall fixture did not finish removing its registration.");
-                Check(!uninstallCard.IsInstalled && Equals(uninstallButton.Content, "\uC124\uCE58")
+                Check(!uninstallCard.IsInstalled
+                      && AutomationProperties.GetName(uninstallButton).EndsWith(" \uC124\uCE58", StringComparison.Ordinal)
                       && Directory.Exists(Path.Combine(uninstallAppsRoot, "_shared-payloads")),
                     "Confirmed removal refreshes the action and retains the shared app payload");
                 uninstallWindow.Close();
@@ -232,16 +238,23 @@ internal static class Program
                           && button.IsEnabled && button.Focusable && KeyboardNavigation.GetIsTabStop(button)
                           && ExpectedInstalledAwareInstallLabel(button, window.LauncherCards)),
                     "Every supported app exposes an enabled, accessible install action");
-                Check(launchButtons.All(button => Equals(button.Content, "실행")
-                                                   && AutomationProperties.GetName(button).EndsWith(" 실행", StringComparison.Ordinal)
+                Check(launchButtons.All(button => Equals(button.Content, "포터블 실행")
+                                                   && AutomationProperties.GetName(button).EndsWith(" 포터블 실행", StringComparison.Ordinal)
+                                                   && Equals(button.ToolTip, "설치 등록 없이 바로 실행합니다.")
                                                    && button.Focusable && KeyboardNavigation.GetIsTabStop(button)),
-                    "Run actions expose accessible labels and keyboard navigation");
+                    "Portable run actions explain install-free execution in accessible labels and tooltips");
+                Check(Descendants<TextBlock>(window).Any(text => text.Text.Contains("시작 메뉴에 등록", StringComparison.Ordinal)
+                                                                  && text.Text.Contains("포터블 실행", StringComparison.Ordinal)),
+                    "Visible launcher guidance distinguishes registration from portable execution");
                 Check(expectedSupportedAppIds.All(id =>
                 {
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Button run = launchButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Launch_{id}");
-                    return BoundsInWindow(install, window).Right <= BoundsInWindow(run, window).Left;
-                }), "Install appears left of Run in visual order");
+                    Rect installBounds = BoundsInWindow(install, window);
+                    Rect runBounds = BoundsInWindow(run, window);
+                    return installBounds.Top < runBounds.Top && install.ActualWidth <= 44
+                        && Math.Abs(installBounds.Right - runBounds.Right) <= 10 && run.ActualWidth >= 250;
+                }), "Registration icons sit above the full-width portable run action");
 
                 Button firstLaunch = launchButtons[0];
                 window.ShowActivated = true;
@@ -264,10 +277,10 @@ internal static class Program
                 await Idle(window);
                 Check(launchButtons.All(button => !button.IsEnabled), "Busy state disables every run action");
                 Check(installButtons.All(button => button.IsVisible && !button.IsEnabled
-                    && !Equals(button.Content, "\uC124\uCE58 \uC911\u2026")),
+                    && !AutomationProperties.GetName(button).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)),
                     "Run activity disables install actions without showing an install-in-progress label");
-                Check(launchButtons.All(button => Equals(button.Content, "\uC2E4\uD589 \uC911\u2026")),
-                    "Run activity shows the run-specific busy label");
+                Check(launchButtons.All(button => Equals(button.Content, "\uD3EC\uD130\uBE14 \uC2E4\uD589 \uC911\u2026")),
+                    "Run activity shows the portable-run busy label");
                 Check(!firstLaunch.Focus(), "Disabled run action rejects keyboard focus");
                 foreach (MainWindow.LauncherCard card in window.LauncherCards)
                 {
@@ -287,8 +300,8 @@ internal static class Program
                     AutomationProperties.GetAutomationId(button) == $"Launch_{installingCard.Entry.Id}");
                 Check(!installingButton.IsEnabled && !installingRunButton.IsEnabled
                       && installButtons.Where(button => !ReferenceEquals(button, installingButton)).All(button => button.IsEnabled)
-                      && Equals(installingButton.Content, "\uC124\uCE58 \uC911\u2026")
-                      && Equals(installingRunButton.Content, "\uC2E4\uD589"),
+                      && AutomationProperties.GetName(installingButton).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)
+                      && Equals(installingRunButton.Content, "\uD3EC\uD130\uBE14 \uC2E4\uD589"),
                     "Install activity disables both actions for that card and shows the install-specific label");
                 installingCard.IsBusy = false;
                 installingCard.IsInstalling = false;
@@ -315,8 +328,8 @@ internal static class Program
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
-                    return run.ActualWidth >= 90 && run.ActualHeight >= 32
-                           && install.ActualWidth >= 90 && install.ActualHeight >= 32
+                    return run.ActualWidth >= 250 && run.ActualHeight >= 32
+                           && install.ActualWidth >= 32 && install.ActualHeight >= 32
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;
                 });
@@ -547,9 +560,8 @@ internal static class Program
         if (!automationId.StartsWith("Install_", StringComparison.Ordinal)) return false;
         string appId = automationId["Install_".Length..];
         MainWindow.LauncherCard card = cards.Single(candidate => candidate.Entry.Id == appId);
-        return Equals(button.Content, card.InstallLabel)
-            && AutomationProperties.GetName(button) == card.InstallAccessibleName
-            && Equals(button.Content, card.IsInstalled
+        return AutomationProperties.GetName(button) == card.InstallAccessibleName
+            && Equals(card.InstallLabel, card.IsInstalled
                 ? card.Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC"
                 : "\uC124\uCE58");
     }
