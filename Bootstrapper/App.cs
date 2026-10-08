@@ -603,6 +603,8 @@ namespace ILauncher.BootstrapperUi
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmFlush();
 
         private int SendNcHitTest(Point screenPoint)
         {
@@ -727,6 +729,7 @@ namespace ILauncher.BootstrapperUi
         {
             Dictionary<string, object> chromeChecks = RunChromeSmokeChecks();
             Dictionary<string, object> cardChecks = RunCardSmokeChecks();
+            Dictionary<string, object> paintChecks = RunRoundedPaintSmokeChecks();
             Rectangle bounds = Bounds;
             Process process = Process.GetCurrentProcess();
             string screenshotPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".png");
@@ -793,6 +796,7 @@ namespace ILauncher.BootstrapperUi
                     } },
                 { "smokeChromeChecks", chromeChecks },
                 { "smokeCardChecks", cardChecks },
+                { "smokeRoundedPaintChecks", paintChecks },
                 { "windowIconSource", _windowIconSource },
                 { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
                 { "profileMode", _smokeRealProfile ? "current-user-read-only" : "isolated-temporary" },
@@ -809,6 +813,69 @@ namespace ILauncher.BootstrapperUi
             File.WriteAllText(_reportPath, reportJson, new UTF8Encoding(false));
             _smokeTimer.Dispose();
             Close();
+        }
+
+        private Dictionary<string, object> RunRoundedPaintSmokeChecks()
+        {
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            Control previousFocus = ActiveControl;
+            using (Panel surface = new Panel { Bounds = new Rectangle(24, 64, 160, 82), BackColor = Color.FromArgb(38, 45, 57) })
+            using (Bitmap captures = new Bitmap(128 * 4, 42))
+            {
+                RoundedActionButton probe = new RoundedActionButton
+                {
+                    Bounds = new Rectangle(18, 20, 106, 34), Text = "검증", Enabled = true,
+                    BackColor = Color.FromArgb(50, 91, 168), ForeColor = Color.White
+                };
+                probe.FlatAppearance.BorderColor = Color.FromArgb(70, 82, 105);
+                probe.FlatAppearance.MouseOverBackColor = Color.FromArgb(68, 108, 180);
+                int paintCount = 0;
+                probe.PaintGlyph += delegate { paintCount++; };
+                surface.Controls.Add(probe);
+                Controls.Add(surface);
+                surface.BringToFront();
+                try
+                {
+                    string[] states = { "normal", "hover", "focus", "resizeRepaint" };
+                    for (int index = 0; index < states.Length; index++)
+                    {
+                        if (index == 1)
+                            typeof(RoundedActionButton).GetMethod("OnMouseEnter", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                                .Invoke(probe, new object[] { EventArgs.Empty });
+                        if (index == 2) result["enabledFixtureTakesFocus"] = probe.Focus();
+                        if (index == 3) { surface.BackColor = Color.FromArgb(29, 36, 48); probe.Width += 8; }
+                        int before = paintCount;
+                        surface.Refresh();
+                        probe.Invalidate();
+                        probe.Update();
+                        Application.DoEvents();
+                        DwmFlush();
+                        using (Bitmap frame = new Bitmap(probe.Width, probe.Height))
+                        {
+                            // Capture the composed screen after normal WM_PAINT; WM_PRINT/DrawToBitmap bypassed the original defect.
+                            using (Graphics graphics = Graphics.FromImage(frame))
+                                graphics.CopyFromScreen(probe.PointToScreen(Point.Empty), Point.Empty, frame.Size);
+                            int background = surface.BackColor.ToArgb();
+                            Color expectedFill = index == 0 ? probe.BackColor : probe.FlatAppearance.MouseOverBackColor;
+                            result[states[index] + "PaintClearsCorners"] = paintCount > before && probe.Enabled &&
+                                frame.GetPixel(0, 0).ToArgb() == background && frame.GetPixel(frame.Width - 1, 0).ToArgb() == background &&
+                                frame.GetPixel(0, frame.Height - 1).ToArgb() == background && frame.GetPixel(frame.Width - 1, frame.Height - 1).ToArgb() == background &&
+                                frame.GetPixel(frame.Width / 2, 5).ToArgb() == expectedFill.ToArgb();
+                            using (Graphics graphics = Graphics.FromImage(captures)) graphics.DrawImageUnscaled(frame, index * 128, 4);
+                        }
+                    }
+                    string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".paint-states.png");
+                    captures.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                    result["physicalStateScreenshotPath"] = path;
+                }
+                catch (Exception ex) { result["paintCaptureError"] = Program.ShortError(ex); }
+                finally
+                {
+                    Controls.Remove(surface);
+                    if (previousFocus != null && previousFocus.CanFocus) previousFocus.Focus();
+                }
+            }
+            return result;
         }
 
         private Dictionary<string, object> RunCardSmokeChecks()
@@ -1321,6 +1388,7 @@ namespace ILauncher.BootstrapperUi
                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             FlatStyle = FlatStyle.Flat;
             UseVisualStyleBackColor = false;
+            SetStyle(ControlStyles.Opaque, false);
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
