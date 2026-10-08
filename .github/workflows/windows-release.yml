@@ -25,16 +25,6 @@ jobs:
     timeout-minutes: 90
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GITHUB_SERVER_URL: ${{ github.server_url }}
-      GITHUB_API_URL: ${{ github.api_url }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      GITHUB_REF: ${{ github.ref }}
-      GITHUB_SHA: ${{ github.sha }}
-      GITHUB_EVENT_NAME: ${{ github.event_name }}
-      GITHUB_RUN_ID: ${{ github.run_id }}
-      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
-      GITHUB_ACTIONS: 'true'
-      RUNNER_TEMP: ${{ runner.temp }}
       RELEASE_INPUT_VERSION: ${{ inputs.version }}
       RELEASE_INPUT_ENABLED: ${{ inputs.publish_release }}
 
