@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ILauncher.Checks</RootNamespace>
+    <AssemblyName>Launcher.Checks</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Launcher\Models\LauncherEntry.cs" Link="Production\LauncherEntry.cs" />
+    <Compile Include="..\Launcher\Services\ILauncherCatalog.cs" Link="Production\ILauncherCatalog.cs" />
+    <Compile Include="..\Launcher\Services\AppInstaller.cs" Link="Production\AppInstaller.cs" />
+    <Compile Include="..\Launcher\Services\AppBuilder.cs" Link="Production\AppBuilder.cs" />
+    <Compile Include="..\Launcher\Services\LauncherCatalog.cs" Link="Production\LauncherCatalog.cs" />
+    <Compile Include="..\Launcher\Services\SourceProjectDiscovery.cs" Link="Production\SourceProjectDiscovery.cs" />
+  </ItemGroup>
+</Project>

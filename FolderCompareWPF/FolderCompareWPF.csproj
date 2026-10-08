@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ProjectGuid>{DD3A6778-5C83-4DDE-BDBB-128AF0BF85D6}</ProjectGuid>
+    <ApplicationIcon>Assets\FolderCompare.ico</ApplicationIcon>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ILuncherIntegrated)' == 'true'">
+    <OutputType>Library</OutputType>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(ILuncherIntegrated)' == 'true'">
+    <ApplicationDefinition Remove="App.xaml" />
+    <Compile Remove="App.xaml.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\FolderCompare.ico" />
+    <Resource Include="Assets\FolderCompare.png" />
+    <Compile Remove="DemoData\DemoVerifier\**\*.cs" />
+  </ItemGroup>
+
+</Project>

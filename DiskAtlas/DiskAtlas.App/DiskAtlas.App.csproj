@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DiskAtlas</AssemblyName>
+    <RootNamespace>DiskAtlas.App</RootNamespace>
+    <ApplicationIcon>Assets\DiskAtlas.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(ILuncherIntegrated)' == 'true'">
+    <OutputType>Library</OutputType>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ILuncherIntegrated)' == 'true'">
+    <ApplicationDefinition Remove="App.xaml" />
+    <Compile Remove="App.xaml.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DiskAtlas.Core\DiskAtlas.Core.csproj" />
+    <Resource Include="Assets\DiskAtlas.ico" />
+    <Resource Include="Assets\DiskAtlas.png" />
+  </ItemGroup>
+</Project>

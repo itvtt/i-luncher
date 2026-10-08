@@ -1,0 +1,14 @@
+{
+  "id": "swift-copy",
+  "name": "SwiftCopy",
+  "description": "파일과 폴더를 빠르게 복사하고 이동합니다.",
+  "category": "파일 도구",
+  "executable": "dist/win-x64/SwiftCopy.exe",
+  "icon": "SwiftCopy.App/Assets/SwiftCopy-128.png",
+  "arguments": [],
+  "order": 20,
+  "install": { "type": "portable" },
+  "build": {
+    "project": "SwiftCopy.App/SwiftCopy.App.csproj"
+  }
+}

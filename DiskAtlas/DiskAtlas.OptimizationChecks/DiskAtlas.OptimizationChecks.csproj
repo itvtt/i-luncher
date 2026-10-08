@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DiskAtlas.OptimizationChecks</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DiskAtlas.Core/DiskAtlas.Core.csproj" />
+    <ProjectReference Include="../DiskAtlas.App/DiskAtlas.App.csproj" />
+  </ItemGroup>
+</Project>

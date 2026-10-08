@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; font-src 'self';">
+  <title>OpenCode</title>
+  <link rel="stylesheet" href="opencode.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><span>OpenCode</span></div>
+      <div class="session-tools">
+        <label class="visually-hidden" for="session-select">대화 기록</label>
+        <select id="session-select" aria-label="대화 기록"><option value="">대화 기록</option></select>
+        <button id="refresh-button" class="icon-button" type="button" title="새로고침" aria-label="새로고침">↻</button>
+        <button id="new-button" class="new-button" type="button">새 대화</button>
+      </div>
+    </header>
+
+    <section class="statusbar" aria-live="polite">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status-label">연결 중</span>
+      <span id="session-title" class="session-title"></span>
+    </section>
+    <div id="notice" class="notice" role="alert" hidden></div>
+
+    <section id="conversation" class="conversation" aria-label="대화">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-mark" aria-hidden="true">◈</div>
+        <h1>무엇을 도와드릴까요?</h1>
+        <p>코드, 작업, 질문을 입력해 대화를 시작하세요.</p>
+      </div>
+      <div id="messages" class="messages" aria-live="polite" aria-relevant="additions text"></div>
+      <div id="permissions" class="pending-list" aria-label="권한 요청"></div>
+      <div id="questions" class="pending-list" aria-label="질문"></div>
+    </section>
+
+    <footer class="composer-area">
+      <div class="composer-shell">
+        <label class="visually-hidden" for="composer">메시지 입력</label>
+        <textarea id="composer" rows="3" placeholder="메시지를 입력하세요…" autocomplete="off" spellcheck="false"></textarea>
+        <div class="composer-bottom">
+          <div class="selectors">
+            <label class="selector-wrap" id="model-wrap" hidden><span>모델</span><select id="model-select" aria-label="모델"></select></label>
+            <label class="selector-wrap" id="agent-wrap" hidden><span>에이전트</span><select id="agent-select" aria-label="에이전트"></select></label>
+            <span class="composer-hint">Enter 전송 · Shift+Enter 줄바꿈</span>
+          </div>
+          <div class="composer-actions">
+            <button id="stop-button" class="stop-button" type="button" disabled>중지</button>
+            <button id="send-button" class="send-button" type="button" disabled><span>전송</span><span aria-hidden="true">↑</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="footer-note">OpenCode 대화</div>
+    </footer>
+  </main>
+  <script src="opencode.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Services\ProjectWorkJournal.cs" Link="Services\ProjectWorkJournal.cs" />
+    <Compile Include="..\..\Services\AutomationRun.cs" Link="Services\AutomationRun.cs" />
+    <Compile Include="..\..\Services\AutomationStore.cs" Link="Services\AutomationStore.cs" />
+    <Compile Include="..\..\Services\ProjectArchiveService.cs" Link="Services\ProjectArchiveService.cs" />
+  </ItemGroup>
+</Project>

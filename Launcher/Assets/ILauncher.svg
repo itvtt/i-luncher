@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">i-luncher launcher icon</title>
+  <desc id="desc">A four pane app grid on an indigo rounded square with a launch arrow.</desc>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#172B4D"/>
+  <rect x="40" y="40" width="78" height="78" rx="19" fill="#7899FF"/>
+  <rect x="126" y="40" width="78" height="78" rx="19" fill="#A9B8FF"/>
+  <rect x="40" y="126" width="78" height="78" rx="19" fill="#315DED"/>
+  <rect x="126" y="126" width="78" height="78" rx="19" fill="#6382F4"/>
+  <path d="M139 160h27v-15l38 38-38 38v-15h-27z" fill="#FFFFFF"/>
+</svg>

@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- The repository builds one integrated product by default. -->
+    <ILuncherIntegrated Condition="'$(ILuncherIntegrated)' == ''">true</ILuncherIntegrated>
+  </PropertyGroup>
+</Project>

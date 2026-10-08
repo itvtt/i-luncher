@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+dist/
+artifacts/
+ui-output/
+ui-fixture.txt
+ui-process.txt
+ui-native.cs
+screenshot.png

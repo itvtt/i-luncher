@@ -1,0 +1,207 @@
+<Window x:Class="SwiftCopy.App.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+ Title="SwiftCopy" Icon="/SwiftCopy;component/Assets/SwiftCopy.ico"
+ Width="980" Height="760" MinWidth="800" MinHeight="640"
+ WindowStartupLocation="CenterScreen" Background="#F4F7FC" Foreground="#172033"
+ FontFamily="/SwiftCopy;component/Assets/Fonts/#SwiftCopy Sans" FontSize="14" FontWeight="Medium"
+ TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
+ RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="True" SnapsToDevicePixels="True"
+ WindowStyle="None" ResizeMode="CanResize" StateChanged="Window_StateChanged"
+ AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing">
+ <shell:WindowChrome.WindowChrome>
+  <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="6" CornerRadius="12" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+ </shell:WindowChrome.WindowChrome>
+ <Window.Resources>
+  <Style x:Key="CaptionButton" TargetType="Button">
+   <Setter Property="Width" Value="34"/><Setter Property="Height" Value="30"/><Setter Property="Margin" Value="3,0,0,0"/><Setter Property="Padding" Value="0"/>
+   <Setter Property="Background" Value="#1653C7"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="#EAF1FF"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="7"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#3673DF"/><Setter Property="Foreground" Value="White"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="Background" Value="#427FEA"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#1047AF"/></Trigger>
+     <MultiTrigger><MultiTrigger.Conditions><Condition Property="Tag" Value="Close"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions><MultiTrigger.Setters><Setter TargetName="Surface" Property="Background" Value="#D92D20"/><Setter Property="Foreground" Value="White"/></MultiTrigger.Setters></MultiTrigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="StepNumber" TargetType="Border"><Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/><Setter Property="CornerRadius" Value="14"/><Setter Property="Background" Value="#E8F0FF"/><Setter Property="BorderBrush" Value="#B9CEF7"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Margin" Value="0,0,10,0"/></Style>
+ </Window.Resources>
+
+ <Grid Background="#F4F7FC">
+  <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition/><RowDefinition Height="76"/></Grid.RowDefinitions>
+
+  <Border Background="#1458D4" BorderBrush="#0E46AC" BorderThickness="0,0,0,1">
+   <Grid Margin="20,0,12,0">
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Border Width="38" Height="38" Background="#FFFFFF" CornerRadius="10" Margin="0,0,11,0">
+      <Image x:Name="BrandIcon" Source="/SwiftCopy;component/Assets/SwiftCopy-32.png" Width="28" Height="28" RenderOptions.BitmapScalingMode="HighQuality"/>
+     </Border>
+     <StackPanel VerticalAlignment="Center">
+      <TextBlock Text="SwiftCopy" FontFamily="Segoe UI" FontSize="21" FontWeight="SemiBold" Foreground="White"/>
+      <TextBlock Text="빠르고 안전한 파일 전송" FontSize="11" Foreground="#CFE0FF" Margin="0,-1,0,0"/>
+     </StackPanel>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+     <Border Background="#0C377F" BorderBrush="#4A82E5" BorderThickness="1" CornerRadius="14" Padding="10,5" VerticalAlignment="Center" Margin="0,0,12,0">
+      <TextBlock x:Name="StatusBadge" Text="●  준비됨" Foreground="#FFFFFF" FontSize="12" FontWeight="SemiBold"/>
+     </Border>
+     <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButton}" Click="Minimize_Click" ToolTip="최소화" AutomationProperties.Name="최소화"><Path Data="M 0,5 L 10,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" Width="10" Height="10"/></Button>
+     <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Click="Maximize_Click" ToolTip="최대화" AutomationProperties.Name="최대화"><Path x:Name="MaximizeIcon" Data="M 1,1 L 11,1 11,11 1,11 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" Width="12" Height="12"/></Button>
+     <Button x:Name="CloseButton" Style="{StaticResource CaptionButton}" Tag="Close" Click="Close_Click" ToolTip="닫기" AutomationProperties.Name="닫기"><Path Data="M 1,1 L 11,11 M 11,1 L 1,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" Width="12" Height="12"/></Button>
+    </StackPanel>
+   </Grid>
+  </Border>
+
+  <Grid Grid.Row="1" Margin="20,14,20,12">
+   <Grid.RowDefinitions><RowDefinition Height="160"/><RowDefinition Height="10"/><RowDefinition Height="*" MinHeight="300"/></Grid.RowDefinitions>
+   <Grid x:Name="SetupPanel">
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="14"/><ColumnDefinition/></Grid.ColumnDefinitions>
+
+    <Border x:Name="SourceCard" Style="{StaticResource Card}">
+     <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="32"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Grid>
+       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Border Style="{StaticResource StepNumber}"><TextBlock Text="1" Foreground="#1D4ED8" FontFamily="Segoe UI" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+       <Grid Grid.Column="1" VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="보낼 파일·폴더" FontWeight="SemiBold" FontSize="15"/><TextBlock Grid.Column="1" x:Name="SelectionCount" Text="" Foreground="{StaticResource Muted}" Margin="8,1,0,0" FontSize="12" TextTrimming="CharacterEllipsis"/></Grid>
+       <Button Grid.Column="2" Content="제거" Click="Remove_Click" Style="{StaticResource ClearAction}" ToolTip="선택한 항목을 목록에서 제거"/>
+      </Grid>
+      <Grid Grid.Row="1" Margin="0,10,0,0">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Border x:Name="SourceArea" Style="{StaticResource PanelArea}" Margin="0">
+        <Grid>
+         <TextBlock x:Name="EmptyState" Text="＋&#x0a;파일과 폴더를 여기에 놓으세요" Foreground="#475467" FontSize="13" FontWeight="SemiBold" TextAlignment="Center" LineHeight="23" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+         <ListBox x:Name="SourceList" Foreground="{StaticResource Ink}" Background="Transparent" BorderThickness="0" SelectionMode="Extended" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" Visibility="Collapsed" Margin="5">
+          <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="7,5"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Row" Padding="{TemplateBinding Padding}" CornerRadius="5" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#EAF1FD"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="#D9E8FF"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+          <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" ToolTip="{Binding FullPath}" TextTrimming="CharacterEllipsis" FontSize="13"/></DataTemplate></ListBox.ItemTemplate>
+         </ListBox>
+        </Grid>
+       </Border>
+       <Button Grid.Column="1" x:Name="AddItemsButton" Content="파일 찾기" Click="AddItems_Click" Style="{StaticResource PanelAction}" ToolTip="파일과 폴더 함께 선택" AutomationProperties.Name="보낼 파일·폴더 찾기"/>
+      </Grid>
+     </Grid>
+    </Border>
+
+    <Border x:Name="DestinationCard" Grid.Column="2" Style="{StaticResource Card}">
+     <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="32"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Grid>
+       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Border Style="{StaticResource StepNumber}"><TextBlock Text="2" Foreground="#1D4ED8" FontFamily="Segoe UI" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+       <TextBlock Grid.Column="1" Text="대상 폴더" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"/>
+       <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="저장장치와 파일 크기에 따라 작업자가 많을수록 빠르지는 않습니다.">
+        <StackPanel VerticalAlignment="Center" Margin="0,0,6,0">
+         <TextBlock Text="동시 작업" Foreground="#475467" FontSize="12"/>
+         <TextBlock Text="많을수록 빠른 것은 아님" Foreground="#667085" FontSize="10" Margin="0,-1,0,0"/>
+        </StackPanel>
+        <ComboBox x:Name="WorkerCountBox" SelectedIndex="2" Width="54" Height="30" Padding="7,3" VerticalContentAlignment="Center" SelectionChanged="WorkerCount_SelectionChanged" AutomationProperties.Name="동시 작업 수">
+         <ComboBoxItem Content="1"/><ComboBoxItem Content="2"/><ComboBoxItem Content="4"/><ComboBoxItem Content="8"/><ComboBoxItem Content="16"/>
+        </ComboBox>
+       </StackPanel>
+       <Button Grid.Column="3" x:Name="ClearDestinationButton" Content="지우기" Click="ClearDestination_Click" Style="{StaticResource ClearAction}" ToolTip="입력한 대상 경로 지우기"/>
+      </Grid>
+      <Grid Grid.Row="1" Margin="0,10,0,0">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Border x:Name="DestinationArea" Style="{StaticResource PanelArea}" Margin="0">
+        <StackPanel VerticalAlignment="Center" Margin="12,0">
+         <TextBlock Text="저장할 위치" Foreground="#667085" FontSize="11" Margin="1,0,0,3"/>
+         <TextBox x:Name="DestinationBox" AutomationProperties.Name="대상 폴더 경로" Tag="경로 입력 또는 붙여넣기" ToolTip="직접 경로를 입력하세요. 예: D:\Backup 또는 \\server\share" Background="#FFFFFF" Padding="10,5"/>
+        </StackPanel>
+       </Border>
+       <Button Grid.Column="1" x:Name="BrowseDestinationButton" Content="폴더 찾기" Click="Destination_Click" Style="{StaticResource PanelAction}" ToolTip="대상 폴더 찾아보기" AutomationProperties.Name="대상 폴더 찾기"/>
+      </Grid>
+     </Grid>
+    </Border>
+   </Grid>
+
+   <Border x:Name="WorkStateCard" Grid.Row="2" Background="#102342" BorderBrush="#315680" BorderThickness="1" CornerRadius="14" Padding="16,13">
+    <Grid x:Name="TransferStatusRow">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel>
+       <TextBlock x:Name="WorkStateTitle" Text="파일 전송 준비 완료" Foreground="#F8FAFF" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
+       <TextBlock x:Name="WorkStateDescription" Text="보낼 항목과 대상 폴더를 선택한 뒤 복사 또는 이동을 눌러주세요." Foreground="#B8CBE7" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+      </StackPanel>
+      <TextBlock Grid.Column="1" x:Name="ProgressTitle" Text="전송 대기" Foreground="#BFD3EF" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0" TextTrimming="CharacterEllipsis"/>
+     </Grid>
+
+     <Grid Grid.Row="1" Margin="0,11,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+      <ProgressBar x:Name="TransferProgress" Height="12" Minimum="0" Maximum="100" VerticalAlignment="Center" Foreground="#75B6FF" Background="#253D60" BorderBrush="#3C5F8C" BorderThickness="1"/>
+      <TextBlock Grid.Column="1" x:Name="PercentText" Text="0%" FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" Foreground="#A9D2FF" VerticalAlignment="Center" TextAlignment="Right"/>
+     </Grid>
+
+     <Grid Grid.Row="2" Margin="0,9,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <TextBlock Text="작업 현황" Foreground="#AFC5E5" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+      <TextBlock Grid.Column="1" x:Name="CurrentText" Text="동시 작업 4개가 파일을 기다리고 있습니다." Foreground="#F0F6FF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+     </Grid>
+
+     <Grid Grid.Row="3" Margin="0,2,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <TextBlock Text="상세 정보" Foreground="#809ABD" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+      <TextBlock Grid.Column="1" x:Name="DetailText" Text="" Foreground="#B8CBE7" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+     </Grid>
+
+     <UniformGrid Grid.Row="4" Columns="5" Margin="0,7,0,0">
+      <Border Style="{StaticResource MetricCell}"><StackPanel><TextBlock Text="전송 속도" Style="{StaticResource MetricLabel}"/><TextBlock x:Name="SpeedText" Text="— MB/s" Style="{StaticResource Metric}" ToolTip="전송 속도"/></StackPanel></Border>
+      <Border Style="{StaticResource MetricCell}"><StackPanel><TextBlock Text="파일/초" Style="{StaticResource MetricLabel}"/><TextBlock x:Name="FileRateText" Text="— 파일/초" Style="{StaticResource Metric}" ToolTip="초당 완료한 파일 수"/></StackPanel></Border>
+      <Border Style="{StaticResource MetricCell}"><StackPanel><TextBlock Text="전송 용량" Style="{StaticResource MetricLabel}"/><TextBlock x:Name="BytesText" Text="0 B" Style="{StaticResource Metric}" ToolTip="완료 용량"/></StackPanel></Border>
+      <Border Style="{StaticResource MetricCell}"><StackPanel><TextBlock Text="완료 파일" Style="{StaticResource MetricLabel}"/><TextBlock x:Name="FilesText" Text="0 / 0" Style="{StaticResource Metric}" ToolTip="완료 / 발견 파일 수"/></StackPanel></Border>
+      <Border Style="{StaticResource MetricCell}" Margin="0"><StackPanel><TextBlock Text="남은 시간" Style="{StaticResource MetricLabel}"/><TextBlock x:Name="EtaText" Text="—" Style="{StaticResource Metric}" ToolTip="남은 시간"/></StackPanel></Border>
+     </UniformGrid>
+
+     <Grid Grid.Row="5" Margin="0,10,0,5">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="동시 작업 진행 상황" Foreground="#F0F6FF" FontSize="13" FontWeight="SemiBold"/>
+      <TextBlock Grid.Column="1" Text="각 작업은 서로 다른 파일을 처리합니다" Foreground="#809ABD" FontSize="11" VerticalAlignment="Center"/>
+     </Grid>
+
+     <ScrollViewer Grid.Row="6" x:Name="WorkerLaneScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True" MinHeight="62">
+      <ItemsControl x:Name="WorkerLaneList" ItemsSource="{Binding WorkerLanes, RelativeSource={RelativeSource AncestorType=Window}}">
+       <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+       <ItemsControl.ItemTemplate>
+        <DataTemplate>
+         <Border Background="#142C4C" BorderBrush="#315680" BorderThickness="1" CornerRadius="8" Padding="8,3" Margin="0,0,0,4">
+          <Grid>
+           <Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition/><ColumnDefinition Width="220"/><ColumnDefinition Width="92"/></Grid.ColumnDefinitions>
+           <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding Label}" Foreground="#F0F6FF" FontSize="11" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding Stage}" Foreground="{Binding Accent}" FontSize="10" Margin="0,-1,0,0" TextTrimming="CharacterEllipsis"/>
+           </StackPanel>
+           <TextBlock Grid.Column="1" Text="{Binding FileName}" ToolTip="{Binding FullPath}" Foreground="#DCEAFF" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,12,0"/>
+           <Grid Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <ProgressBar Height="7" Minimum="0" Maximum="100" Value="{Binding Progress, Mode=OneWay}" IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}" Foreground="{Binding Accent, Mode=OneWay}" Background="#253D60" BorderBrush="#3C5F8C" BorderThickness="1"/>
+            <TextBlock Grid.Row="1" Text="{Binding ProgressText}" Foreground="#BFD3EF" FontFamily="Segoe UI" FontSize="9" HorizontalAlignment="Center" Margin="0,1,0,0"/>
+           </Grid>
+           <TextBlock Grid.Column="3" Text="{Binding CountText}" Foreground="#AFC5E5" FontSize="10" VerticalAlignment="Center" TextAlignment="Right"/>
+          </Grid>
+         </Border>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </ScrollViewer>
+    </Grid>
+   </Border>
+  </Grid>
+
+  <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#D9E2F0" BorderThickness="0,1,0,0">
+   <Grid Margin="20,0" VerticalAlignment="Center">
+    <Button x:Name="LogButton" Content="기록 보기" HorizontalAlignment="Left" Click="Log_Click" IsEnabled="False" MinWidth="92" Height="40" AutomationProperties.Name="전송 기록 보기"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+     <Button x:Name="CancelButton" Content="취소" Click="Cancel_Click" IsEnabled="False" Visibility="Collapsed" MinWidth="82" Height="42" Margin="0,0,8,0"/>
+     <Button x:Name="PauseButton" Content="일시정지" Click="Pause_Click" IsEnabled="False" Visibility="Collapsed" MinWidth="92" Height="42" Margin="0,0,14,0"/>
+     <Button x:Name="MoveButton" Content="이동" Style="{StaticResource PrimaryButton}" MinWidth="108" Height="44" Click="Move_Click" Margin="0,0,10,0" AutomationProperties.Name="선택 항목 이동"/>
+     <Button x:Name="CopyButton" Content="복사 시작" Style="{StaticResource CopyAction}" MinWidth="142" Height="46" Click="Copy_Click" AutomationProperties.Name="선택 항목 복사 시작"/>
+    </StackPanel>
+   </Grid>
+  </Border>
+  <Border Grid.RowSpan="3" BorderBrush="#B8C6DA" BorderThickness="1" CornerRadius="11" IsHitTestVisible="False"/>
+ </Grid>
+</Window>

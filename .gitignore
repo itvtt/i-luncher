@@ -1,0 +1,32 @@
+**/bin/
+**/obj/
+**/.vs/
+**/dist/
+*.user
+*.suo
+
+# Generated output and machine-local data
+**/artifacts/
+**/logs/
+**/.vshistory/
+**/.pullverse*/
+*.log
+*.lnk
+.i-luncher-workspace.json
+**/AGENTS.md
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Self-hosted runner state must stay outside the source tree
+**/.runner
+**/.credentials*
+**/_diag/
+**/_work/

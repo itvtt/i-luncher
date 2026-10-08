@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ILauncher</RootNamespace>
+    <AssemblyName>i-luncher</AssemblyName>
+    <ApplicationIcon>Assets/ILauncher.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets/ILauncher.ico" />
+    <Resource Include="Assets/ILauncher.png" />
+    <Resource Include="..\FolderCompareWPF\Assets\FolderCompare.png" Link="Assets\BuiltIns\FolderCompare.png" />
+    <Resource Include="..\SwiftCopy\SwiftCopy.App\Assets\SwiftCopy-128.png" Link="Assets\BuiltIns\SwiftCopy-128.png" />
+    <Resource Include="..\DiskAtlas\DiskAtlas.App\Assets\DiskAtlas.png" Link="Assets\BuiltIns\DiskAtlas.png" />
+    <Resource Include="..\DeskCal\cal.ico" Link="Assets\BuiltIns\DeskCal.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FolderCompareWPF\FolderCompareWPF.csproj" />
+    <ProjectReference Include="..\SwiftCopy\SwiftCopy.App\SwiftCopy.App.csproj" />
+    <ProjectReference Include="..\DiskAtlas\DiskAtlas.App\DiskAtlas.App.csproj" />
+    <ProjectReference Include="..\DeskCal\DeskCal.csproj" />
+  </ItemGroup>
+</Project>

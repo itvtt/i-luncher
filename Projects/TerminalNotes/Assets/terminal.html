@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'none'; img-src 'none'">
+<link rel="stylesheet" href="xterm.css"><style>
+:root{--terminal-background:#0c1016}
+html,body{height:100%;margin:0;background:var(--terminal-background);overflow:hidden}
+#viewport{position:absolute;inset:6px 23px 6px 6px;overflow:hidden}
+#terminal{width:100%;height:100%;background:var(--terminal-background)}
+#terminal .xterm-viewport{background-color:var(--terminal-background);scrollbar-width:none}
+#terminal .xterm-viewport::-webkit-scrollbar{width:0}
+#viewport.tui{overflow:auto;scrollbar-width:none}
+#viewport::-webkit-scrollbar{width:0;height:9px}
+#terminal-scrollbar{position:absolute;top:14px;right:6px;bottom:8px;width:14px;overflow-x:hidden;overflow-y:scroll;overscroll-behavior:contain;background:#18212c;border-left:1px solid #2d3a49;scrollbar-width:auto;scrollbar-color:#62778e #141b24}
+#terminal-scrollbar:focus-visible{outline:1px solid #75e0bd}
+#scroll-spacer{width:1px;pointer-events:none}
+#terminal-scrollbar::-webkit-scrollbar{width:12px}
+#terminal-scrollbar::-webkit-scrollbar-track{background:#141b24;border-radius:6px}
+#terminal-scrollbar::-webkit-scrollbar-thumb,#viewport::-webkit-scrollbar-thumb{background:#62778e;border:2px solid #141b24;border-radius:6px}
+#terminal-scrollbar::-webkit-scrollbar-thumb:hover{background:#91aac2}
+</style></head>
+<body><div id="viewport"><div id="terminal"></div></div><div id="terminal-scrollbar" tabindex="0" aria-label="터미널 세로 스크롤" title="터미널 출력 기록 · 작은 화면 이동"><div id="scroll-spacer"></div></div><script src="xterm.js"></script><script src="addon-fit.js"></script><script src="terminal.js"></script></body></html>
