@@ -114,6 +114,22 @@ internal static class Program
                 Check(uninstallCard.IsInstalled && uninstallCard.Entry.CanUninstall
                       && AutomationProperties.GetName(uninstallButton).EndsWith(" \uC81C\uAC70", StringComparison.Ordinal),
                     "Managed installed app exposes an accessible Remove icon");
+                ((Button)uninstallWindow.FindName("InstalledAppsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(uninstallWindow.LauncherCards.Count == 1 && uninstallWindow.LauncherCards[0].IsInstalled,
+                    "Installed-app filter shows installed entries");
+                Button checksCategory = Descendants<Button>(uninstallWindow).Single(button => Equals(button.Content, "Checks"));
+                checksCategory.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                TextBox fixtureSearch = (TextBox)uninstallWindow.FindName("SearchBox");
+                fixtureSearch.Text = "DeskCal";
+                Check(uninstallWindow.LauncherCards.Count == 1 && uninstallWindow.LauncherCards[0].Entry.Id == "deskcal",
+                    "Category and name search combine in the library");
+                fixtureSearch.Text = "no matching fixture";
+                Check(uninstallWindow.LauncherCards.Count == 0
+                      && ((TextBlock)uninstallWindow.FindName("EmptyStateTitle")).Text == "일치하는 앱이 없습니다",
+                    "Combined filters display the requested empty state");
+                ((Button)uninstallWindow.FindName("ClearFiltersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ((Button)uninstallWindow.FindName("InstalledAppsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(uninstallWindow.LauncherCards.Count == 1, "Clearing filters restores the installed-app result");
                 var removeBorder = (Border?)uninstallButton.Template.FindName("ButtonBorder", uninstallButton);
                 Check(ReferenceEquals(uninstallButton.Style, uninstallWindow.FindResource("RegistrationActionButtonStyle"))
                       && removeBorder?.Background is SolidColorBrush removeBrush
@@ -126,10 +142,19 @@ internal static class Program
                 uninstallButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await WithTimeout(WaitForUninstall(uninstallCard), TimeSpan.FromSeconds(15),
                     "Isolated uninstall fixture did not finish removing its registration.");
-                Check(!uninstallCard.IsInstalled
-                      && AutomationProperties.GetName(uninstallButton).EndsWith(" \uC124\uCE58", StringComparison.Ordinal)
-                      && Directory.Exists(Path.Combine(uninstallAppsRoot, "_shared-payloads")),
+                Check(!uninstallCard.IsInstalled && Directory.Exists(Path.Combine(uninstallAppsRoot, "_shared-payloads")),
                     "Confirmed removal refreshes the action and retains the shared app payload");
+                Check(uninstallWindow.LauncherCards.Count == 0
+                      && ((Button)uninstallWindow.FindName("ClearFiltersButton")).IsVisible,
+                    "Installed-app membership updates after removal");
+                ((Button)uninstallWindow.FindName("ClearFiltersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(uninstallWindow.LauncherCards.Any(card => ReferenceEquals(card, uninstallCard)) && !uninstallCard.IsInstalled,
+                    "Empty-state reset restores the removed app entry");
+                await Idle(uninstallWindow);
+                Button refreshedInstallButton = ActionButtons(uninstallWindow, "Install_")
+                    .Single(button => AutomationProperties.GetAutomationId(button) == "Install_deskcal");
+                Check(AutomationProperties.GetName(refreshedInstallButton).EndsWith(" \uC124\uCE58", StringComparison.Ordinal),
+                    "Visible registration action updates after installed status refresh");
                 uninstallWindow.Close();
                 await Idle(window);
                 string[] expectedAppIds = ["folder-compare", "swift-copy", "disk-atlas", "deskcal"];
@@ -205,16 +230,41 @@ internal static class Program
                 search.Text = "swift";
                 Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "swift-copy",
                     "Search filters app name");
+                Button fileCategory = Descendants<Button>(window).Single(button => Equals(button.Content, "파일 도구"));
+                fileCategory.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "swift-copy",
+                    "Category selection combines with app-name search");
+                search.Text = "내용을 비교";
+                Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "folder-compare",
+                    "Category selection combines with description search");
                 search.Text = "없는 검색 결과 39481";
-                Check(window.LauncherCards.Count == 0 && ((FrameworkElement)window.FindName("EmptyState")).Visibility == Visibility.Visible,
-                    "No-match state displayed");
-                search.Text = "파일 도구";
-                Check(window.LauncherCards.Count == 2, "Korean category search finds both file apps");
+                Check(window.LauncherCards.Count == 0
+                      && ((FrameworkElement)window.FindName("EmptyState")).Visibility == Visibility.Visible
+                      && ((TextBlock)window.FindName("EmptyStateTitle")).Text == "일치하는 앱이 없습니다"
+                      && ((Button)window.FindName("ClearFiltersButton")).IsVisible,
+                    "No-match state names the empty result and offers filter reset");
+                ((Button)window.FindName("ClearFiltersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(window.LauncherCards.Count > 0 && search.Text.Length == 0,
+                    "Clear filters resets search and category selection");
                 search.Text = "일정";
                 Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "deskcal",
                     "DeskCal is searchable by its Korean category");
+                MainWindow.LauncherCard hiddenBusyCard = window.LauncherCards[0];
+                hiddenBusyCard.StatusMessage = "필터 밖 작업 진행 중";
+                hiddenBusyCard.IsBusy = true;
+                search.Text = "swift";
+                Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "swift-copy"
+                      && hiddenBusyCard.IsBusy && hiddenBusyCard.StatusMessage == "필터 밖 작업 진행 중",
+                    "Filtering an active card preserves its operation state off-screen");
+                search.Text = "일정";
+                Check(ReferenceEquals(window.LauncherCards.Single(), hiddenBusyCard)
+                      && hiddenBusyCard.IsBusy && hiddenBusyCard.StatusMessage == "필터 밖 작업 진행 중",
+                    "Restoring the filter reveals the same active card and progress state");
+                hiddenBusyCard.IsBusy = false;
+                hiddenBusyCard.StatusMessage = string.Empty;
                 ((Button)window.FindName("RefreshButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Check(search.Text == "일정" && window.LauncherCards.Count == 1, "Refresh preserves search");
+                Check(search.Text == "일정" && window.LauncherCards.Count == 1
+                      && ((TextBlock)window.FindName("CountText")).Text == "1개 앱", "Refresh preserves search and updates result count");
                 search.Clear();
                 window.UpdateLayout();
                 await Idle(window);
@@ -263,18 +313,27 @@ internal static class Program
                         ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category);
                     Rect titleBounds = BoundsInWindow(title, window);
                     Rect badgeBounds = BoundsInWindow((Border)category.Parent, window);
+                    Border cardBorder = (Border)((FrameworkElement)title.Parent).Parent;
+                    Rect cardBounds = BoundsInWindow(cardBorder, window);
                     var titleMeasure = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentCulture,
                         title.FlowDirection, new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
                         title.FontSize, Brushes.White, VisualTreeHelper.GetDpi(title).PixelsPerDip);
-                    return installBounds.Bottom + 10 <= runBounds.Top && install.ActualWidth == 30
-                        && Math.Abs(installBounds.Right - runBounds.Right) < 1
-                        && runBounds.Left >= descriptionBounds.Right + 10
-                        && badgeBounds.Left >= titleBounds.Right + 10
-                        && Math.Abs(badgeBounds.Right + 6 - installBounds.Left) < 1
+                    return Math.Abs(cardBounds.Width - 292) < 1 && Math.Abs(cardBounds.Height - 124) < 1
+                        && install.ActualWidth == 30 && Math.Abs(installBounds.Left - (cardBounds.Left + 248)) < 2
+                        && Math.Abs(installBounds.Top - (cardBounds.Top + 10)) < 2
+                        && Math.Abs(titleBounds.Left - (cardBounds.Left + 14)) < 2
+                        && Math.Abs(titleBounds.Top - (cardBounds.Top + 52)) < 2
+                        && Math.Abs(descriptionBounds.Left - (cardBounds.Left + 14)) < 2
+                        && Math.Abs(descriptionBounds.Top - (cardBounds.Top + 78)) < 2
+                        && Math.Abs(descriptionBounds.Width - 186) < 1
+                        && Math.Abs(runBounds.Left - (cardBounds.Left + 212)) < 2
+                        && Math.Abs(runBounds.Top - (cardBounds.Top + 76)) < 2
+                        && Math.Abs(badgeBounds.Right - (cardBounds.Left + 242)) < 2
+                        && badgeBounds.Bottom <= titleBounds.Top
                         && titleMeasure.WidthIncludingTrailingWhitespace <= title.ActualWidth + 0.1
                         && run.ActualWidth is >= 64 and <= 68
-                        && run.ActualHeight >= 32 && runBounds.Top < descriptionBounds.Bottom;
-                }), "Narrow cards keep full titles clear of category and top install actions, with Run beside the description");
+                        && run.ActualHeight >= 32 && runBounds.Left >= descriptionBounds.Right + 10;
+                }), "Cards match the 292×124 icon, title, description, category, install, and right-side Run layout");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
@@ -373,7 +432,7 @@ internal static class Program
                     Descendants<ItemsControl>(scroll).Any(items => ReferenceEquals(items, window.FindName("LauncherItems"))));
                 Check(nineBounds.Select(bounds => Math.Round(bounds.Left)).Distinct().Count() == 3
                     && nineBounds.Select(bounds => Math.Round(bounds.Top)).Distinct().Count() == 3
-                    && Descendants<Border>(window).Count(border => border.Width == 340 && border.ActualHeight == 112) == 9
+                    && Descendants<Border>(window).Count(border => border.Width == 292 && border.ActualHeight == 124) == 9
                     && cardScroll.ScrollableHeight < 1,
                     "Nine fixture cards fit three columns and three rows at the default window size");
                 Directory.CreateDirectory(imageDirectory);
@@ -406,6 +465,33 @@ internal static class Program
                 Check(Math.Abs(window.ActualWidth - window.MinWidth) < 1
                       && Math.Abs(window.ActualHeight - window.MinHeight) < 1 && usable,
                     "Minimum window size preserves usable Run and Install actions");
+                var catalogCardsField = typeof(MainWindow).GetField("_allCards", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var catalogCards = (List<MainWindow.LauncherCard>)catalogCardsField.GetValue(window)!;
+                string fixtureRoot = Path.GetTempPath();
+                var categoryFixtures = Enumerable.Range(0, 12).Select(index => new MainWindow.LauncherCard(new ILauncher.Models.LauncherEntry
+                {
+                    Id = $"sidebar-fixture-{index}", Name = $"Sidebar fixture {index}", Description = "Category scroll fixture",
+                    Category = $"Fixture {index:D2}", ExecutablePath = Path.Combine(fixtureRoot, $"sidebar-fixture-{index}.exe"),
+                    WorkingDirectory = fixtureRoot
+                })).ToList();
+                catalogCards.AddRange(categoryFixtures);
+                typeof(MainWindow).GetMethod("UpdateCategoryButtons", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                await Idle(window);
+                ScrollViewer categoryScroll = Descendants<ScrollViewer>(window).Single(scroll =>
+                    Descendants<StackPanel>(scroll).Any(panel => ReferenceEquals(panel, window.FindName("CategoryButtons"))));
+                categoryScroll.ScrollToBottom();
+                await Idle(window);
+                Button lastCategory = Descendants<Button>((StackPanel)window.FindName("CategoryButtons")).Last();
+                Rect lastCategoryBounds = BoundsInWindow(lastCategory, window);
+                Rect categoryViewportBounds = BoundsInWindow(categoryScroll, window);
+                Check(categoryScroll.ScrollableHeight > 0 &&
+                      lastCategoryBounds.Top >= categoryViewportBounds.Top - 1 &&
+                      lastCategoryBounds.Bottom <= categoryViewportBounds.Bottom + 1,
+                    "Minimum window sidebar scrolls through to its last real-category row");
+                catalogCards.RemoveRange(catalogCards.Count - categoryFixtures.Count, categoryFixtures.Count);
+                typeof(MainWindow).GetMethod("UpdateCategoryButtons", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                categoryScroll.ScrollToTop();
+                await Idle(window);
                 cardScroll.ScrollToBottom();
                 await Idle(window);
                 Check(cardScroll.ScrollableHeight > 0 && Math.Abs(cardScroll.VerticalOffset - cardScroll.ScrollableHeight) < 1,
@@ -418,7 +504,7 @@ internal static class Program
                 SaveScreenshot(window, minimumPreview);
                 Check(File.Exists(minimumPreview), "Minimum-size RenderTargetBitmap screenshot saved");
                 window.Width = 1100;
-                window.Height = 580;
+                window.Height = 600;
                 window.UpdateLayout();
                 await Idle(window);
                 string previewPath = Path.Combine(imageDirectory, "i-luncher-preview.png");

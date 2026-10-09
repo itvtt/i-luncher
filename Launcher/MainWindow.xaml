@@ -12,12 +12,13 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         Width="1100"
-        Height="580"
+        Height="600"
         MinWidth="720"
         MinHeight="420"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown"
         StateChanged="Window_StateChanged">
     <Window.Resources>
         <ResourceDictionary>
@@ -114,10 +115,43 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <Style x:Key="SidebarNavButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Margin" Value="0,0,0,4" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="NavBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="NavBorder" Property="Background" Value="#FF202635" />
+                                    <Setter TargetName="NavBorder" Property="BorderBrush" Value="#FF30394A" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="NavBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
-    <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="52"
+        <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48"
                             CornerRadius="0"
                             GlassFrameThickness="0"
                             ResizeBorderThickness="6"
@@ -126,349 +160,140 @@
 
     <Grid Background="{StaticResource WindowBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="52" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="48" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{StaticResource SubtleSurfaceBrush}"
                 BorderBrush="#FF202632" BorderThickness="0,0,0,1">
             <Grid Margin="18,0,8,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Width="28"
-                           Height="28"
-                           Margin="0,0,10,0"
-                           Source="Assets/ILauncher.png"
-                           Stretch="Uniform" />
-                    <TextBlock VerticalAlignment="Center"
-                               FontSize="14"
-                               FontWeight="SemiBold"
-                               Foreground="#FFE8ECF4"
-                               Text="i-luncher" />
+                    <Image Width="28" Height="28" Margin="0,0,10,0" Source="Assets/ILauncher.png" Stretch="Uniform" />
+                    <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Foreground="#FFE8ECF4" Text="i-luncher" />
                 </StackPanel>
-
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="MinimizeButton"
-                            AutomationProperties.AutomationId="MinimizeButton"
-                            AutomationProperties.Name="최소화"
-                            Click="MinimizeButton_Click"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                            Style="{StaticResource ChromeButtonStyle}"
-                            ToolTip="최소화">
-                        <Path Width="12"
-                              Height="1"
-                              Data="M 0,0.5 L 12,0.5"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1" />
+                    <Button x:Name="MinimizeButton" AutomationProperties.AutomationId="MinimizeButton" AutomationProperties.Name="최소화" Click="MinimizeButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource ChromeButtonStyle}" ToolTip="최소화">
+                        <Path Width="12" Height="1" Data="M 0,0.5 L 12,0.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1" />
                     </Button>
-                    <Button x:Name="MaximizeButton"
-                            AutomationProperties.AutomationId="MaximizeButton"
-                            AutomationProperties.Name="최대화"
-                            Click="MaximizeButton_Click"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                            Style="{StaticResource ChromeButtonStyle}"
-                            ToolTip="최대화">
+                    <Button x:Name="MaximizeButton" AutomationProperties.AutomationId="MaximizeButton" AutomationProperties.Name="최대화" Click="MaximizeButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource ChromeButtonStyle}" ToolTip="최대화">
                         <Grid Width="13" Height="13">
-                            <Path x:Name="MaximizeGlyph"
-                                  Data="M 1.5,1.5 L 11.5,1.5 L 11.5,11.5 L 1.5,11.5 Z"
-                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  StrokeThickness="1" />
-                            <Path x:Name="RestoreGlyph"
-                                  Data="M 3.5,1.5 L 11.5,1.5 L 11.5,9.5 M 1.5,3.5 L 9.5,3.5 L 9.5,11.5 L 1.5,11.5 Z"
-                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  StrokeThickness="1"
-                                  Visibility="Collapsed" />
+                            <Path x:Name="MaximizeGlyph" Data="M 1.5,1.5 L 11.5,1.5 L 11.5,11.5 L 1.5,11.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1" />
+                            <Path x:Name="RestoreGlyph" Data="M 3.5,1.5 L 11.5,1.5 L 11.5,9.5 M 1.5,3.5 L 9.5,3.5 L 9.5,11.5 L 1.5,11.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1" Visibility="Collapsed" />
                         </Grid>
                     </Button>
-                    <Button x:Name="CloseButton"
-                            AutomationProperties.AutomationId="CloseButton"
-                            AutomationProperties.Name="닫기"
-                            Click="CloseButton_Click"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                            Style="{StaticResource CloseChromeButtonStyle}"
-                            ToolTip="닫기">
-                        <Path Width="12"
-                              Height="12"
-                              Data="M 1,1 L 11,11 M 11,1 L 1,11"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.2" />
+                    <Button x:Name="CloseButton" AutomationProperties.AutomationId="CloseButton" AutomationProperties.Name="닫기" Click="CloseButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource CloseChromeButtonStyle}" ToolTip="닫기">
+                        <Path Width="12" Height="12" Data="M 1,1 L 11,11 M 11,1 L 1,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" />
                     </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="28,18,28,14">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel VerticalAlignment="Center">
-                <TextBlock FontSize="22" FontWeight="SemiBold" Text="앱 런처" />
-            </StackPanel>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="OpenFolderButton"
-                        Margin="0,0,8,0"
-                        AutomationProperties.AutomationId="OpenFolderButton"
-                        AutomationProperties.Name="앱 폴더 열기"
-                        Click="OpenFolderButton_Click"
-                        Content="앱 폴더"
-                        Style="{StaticResource RoundedToolbarButtonStyle}" />
-                <Button x:Name="RefreshButton"
-                        AutomationProperties.AutomationId="RefreshButton"
-                        AutomationProperties.Name="앱 목록 새로고침"
-                        Click="RefreshButton_Click"
-                        Content="새로고침"
-                        Style="{StaticResource RoundedToolbarButtonStyle}" />
-            </StackPanel>
-        </Grid>
-
-        <Grid Grid.Row="2" Margin="28,0,28,16">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <Border Height="42"
-                        Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10">
-                    <DockPanel>
-                        <Path Width="14"
-                              Height="14"
-                              Margin="13,0,10,0"
-                              VerticalAlignment="Center"
-                              Data="M 6.25,1.25 A 5,5 0 1 1 6.25,11.25 A 5,5 0 1 1 6.25,1.25 M 10,10 L 13.25,13.25"
-                              Stroke="{StaticResource MutedTextBrush}"
-                              StrokeThickness="1.4" />
-                        <TextBox x:Name="SearchBox"
-                                 Margin="0,1,12,1"
-                                 VerticalContentAlignment="Center"
-                                 AutomationProperties.AutomationId="SearchBox"
-                                 AutomationProperties.Name="앱 검색"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 CaretBrush="{StaticResource TextBrush}"
-                                 FontSize="14"
-                                 Foreground="{StaticResource TextBrush}"
-                                 TextChanged="SearchBox_TextChanged" />
-                    </DockPanel>
-                </Border>
-                <TextBlock x:Name="CountText"
-                           Grid.Column="1"
-                           Margin="14,0,0,0"
-                           VerticalAlignment="Center"
-                           FontSize="12.5"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           Text="앱 0개" />
-            </Grid>
-
-            <Border x:Name="ErrorPanel"
-                    Grid.Row="1"
-                    Margin="0,10,0,0"
-                    Padding="12,9,8,9"
-                    AutomationProperties.LiveSetting="Assertive"
-                    Background="#FF2B1C21"
-                    BorderBrush="#FF61313C"
-                    BorderThickness="1"
-                    CornerRadius="9"
-                    Visibility="Collapsed">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Path Width="14"
-                          Height="14"
-                          Margin="0,1,10,0"
-                          VerticalAlignment="Top"
-                          Data="M 7,1 L 13,12 L 1,12 Z M 7,4.3 L 7,8 M 7,10.2 L 7,10.3"
-                          Stroke="#FFFFB4C0"
-                          StrokeThickness="1.4" />
-                    <TextBlock x:Name="ErrorText"
-                               Grid.Column="1"
-                               VerticalAlignment="Center"
-                               FontSize="11.5"
-                               Foreground="#FFF6BAC3"
-                               TextWrapping="Wrap" />
-                    <Button Grid.Column="2"
-                            Width="30"
-                            Height="28"
-                            Margin="10,0,0,0"
-                            Padding="0"
-                            AutomationProperties.AutomationId="DismissErrorButton"
-                            AutomationProperties.Name="오류 알림 닫기"
-                            Click="DismissErrorButton_Click"
-                            Content="×"
-                            FontSize="18"
-                            Style="{StaticResource ChromeButtonStyle}"
-                            ToolTip="알림 닫기" />
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="148" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Background="#FF141821" BorderBrush="#FF252C39" BorderThickness="0,0,1,0">
+                <Grid Margin="12,17,10,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        <RowDefinition Height="1" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Margin="8,0,0,12" FontSize="12" FontWeight="SemiBold" Foreground="#FF8C96A8" Text="라이브러리" />
+                    <Button x:Name="AllAppsButton" Grid.Row="1" Content="전체 앱" Click="AllAppsButton_Click" Style="{StaticResource SidebarNavButtonStyle}" />
+                    <Button x:Name="InstalledAppsButton" Grid.Row="2" Content="설치된 앱" Click="InstalledAppsButton_Click" Style="{StaticResource SidebarNavButtonStyle}" />
+                    <Border Grid.Row="3" Margin="8,8,8,12" Background="#FF2B3240" />
+                    <TextBlock Grid.Row="4" Margin="8,0,0,8" FontSize="10.5" FontWeight="SemiBold" Foreground="#FF697486" Text="분류" />
+                    <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="CategoryButtons" />
+                    </ScrollViewer>
                 </Grid>
             </Border>
-        </Grid>
 
-        <Grid Grid.Row="3">
-            <ScrollViewer Padding="28,0,14,18"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-                <ItemsControl x:Name="LauncherItems" ItemsSource="{Binding LauncherCards}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel IsItemsHost="True" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Width="340" Height="112" Margin="0,0,12,12" Padding="13"
-                                    Background="{StaticResource RaisedSurfaceBrush}" BorderBrush="#FF2F3847"
-                                    BorderThickness="1" CornerRadius="16">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="40" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="78" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Button Width="32" Height="32" Padding="0" HorizontalAlignment="Left" Margin="0,2,0,0"
-                                            VerticalAlignment="Top" Click="LauncherCard_Click" Tag="{Binding}"
-                                            IsEnabled="{Binding CanRun}" Style="{StaticResource RoundedToolbarButtonStyle}"
-                                            AutomationProperties.Name="{Binding AccessibleName}" ToolTip="{Binding RunToolTip}">
-                                    <Border Width="32"
-                                            Height="32"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"
-                                            Background="#FF222A3A"
-                                            BorderBrush="#FF343F55"
-                                            BorderThickness="1"
-                                            CornerRadius="11">
+            <Grid Grid.Column="1" Margin="16">
+                <Grid.RowDefinitions><RowDefinition Height="38" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Border Height="38" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="37" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Path Grid.Column="0" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 6.25,1.25 A 5,5 0 1 1 6.25,11.25 A 5,5 0 1 1 6.25,1.25 M 10,10 L 13.25,13.25" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.4" />
+                            <TextBox x:Name="SearchBox" Grid.Column="1" Margin="0,1,10,1" VerticalContentAlignment="Center" AutomationProperties.AutomationId="SearchBox" AutomationProperties.Name="앱 검색" Background="Transparent" BorderThickness="0" CaretBrush="{StaticResource TextBrush}" FontSize="13" Foreground="{StaticResource TextBrush}" TextChanged="SearchBox_TextChanged" />
+                            <TextBlock Grid.Column="1" Margin="0,0,10,0" VerticalAlignment="Center" IsHitTestVisible="False" Text="앱 검색" Foreground="{StaticResource MutedTextBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding Text, ElementName=SearchBox}" Value="" />
+                                                    <Condition Binding="{Binding IsKeyboardFocused, ElementName=SearchBox}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                        <Button x:Name="OpenFolderButton" Width="34" Height="34" Margin="0,0,6,0" Padding="0" AutomationProperties.AutomationId="OpenFolderButton" AutomationProperties.Name="앱 폴더 열기" Click="OpenFolderButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" ToolTip="앱 폴더 열기">
+                            <Path Width="16" Height="16" Stretch="Uniform" Data="M2,4 L6,4 L8,6 L14,6 L14,13 L2,13 Z M8,10 L11,7 M9,7 L11,7 L11,9" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Button>
+                        <Button x:Name="RefreshButton" Width="34" Height="34" Padding="0" AutomationProperties.AutomationId="RefreshButton" AutomationProperties.Name="앱 목록 새로고침" Click="RefreshButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" ToolTip="새로고침">
+                            <Path Width="16" Height="16" Stretch="Uniform" Data="M13,6 A5,5 0 1 0 14,9 M13,3 L13,6 L10,6" Stroke="{StaticResource TextBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="1" Margin="0,12,0,10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="SectionTitle" VerticalAlignment="Center" FontSize="17" FontWeight="SemiBold" Text="전체 앱" />
+                    <TextBlock x:Name="CountText" Grid.Column="1" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" Text="0개 앱" />
+                </Grid>
+                <Grid Grid.Row="2">
+                    <ScrollViewer x:Name="CardScrollViewer" Padding="0,0,8,8" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="LauncherItems" ItemsSource="{Binding LauncherCards}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel IsItemsHost="True" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="292" Height="124" Margin="0,0,10,10" Background="{StaticResource RaisedSurfaceBrush}" BorderBrush="#FF2F3847" BorderThickness="1" CornerRadius="16">
                                         <Grid>
-                                            <Image Margin="3"
-                                                   Source="{Binding IconSource}"
-                                                   Stretch="Uniform"
-                                                   Visibility="{Binding IconVisibility}" />
-                                            <TextBlock HorizontalAlignment="Center"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="18"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="#FFC6D3FF"
-                                                       Text="{Binding Initials}"
-                                                       Visibility="{Binding InitialsVisibility}" />
+                                            <Border Width="32" Height="32" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,14,0,0" Background="#FF222A3A" BorderBrush="#FF343F55" BorderThickness="1" CornerRadius="10">
+                                                <Grid>
+                                                    <Image Margin="3" Source="{Binding IconSource}" Stretch="Uniform" Visibility="{Binding IconVisibility}" />
+                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="17" FontWeight="SemiBold" Foreground="#FFC6D3FF" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
+                                                </Grid>
+                                            </Border>
+                                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,49,0" Height="22" MaxWidth="86" Padding="9,0" CornerRadius="11" Background="#FF222B3A" ToolTip="{Binding Entry.Category}">
+                                                <TextBlock VerticalAlignment="Center" FontSize="10" Foreground="#FF9DB5DD" Text="{Binding Entry.Category}" TextTrimming="CharacterEllipsis" />
+                                            </Border>
+                                            <Button Width="30" Height="30" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,13,0" Tag="{Binding}" Visibility="{Binding InstallVisibility}" Click="InstallButton_Click" IsEnabled="{Binding CanInstall}" ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="{Binding InstallAutomationId}" AutomationProperties.Name="{Binding InstallAccessibleName}" ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
+                                                <Path Width="17" Height="17" Stretch="Uniform" Data="{Binding RegistrationGlyphData}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            </Button>
+                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,52,0,0" Width="186" Height="22" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{Binding Entry.Name}" ToolTip="{Binding Entry.Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,78,0,0" Width="186" Height="32" FontSize="11" LineHeight="14" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" AutomationProperties.LiveSetting="Polite" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                            <Button Width="66" Height="34" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="212,76,0,0" Content="{Binding RunLabel}" Tag="{Binding}" Click="LauncherCard_Click" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding RunAccessibleName}" ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}" Padding="8,5" Background="#FF3864D9" BorderBrush="#FF6C91FA" Foreground="White" Style="{StaticResource RoundedToolbarButtonStyle}" />
+                                            <ProgressBar Height="3" Margin="14,0,14,0" VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False" AutomationProperties.Name="작업 진행 상황">
+                                                <ProgressBar.Style><Style TargetType="ProgressBar"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsBusy}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></ProgressBar.Style>
+                                            </ProgressBar>
                                         </Grid>
                                     </Border>
-                                    </Button>
-
-                                    <Grid Grid.Column="1" Grid.ColumnSpan="2" Height="30" VerticalAlignment="Top" Margin="0,-4,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock FontSize="14.7" Height="23" VerticalAlignment="Center" Margin="0,0,10,0"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextBrush}"
-                                                   Text="{Binding Entry.Name}"
-                                                   ToolTip="{Binding Entry.Name}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Border VerticalAlignment="Center" Margin="0,0,6,0"
-                                            Height="22" MaxWidth="90" Padding="10,0" CornerRadius="11"
-                                            Background="#FF222B3A" ToolTip="{Binding Entry.Category}">
-                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" Foreground="#FF9DB5DD"
-                                                   Text="{Binding Entry.Category}" TextTrimming="CharacterEllipsis" />
-                                    </Border>
-                                    <Button VerticalAlignment="Center"
-                                            Tag="{Binding}" Visibility="{Binding InstallVisibility}"
-                                            Click="InstallButton_Click" IsEnabled="{Binding CanInstall}"
-                                            ToolTipService.ShowOnDisabled="True"
-                                            AutomationProperties.AutomationId="{Binding InstallAutomationId}"
-                                            AutomationProperties.Name="{Binding InstallAccessibleName}"
-                                            ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
-                                        <Path Width="18" Height="18" Stretch="Uniform" Data="{Binding RegistrationGlyphData}"
-                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                              StrokeLineJoin="Round" />
-                                    </Button>
-                                    </StackPanel>
-                                    </Grid>
-                                    <TextBlock Grid.Column="1" Margin="0,38,0,0" VerticalAlignment="Top"
-                                               MaxHeight="34" FontSize="11.5" LineHeight="15"
-                                               Foreground="{StaticResource MutedTextBrush}"
-                                               Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}"
-                                               AutomationProperties.LiveSetting="Polite"
-                                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                                    <Button Grid.Column="2" Width="66" Height="34" Margin="0,44,0,0"
-                                            HorizontalAlignment="Right" VerticalAlignment="Top"
-                                            Content="{Binding RunLabel}"
-                                            Tag="{Binding}" Click="LauncherCard_Click"
-                                            AutomationProperties.AutomationId="{Binding AutomationId}"
-                                            AutomationProperties.Name="{Binding RunAccessibleName}"
-                                            ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}"
-                                            Padding="8,5"
-                                            Background="#FF3864D9" BorderBrush="#FF6C91FA" Foreground="White"
-                                            Style="{StaticResource RoundedToolbarButtonStyle}" />
-                                    <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="0,0,0,-8"
-                                                 VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False"
-                                                 AutomationProperties.Name="작업 진행 상황">
-                                        <ProgressBar.Style>
-                                            <Style TargetType="ProgressBar">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </ProgressBar.Style>
-                                    </ProgressBar>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-
-            <StackPanel x:Name="EmptyState"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Visibility="Collapsed">
-                <Border Width="54"
-                        Height="54"
-                        HorizontalAlignment="Center"
-                        Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="16">
-                    <TextBlock HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               FontSize="22"
-                               Foreground="{StaticResource MutedTextBrush}"
-                               Text="…" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock x:Name="EmptyStateTitle" HorizontalAlignment="Center" FontSize="15" FontWeight="SemiBold" Text="일치하는 앱이 없습니다" />
+                        <Button x:Name="ClearFiltersButton" Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Center" Click="ClearFiltersButton_Click" Content="필터 지우기" Style="{StaticResource RoundedToolbarButtonStyle}" Visibility="Collapsed" />
+                    </StackPanel>
+                </Grid>
+                <Border x:Name="ErrorPanel" Grid.RowSpan="3" Margin="0,0,0,0" Padding="12,9,8,9" VerticalAlignment="Top" Panel.ZIndex="3" AutomationProperties.LiveSetting="Assertive" Background="#FF2B1C21" BorderBrush="#FF61313C" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Path Width="14" Height="14" Margin="0,1,10,0" VerticalAlignment="Top" Data="M 7,1 L 13,12 L 1,12 Z M 7,4.3 L 7,8 M 7,10.2 L 7,10.3" Stroke="#FFFFB4C0" StrokeThickness="1.4" />
+                        <TextBlock x:Name="ErrorText" Grid.Column="1" VerticalAlignment="Center" FontSize="11.5" Foreground="#FFF6BAC3" TextWrapping="Wrap" />
+                        <Button Grid.Column="2" Width="30" Height="28" Margin="10,0,0,0" Padding="0" AutomationProperties.AutomationId="DismissErrorButton" AutomationProperties.Name="오류 알림 닫기" Click="DismissErrorButton_Click" Content="×" FontSize="18" Style="{StaticResource ChromeButtonStyle}" ToolTip="알림 닫기" />
+                    </Grid>
                 </Border>
-                <TextBlock x:Name="EmptyStateTitle"
-                           Margin="0,13,0,0"
-                           HorizontalAlignment="Center"
-                           FontSize="15"
-                           FontWeight="SemiBold"
-                           Text="등록된 앱이 없습니다" />
-                <TextBlock x:Name="EmptyStateDescription"
-                           Margin="0,5,0,0"
-                           HorizontalAlignment="Center"
-                           FontSize="12.5"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           Text="새로고침하여 앱을 다시 찾아보세요." />
-            </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

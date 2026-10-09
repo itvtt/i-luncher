@@ -16,6 +16,9 @@ public partial class MainWindow : Window
     private readonly ILauncherCatalog _catalog;
     private readonly Func<LauncherEntry, string, bool> _confirmUninstall;
     private readonly List<LauncherCard> _allCards = [];
+    private readonly List<Button> _categoryButtons = [];
+    private string _selectedCategory = string.Empty;
+    private bool _installedOnly;
     private int _activeOperations;
     private bool _catalogRefreshPending;
     private Task? _catalogRefreshTask;
@@ -36,6 +39,7 @@ public partial class MainWindow : Window
         Width = Math.Min(Width, workArea.Width);
         Height = Math.Min(Height, workArea.Height);
         DataContext = this;
+        ApplySidebarSelection();
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -83,6 +87,7 @@ public partial class MainWindow : Window
 
                     _allCards.Clear();
                     _allCards.AddRange(cards);
+                    UpdateCategoryButtons();
                     ShowCatalogErrors(result.Errors);
                     ApplyFilter();
                 }
@@ -92,6 +97,7 @@ public partial class MainWindow : Window
                     {
                         _allCards.Clear();
                         LauncherCards.Clear();
+                        UpdateCategoryButtons();
                         ShowCatalogErrors([GetFriendlyMessage(ex)]);
                         UpdateEmptyState();
                         UpdateCount();
@@ -119,6 +125,101 @@ public partial class MainWindow : Window
         ApplyFilter();
     }
 
+    private void AllAppsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _installedOnly = false;
+        _selectedCategory = string.Empty;
+        ApplySidebarSelection();
+        ApplyFilter();
+    }
+
+    private void InstalledAppsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _installedOnly = true;
+        _selectedCategory = string.Empty;
+        ApplySidebarSelection();
+        ApplyFilter();
+    }
+
+    private void CategoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string category }) return;
+        _installedOnly = false;
+        _selectedCategory = category;
+        ApplySidebarSelection();
+        ApplyFilter();
+    }
+
+    private void ClearFiltersButton_Click(object sender, RoutedEventArgs e)
+    {
+        _installedOnly = false;
+        _selectedCategory = string.Empty;
+        SearchBox.Clear();
+        ApplySidebarSelection();
+        ApplyFilter();
+    }
+
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.F &&
+            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape &&
+                 (!string.IsNullOrWhiteSpace(SearchBox.Text) || _installedOnly || !string.IsNullOrEmpty(_selectedCategory)))
+        {
+            ClearFiltersButton_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+    }
+
+    private void UpdateCategoryButtons()
+    {
+        CategoryButtons.Children.Clear();
+        _categoryButtons.Clear();
+        string[] categories = _allCards.Select(card => card.Entry.Category?.Trim())
+            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Select(category => category!)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(category => category, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray()!;
+        if (!categories.Any(category => string.Equals(category, _selectedCategory, StringComparison.CurrentCultureIgnoreCase)))
+            _selectedCategory = string.Empty;
+        foreach (string category in categories)
+        {
+            Button button = new()
+            {
+                Content = category,
+                Tag = category,
+                ToolTip = category,
+                Style = (Style)FindResource("SidebarNavButtonStyle")
+            };
+            button.Click += CategoryButton_Click;
+            CategoryButtons.Children.Add(button);
+            _categoryButtons.Add(button);
+        }
+        ApplySidebarSelection();
+    }
+
+    private void ApplySidebarSelection()
+    {
+        SetSidebarButtonSelected(AllAppsButton, !_installedOnly && string.IsNullOrEmpty(_selectedCategory));
+        SetSidebarButtonSelected(InstalledAppsButton, _installedOnly);
+        foreach (Button button in _categoryButtons)
+            SetSidebarButtonSelected(button, !_installedOnly && string.Equals(button.Tag as string, _selectedCategory, StringComparison.CurrentCultureIgnoreCase));
+        SectionTitle.Text = !string.IsNullOrEmpty(_selectedCategory) ? _selectedCategory : _installedOnly ? "설치된 앱" : "전체 앱";
+    }
+
+    private static void SetSidebarButtonSelected(Button button, bool selected)
+    {
+        button.Background = selected ? new SolidColorBrush(Color.FromRgb(38, 51, 73)) : Brushes.Transparent;
+        button.BorderBrush = selected ? new SolidColorBrush(Color.FromRgb(52, 68, 95)) : Brushes.Transparent;
+        button.Foreground = selected ? new SolidColorBrush(Color.FromRgb(220, 231, 255)) : new SolidColorBrush(Color.FromRgb(150, 160, 178));
+    }
+
     private void ApplyFilter()
     {
         if (SearchBox is null)
@@ -127,9 +228,11 @@ public partial class MainWindow : Window
         }
 
         string query = SearchBox.Text.Trim();
-        IEnumerable<LauncherCard> filtered = string.IsNullOrWhiteSpace(query)
-            ? _allCards
-            : _allCards.Where(card => card.Matches(query));
+        IEnumerable<LauncherCard> filtered = _allCards;
+        if (_installedOnly) filtered = filtered.Where(card => card.IsInstalled);
+        if (!string.IsNullOrEmpty(_selectedCategory))
+            filtered = filtered.Where(card => string.Equals(card.Entry.Category?.Trim(), _selectedCategory, StringComparison.CurrentCultureIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(query)) filtered = filtered.Where(card => card.Matches(query));
 
         LauncherCards.Clear();
         foreach (LauncherCard card in filtered)
@@ -145,24 +248,15 @@ public partial class MainWindow : Window
     {
         bool isEmpty = LauncherCards.Count == 0;
         EmptyState.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
-        LauncherItems.Visibility = isEmpty ? Visibility.Collapsed : Visibility.Visible;
-
-        bool hasSearch = !string.IsNullOrWhiteSpace(SearchBox?.Text);
-        EmptyStateTitle.Text = hasSearch ? "검색 결과가 없습니다" : "등록된 앱이 없습니다";
-        EmptyStateDescription.Text = hasSearch
-            ? "다른 이름, 설명 또는 분류로 검색해 보세요."
-            : "새로고침하여 앱을 다시 찾아보세요.";
+        CardScrollViewer.Visibility = isEmpty ? Visibility.Collapsed : Visibility.Visible;
+        bool hasFilter = !string.IsNullOrWhiteSpace(SearchBox?.Text) || _installedOnly || !string.IsNullOrEmpty(_selectedCategory);
+        EmptyStateTitle.Text = hasFilter ? "일치하는 앱이 없습니다" : "등록된 앱이 없습니다";
+        ClearFiltersButton.Visibility = hasFilter ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateCount()
     {
-        if (string.IsNullOrWhiteSpace(SearchBox?.Text))
-        {
-            CountText.Text = $"앱 {LauncherCards.Count}개";
-            return;
-        }
-
-        CountText.Text = $"{LauncherCards.Count} / {_allCards.Count}개";
+        CountText.Text = $"{LauncherCards.Count}개 앱";
     }
 
     private void ShowCatalogErrors(IReadOnlyList<string> errors)
@@ -254,6 +348,7 @@ public partial class MainWindow : Window
                 card.IsBusy = false;
                 card.IsUninstalling = false;
                 EndOperation();
+                ApplyFilter();
             }
             return;
         }
@@ -282,6 +377,7 @@ public partial class MainWindow : Window
             card.IsBusy = false;
             card.IsInstalling = false;
             EndOperation();
+            ApplyFilter();
         }
     }
 

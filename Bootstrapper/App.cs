@@ -398,6 +398,12 @@ namespace ILauncher.BootstrapperUi
         private readonly ContextMenuStrip _windowMenu;
         private readonly Font _windowButtonFont;
         private readonly FlowLayoutPanel _grid;
+        private readonly TextBox _search;
+        private readonly Label _sectionHeading;
+        private readonly Label _resultCount;
+        private readonly Panel _emptyState;
+        private readonly Dictionary<string, RoundedActionButton> _filterButtons = new Dictionary<string, RoundedActionButton>();
+        private string _selectedFilter = "all";
         private readonly bool _smokeUi;
         private readonly bool _smokeRealProfile;
         private readonly Stopwatch _startup;
@@ -436,7 +442,7 @@ namespace ILauncher.BootstrapperUi
             KeyDown += Form_KeyDown;
             MinimumSize = new Size(720, 420);
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(1100, 480);
+            Size = new Size(1100, 600);
             _ownedWindowIcon = LoadWindowIcon();
             Icon = _ownedWindowIcon;
             ClampToWorkArea();
@@ -479,15 +485,56 @@ namespace ILauncher.BootstrapperUi
             _headerPanel.Controls.Add(_closeButton);
             layoutHeaderActions();
 
-            _grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
-            root.Controls.Add(_grid, 0, 1);
-            int cardWidth = 340;
+            TableLayoutPanel store = new TableLayoutPanel { Dock = DockStyle.Fill, Margin = Padding.Empty, ColumnCount = 2, RowCount = 1, BackColor = BackColor };
+            store.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148));
+            store.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.Controls.Add(store, 0, 1);
+            FlowLayoutPanel sidebar = new FlowLayoutPanel { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(12, 18, 12, 12), AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.FromArgb(20, 24, 32) };
+            store.Controls.Add(sidebar, 0, 0);
+            sidebar.Controls.Add(new Label { Text = "라이브러리", Width = 124, Height = 26, Margin = new Padding(4, 0, 0, 8), ForeColor = Color.FromArgb(142, 153, 175), Font = new Font("Segoe UI Semibold", 9F) });
+            AddFilterButton(sidebar, "all", "전체 앱");
+            AddFilterButton(sidebar, "installed", "설치된 앱");
+            sidebar.Controls.Add(new Panel { Width = 116, Height = 1, Margin = new Padding(4, 12, 4, 14), BackColor = Color.FromArgb(43, 51, 66) });
+            foreach (string category in catalog.Apps.Select(app => app.Category).Where(value => !String.IsNullOrWhiteSpace(value)).Distinct().OrderBy(value => value, StringComparer.CurrentCulture))
+                AddFilterButton(sidebar, "category:" + category, category);
+
+            TableLayoutPanel content = new TableLayoutPanel { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(16), ColumnCount = 1, RowCount = 3, BackColor = BackColor };
+            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+            content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            store.Controls.Add(content, 1, 0);
+            StoreSearchBox searchBox = new StoreSearchBox { Dock = DockStyle.Top, Height = 38, Margin = Padding.Empty };
+            _search = searchBox.Input;
+            content.Controls.Add(searchBox, 0, 0);
+            Panel section = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+            _sectionHeading = new Label { Text = "전체 앱", Left = 0, Top = 6, Width = 300, Height = 30, Font = new Font("Segoe UI Semibold", 17F), ForeColor = ForeColor };
+            _resultCount = new Label { TextAlign = ContentAlignment.MiddleRight, Top = 8, Width = 100, Height = 26, ForeColor = Color.FromArgb(150, 163, 185) };
+            section.Resize += delegate { _resultCount.Left = section.ClientSize.Width - _resultCount.Width; _sectionHeading.Width = Math.Max(0, section.ClientSize.Width - 110); };
+            section.Controls.Add(_sectionHeading);
+            section.Controls.Add(_resultCount);
+            content.Controls.Add(section, 0, 1);
+            Panel results = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = BackColor };
+            content.Controls.Add(results, 0, 2);
+            _grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty, Padding = Padding.Empty, WrapContents = true, BackColor = BackColor };
+            results.Controls.Add(_grid);
+            _emptyState = new Panel { Dock = DockStyle.Fill, Visible = false, BackColor = BackColor };
+            Label emptyText = new Label { Text = "일치하는 앱이 없습니다", AutoSize = true, Left = 14, Top = 40, Font = new Font("Segoe UI Semibold", 13F), ForeColor = Color.FromArgb(181, 191, 210) };
+            RoundedActionButton clearFilters = new RoundedActionButton { Text = "필터 지우기", Left = 14, Top = 82, Width = 120, Height = 34, AccessibleName = "검색 및 필터 지우기" };
+            StyleButton(clearFilters, false);
+            clearFilters.Click += delegate { ClearFilters(); };
+            _emptyState.Controls.Add(emptyText);
+            _emptyState.Controls.Add(clearFilters);
+            results.Controls.Add(_emptyState);
+            int cardWidth = 292;
             foreach (BootstrapApp app in catalog.Apps)
             {
                 AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
                 _cards.Add(app.Id, card);
                 _grid.Controls.Add(card);
             }
+            _search.TextChanged += delegate { ApplyFilters(); };
+            ApplyFilters();
             _statusBar = new LauncherStatusBar();
             _statusBar.Visible = false;
             root.Controls.Add(_statusBar, 0, 2);
@@ -504,6 +551,60 @@ namespace ILauncher.BootstrapperUi
                 await LoadStatusesAsync();
                 if (_smokeUi) _smokeTimer.Start();
             };
+        }
+
+        private void AddFilterButton(FlowLayoutPanel sidebar, string key, string text)
+        {
+            RoundedActionButton button = new RoundedActionButton { Text = text, Width = 124, Height = 36, Margin = new Padding(0, 0, 0, 4), AccessibleName = text, AccessibleDescription = "앱 목록 필터", Cursor = Cursors.Hand };
+            button.Click += delegate { _selectedFilter = key; ApplyFilters(); };
+            sidebar.Controls.Add(button);
+            _filterButtons.Add(key, button);
+        }
+
+        private bool MatchesFilter(AppCard card)
+        {
+            if (_selectedFilter == "installed" && !card.IsInstalled) return false;
+            if (_selectedFilter.StartsWith("category:", StringComparison.Ordinal) && card.App.Category != _selectedFilter.Substring(9)) return false;
+            string query = _search.Text.Trim();
+            return query.Length == 0 || new[] { card.App.Name, card.App.Category, card.App.Description }
+                .Any(value => (value ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private void ApplyFilters()
+        {
+            if (_grid == null || _emptyState == null) return;
+            _grid.SuspendLayout();
+            int visibleCount = 0;
+            foreach (AppCard card in _cards.Values)
+            {
+                bool visible = MatchesFilter(card);
+                card.Visible = visible;
+                if (visible) visibleCount++;
+            }
+            _grid.AutoScrollPosition = Point.Empty;
+            _grid.ResumeLayout(true);
+            _grid.Visible = visibleCount > 0;
+            _emptyState.Visible = visibleCount == 0;
+            if (_emptyState.Visible) _emptyState.BringToFront();
+            else _grid.BringToFront();
+            _sectionHeading.Text = _filterButtons[_selectedFilter].Text;
+            _resultCount.Text = visibleCount + "개 앱";
+            foreach (KeyValuePair<string, RoundedActionButton> item in _filterButtons)
+            {
+                bool selected = item.Key == _selectedFilter;
+                item.Value.BackColor = selected ? Color.FromArgb(35, 53, 88) : Color.FromArgb(20, 24, 32);
+                item.Value.ForeColor = selected ? Color.FromArgb(182, 206, 255) : Color.FromArgb(168, 180, 201);
+                item.Value.FlatAppearance.BorderColor = selected ? Color.FromArgb(58, 81, 122) : item.Value.BackColor;
+                item.Value.AccessibleDescription = selected ? "선택된 앱 목록 필터" : "앱 목록 필터";
+                item.Value.Invalidate();
+            }
+        }
+
+        private void ClearFilters()
+        {
+            _selectedFilter = "all";
+            _search.Clear();
+            ApplyFilters();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -568,6 +669,17 @@ namespace ILauncher.BootstrapperUi
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == (Keys.Control | Keys.F))
+            {
+                _search.Focus();
+                _search.SelectAll();
+                return true;
+            }
+            if (keyData == Keys.Escape && _search.Focused && _search.Text.Length > 0)
+            {
+                _search.Clear();
+                return true;
+            }
             if (keyData == (Keys.Alt | Keys.Space))
             {
                 _windowMenu.Show(_headerPanel, new Point(8, _headerPanel.Height));
@@ -728,6 +840,7 @@ namespace ILauncher.BootstrapperUi
         private void WriteSmokeReportAndClose()
         {
             Dictionary<string, object> chromeChecks = RunChromeSmokeChecks();
+            Dictionary<string, object> filterChecks = RunFilterSmokeChecks();
             Dictionary<string, object> cardChecks = RunCardSmokeChecks();
             Dictionary<string, object> paintChecks = RunRoundedPaintSmokeChecks();
             Rectangle bounds = Bounds;
@@ -796,6 +909,7 @@ namespace ILauncher.BootstrapperUi
                     } },
                 { "smokeChromeChecks", chromeChecks },
                 { "smokeCardChecks", cardChecks },
+                { "smokeFilterChecks", filterChecks },
                 { "smokeRoundedPaintChecks", paintChecks },
                 { "windowIconSource", _windowIconSource },
                 { "windowIconSize", _ownedWindowIcon == null ? null : _ownedWindowIcon.Width + "x" + _ownedWindowIcon.Height },
@@ -878,6 +992,70 @@ namespace ILauncher.BootstrapperUi
             return result;
         }
 
+        private Dictionary<string, object> RunFilterSmokeChecks()
+        {
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            if (_cards.Count == 0) return result;
+            AppCard sample = _cards.Values.First();
+            bool wasInstalled = sample.IsInstalled;
+            try
+            {
+                ClearFilters();
+                _search.Text = sample.App.Name.ToUpperInvariant();
+                result["searchMatchesNameIgnoringCase"] = sample.Visible && _cards.Values.Where(card => card.Visible).All(card =>
+                    new[] { card.App.Name, card.App.Category, card.App.Description }.Any(value => (value ?? "").IndexOf(_search.Text, StringComparison.OrdinalIgnoreCase) >= 0));
+                _search.Text = sample.App.Description;
+                result["searchMatchesDescription"] = sample.Visible;
+                _search.Text = sample.App.Category;
+                result["searchMatchesCategory"] = sample.Visible;
+                _search.Text = sample.App.Name;
+                _filterButtons["category:" + sample.App.Category].PerformClick();
+                result["categoryCombinesWithSearch"] = sample.Visible && _cards.Values.Where(card => card.Visible).All(card => card.App.Category == sample.App.Category);
+                result["categoriesComeFromCatalog"] = _filterButtons.Count == 2 + _catalog.Apps.Select(app => app.Category).Where(value => !String.IsNullOrWhiteSpace(value)).Distinct().Count();
+                sample.SetBusy(true, "설치 중…");
+                _search.Text = "__no_matching_app_fixture__";
+                result["hiddenOperationKeepsCardAndLock"] = Object.ReferenceEquals(sample, _cards[sample.App.Id]) && sample.ActionsLocked && sample.StatusLabel == "설치 중…";
+                result["noResultsShowsClearAction"] = !_cards.Values.Any(card => card.Visible) && _emptyState.Visible && _resultCount.Text == "0개 앱";
+                using (Bitmap screenshot = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
+                    string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".empty.png");
+                    screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                    result["emptyScreenshotPath"] = path;
+                }
+                _emptyState.Controls.OfType<Button>().Single().PerformClick();
+                result["clearRestoresAllCards"] = _search.Text.Length == 0 && _selectedFilter == "all" && _cards.Values.All(card => card.Visible) && !_emptyState.Visible;
+                result["filterPreservesBusyState"] = sample.HasCompactBusyState;
+                _search.Text = "__no_matching_app_fixture__";
+                sample.SetStatus(null);
+                FinishOperation(sample.App.Id);
+                ClearFilters();
+                result["hiddenCompletionRestoresIdleCard"] = Object.ReferenceEquals(sample, _cards[sample.App.Id]) && sample.Visible && sample.HasCompactIdleState && !sample.ActionsLocked;
+                _filterButtons["installed"].PerformClick();
+                result["installedFilterUsesActualState"] = _cards.Values.All(card => card.Visible == card.IsInstalled);
+                sample.SetSmokeInstalledStatus();
+                FinishOperation(sample.App.Id);
+                bool installedAppears = sample.Visible;
+                sample.SetStatus(null);
+                FinishOperation(sample.App.Id);
+                result["installedFilterRefreshesAfterOperation"] = installedAppears && !sample.Visible && _selectedFilter == "installed";
+                ClearFilters();
+                _search.Text = sample.App.Name;
+                Message message = Message.Create(Handle, 0, IntPtr.Zero, IntPtr.Zero);
+                bool focusHandled = ProcessCmdKey(ref message, Keys.Control | Keys.F);
+                bool searchFocused = _search.Focused && _search.SelectionLength == _search.Text.Length;
+                bool clearHandled = ProcessCmdKey(ref message, Keys.Escape);
+                result["searchKeyboardShortcuts"] = focusHandled && searchFocused && clearHandled && _search.Text.Length == 0;
+            }
+            finally
+            {
+                sample.SetBusy(false, null);
+                if (wasInstalled) sample.SetSmokeInstalledStatus(); else sample.SetStatus(null);
+                ClearFilters();
+            }
+            return result;
+        }
+
         private Dictionary<string, object> RunCardSmokeChecks()
         {
             List<AppCard> fixtures = new List<AppCard>();
@@ -893,7 +1071,7 @@ namespace ILauncher.BootstrapperUi
                 while (_grid.Controls.Count < 9)
                 {
                     BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
-                    AppCard fixture = new AppCard(fixtureApp, 340, delegate { }, delegate { }, delegate { }, true);
+                    AppCard fixture = new AppCard(fixtureApp, 292, delegate { }, delegate { }, delegate { }, true);
                     fixture.SetStatus(null);
                     fixtures.Add(fixture);
                     _grid.Controls.Add(fixture);
@@ -901,7 +1079,8 @@ namespace ILauncher.BootstrapperUi
                 _grid.PerformLayout();
                 Application.DoEvents();
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
-                result["compactCardHeight"] = all.All(card => card.Height == 112);
+                _resultCount.Text = all.Length + "개 앱";
+                result["compactCardHeight"] = all.All(card => card.Height == 124);
                 result["categoryBadgesClearTitlesAndActions"] = all.All(card => card.CategoryBadgeClearsContent);
                 result["fullTitlesFitHeader"] = all.All(card => card.TitleFitsHeader);
                 result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
@@ -920,7 +1099,7 @@ namespace ILauncher.BootstrapperUi
             {
                 sample.SetBusy(false, null);
                 foreach (AppCard fixture in fixtures) { _grid.Controls.Remove(fixture); fixture.Dispose(); }
-                _grid.PerformLayout();
+                ApplyFilters();
             }
             return result;
         }
@@ -938,7 +1117,9 @@ namespace ILauncher.BootstrapperUi
             bool restoredFromMinimize = false;
             bool taskbarRestoreKeepsMaximized = false;
             bool minimumSizeScrollOverflowAccessible = false;
+            bool minimumSizeLastCardVisible = false;
             bool minimumSizeActionsInsideCards = false;
+            bool minimumSizeSidebarEndAccessible = false;
             bool idleLayoutRestoresNoScroll = false;
             try
             {
@@ -972,9 +1153,14 @@ namespace ILauncher.BootstrapperUi
                     Application.DoEvents();
                 }
                 minimumSizeScrollOverflowAccessible = overflowVisible && _grid.AutoScrollPosition.Y < 0;
+                minimumSizeLastCardVisible = _cards.Count == 0 || _cards.Values.Max(card => card.Bottom) <= _grid.ClientSize.Height;
                 minimumSizeActionsInsideCards = _cards.Values.All(card =>
                     new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.RunActionBounds) &&
                     new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.InstallActionBounds));
+                RoundedActionButton lastCategory = _filterButtons.Values.OrderBy(button => button.Top).Last();
+                ScrollableControl sidebar = (ScrollableControl)lastCategory.Parent;
+                sidebar.ScrollControlIntoView(lastCategory);
+                minimumSizeSidebarEndAccessible = sidebar.ClientRectangle.Contains(lastCategory.Bounds);
                 _grid.AutoScrollPosition = Point.Empty;
                 using (Bitmap screenshot = new Bitmap(Width, Height))
                 {
@@ -1001,7 +1187,9 @@ namespace ILauncher.BootstrapperUi
                 { "taskbarRestoreKeepsMaximized", taskbarRestoreKeepsMaximized },
                 { "minimumSize", new Dictionary<string, int> { { "width", MinimumSize.Width }, { "height", MinimumSize.Height } } },
                 { "minimumSizeScrollOverflowAccessible", minimumSizeScrollOverflowAccessible },
+                { "minimumSizeLastCardVisible", minimumSizeLastCardVisible },
                 { "minimumSizeActionsInsideCards", minimumSizeActionsInsideCards },
+                { "minimumSizeSidebarEndAccessible", minimumSizeSidebarEndAccessible },
                 { "idleLayoutRestoresNoScroll", idleLayoutRestoresNoScroll },
                 { "resizeEdgeHitTest", SendNcHitTest(resizePoint) == HtLeft },
                 { "titleDragHitTest", SendNcHitTest(titlePoint) == HtCaption },
@@ -1022,7 +1210,7 @@ namespace ILauncher.BootstrapperUi
         {
             Rectangle area = Screen.FromPoint(Cursor.Position).WorkingArea;
             int width = Math.Max(480, Math.Min(1100, area.Width - 24));
-            int height = Math.Max(360, Math.Min(480, area.Height - 24));
+            int height = Math.Max(360, Math.Min(600, area.Height - 24));
             MinimumSize = new Size(Math.Min(720, width), Math.Min(420, height));
             Width = width;
             Height = height;
@@ -1084,6 +1272,7 @@ namespace ILauncher.BootstrapperUi
                 }
             }
             catch (Exception ex) { SetAmbientStatusState("error"); _status.Text = "목록 확인 실패: " + Program.ShortError(ex); }
+            ApplyFilters();
         }
         private async void InstallClicked(BootstrapApp app)
         {
@@ -1161,6 +1350,7 @@ namespace ILauncher.BootstrapperUi
         {
             _inFlight.Remove(appId);
             SetBusy(appId, false);
+            ApplyFilters();
             if (_inFlight.Count > 0) _statusBar.SetState("working");
             _statusBar.SetProgress(0, 0);
         }
@@ -1377,6 +1567,61 @@ namespace ILauncher.BootstrapperUi
         }
     }
 
+    internal sealed class StoreSearchBox : Panel
+    {
+        internal readonly TextBox Input;
+        private readonly Label _hint;
+        private readonly RoundedActionButton _clear;
+
+        internal StoreSearchBox()
+        {
+            DoubleBuffered = true;
+            BackColor = Color.FromArgb(23, 28, 38);
+            Input = new TextBox { BorderStyle = BorderStyle.None, Left = 38, Top = 10, BackColor = BackColor, ForeColor = Color.FromArgb(236, 241, 250), AccessibleName = "앱 검색", TabIndex = 0 };
+            _hint = new Label { Text = "앱 검색", Left = 38, Top = 9, Width = 120, Height = 22, ForeColor = Color.FromArgb(142, 153, 175), BackColor = BackColor };
+            _hint.Click += delegate { Input.Focus(); };
+            _clear = new RoundedActionButton { Text = "×", Width = 28, Height = 28, Top = 5, BackColor = BackColor, ForeColor = Color.FromArgb(180, 193, 214), Visible = false, AccessibleName = "검색어 지우기", Cursor = Cursors.Hand, TabIndex = 1 };
+            _clear.FlatAppearance.BorderColor = BackColor;
+            _clear.Click += delegate { Input.Clear(); Input.Focus(); };
+            Input.TextChanged += delegate { _hint.Visible = Input.Text.Length == 0; _clear.Visible = Input.Text.Length > 0; };
+            Input.GotFocus += delegate { Invalidate(); };
+            Input.LostFocus += delegate { Invalidate(); };
+            Controls.Add(Input);
+            Controls.Add(_hint);
+            Controls.Add(_clear);
+            _hint.BringToFront();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (Input == null) return;
+            Input.Width = Math.Max(20, ClientSize.Width - 78);
+            _clear.Left = ClientSize.Width - 34;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent == null ? Color.FromArgb(17, 20, 27) : Parent.BackColor);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 2, Height - 2), 11))
+            using (SolidBrush fill = new SolidBrush(BackColor))
+            using (Pen border = new Pen(Input.Focused ? Color.FromArgb(108, 145, 250) : Color.FromArgb(47, 56, 71)))
+            using (Pen glyph = new Pen(Color.FromArgb(148, 163, 185), 1.5F))
+            {
+                e.Graphics.FillPath(fill, path);
+                e.Graphics.DrawPath(border, path);
+                e.Graphics.DrawEllipse(glyph, 14, 11, 9, 9);
+                e.Graphics.DrawLine(glyph, 22, 19, 27, 24);
+            }
+            base.OnPaint(e);
+        }
+    }
+
     internal sealed class RoundedActionButton : Button
     {
         private bool _hovered;
@@ -1474,12 +1719,13 @@ namespace ILauncher.BootstrapperUi
         public Rectangle InstallActionBounds { get { return _install.Bounds; } }
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
+        public bool ActionsLocked { get { return !_install.Enabled && !_run.Enabled; } }
         public bool HasCompactBusyState { get { return _status.Visible && !_description.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Bounds == _description.Bounds; } }
         public bool HasCompactIdleState { get { return !_status.Visible && _description.Visible && !_progress.Visible && _status.Text.Length == 0; } }
         private readonly Label _description;
         private readonly Label _name;
         private readonly CategoryBadge _category;
-        public bool CategoryBadgeClearsContent { get { return _category.Left >= _name.Right + 10 && _category.Right + 6 == _install.Left && _install.Right == Width - 14 && _install.Bottom + 10 <= _run.Top; } }
+        public bool CategoryBadgeClearsContent { get { return _category.Left >= 56 && _category.Bottom + 10 <= _name.Top && _category.Right + 6 == _install.Left && _install.Right == Width - 14 && _install.Bottom + 10 <= _run.Top && _description.Right + 10 <= _run.Left; } }
         public bool TitleFitsHeader { get { return TextRenderer.MeasureText(_name.Text, _name.Font).Width <= _name.Width; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
@@ -1493,29 +1739,28 @@ namespace ILauncher.BootstrapperUi
         {
             App = app;
             _actionsEnabled = actionsEnabled;
-            Width = width; Height = 112; Margin = new Padding(6); Padding = new Padding(14);
+            Width = width; Height = 124; Margin = new Padding(0, 0, 10, 10); Padding = new Padding(14);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            PictureBox icon = new PictureBox { Left = 14, Top = 16, Width = 32, Height = 32, SizeMode = PictureBoxSizeMode.Zoom };
+            PictureBox icon = new PictureBox { Left = 14, Top = 14, Width = 32, Height = 32, SizeMode = PictureBoxSizeMode.Zoom };
             bool iconDecoded;
             icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(icon);
-            _name = new Label { Text = app.Name, Left = 52, Top = 15, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 14, Top = 52, Width = width - 106, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
             _category = new CategoryBadge { Text = app.Category, Top = 14, Height = 22, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(157, 181, 221) };
             _category.Width = Math.Min(90, TextRenderer.MeasureText(app.Category, _category.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + 20);
             _category.Left = width - 50 - _category.Width;
-            _name.Width = _category.Left - 10 - _name.Left;
             Controls.Add(_category);
-            _description = new Label { Text = app.Description, Left = 52, Top = 52, Width = width - 144, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
+            _description = new Label { Text = app.Description, Left = 14, Top = 78, Width = width - 106, Height = 32, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
             Controls.Add(_description);
             _status = new Label { Text = "", Bounds = _description.Bounds, Font = _description.Font, Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
-            _progress = new ProgressBar { Left = 14, Top = 104, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
+            _progress = new ProgressBar { Left = 14, Top = 116, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
             _install = new RoundedActionButton { Text = "", Left = width - 44, Top = 10, Width = 30, Height = 30 };
-            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 58, Width = 66, Height = 34 };
+            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 76, Width = 66, Height = 34 };
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;
