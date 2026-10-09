@@ -436,7 +436,7 @@ namespace ILauncher.BootstrapperUi
             KeyDown += Form_KeyDown;
             MinimumSize = new Size(720, 420);
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(1240, 480);
+            Size = new Size(1100, 480);
             _ownedWindowIcon = LoadWindowIcon();
             Icon = _ownedWindowIcon;
             ClampToWorkArea();
@@ -481,7 +481,7 @@ namespace ILauncher.BootstrapperUi
 
             _grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(18, 18, 18, 18), WrapContents = true, BackColor = BackColor };
             root.Controls.Add(_grid, 0, 1);
-            int cardWidth = 374;
+            int cardWidth = 340;
             foreach (BootstrapApp app in catalog.Apps)
             {
                 AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
@@ -757,14 +757,14 @@ namespace ILauncher.BootstrapperUi
                         { "action", card.InstallActionLabel },
                         { "actionColor", card.InstallActionColor },
                         { "actionAccessibleName", card.InstallAccessibleName },
-                        { "actionPlacement", "grouped-right-icon" },
+                        { "actionPlacement", "top-right-icon" },
                         { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
                         { "portableAction", card.RunActionLabel },
                         { "portablePlacement", card.RunActionPlacement },
                         { "runBounds", RectangleToDictionary(card.RunActionBounds) },
                         { "cardBounds", RectangleToDictionary(card.CardBounds) },
                         { "status", card.StatusLabel },
-                        { "actionsShareBaseline", card.InstallActionBounds.Top == card.RunActionBounds.Top },
+                        { "installAboveRun", card.InstallActionBounds.Bottom + 10 <= card.RunActionBounds.Top && card.InstallActionBounds.Right == card.RunActionBounds.Right },
                         { "titleHasFullTooltip", card.TitleHasFullTooltip }
                     }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
@@ -893,7 +893,7 @@ namespace ILauncher.BootstrapperUi
                 while (_grid.Controls.Count < 9)
                 {
                     BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
-                    AppCard fixture = new AppCard(fixtureApp, 374, delegate { }, delegate { }, delegate { }, true);
+                    AppCard fixture = new AppCard(fixtureApp, 340, delegate { }, delegate { }, delegate { }, true);
                     fixture.SetStatus(null);
                     fixtures.Add(fixture);
                     _grid.Controls.Add(fixture);
@@ -903,6 +903,7 @@ namespace ILauncher.BootstrapperUi
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
                 result["compactCardHeight"] = all.All(card => card.Height == 112);
                 result["categoryBadgesClearTitlesAndActions"] = all.All(card => card.CategoryBadgeClearsContent);
+                result["fullTitlesFitHeader"] = all.All(card => card.TitleFitsHeader);
                 result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
                     all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
@@ -1020,7 +1021,7 @@ namespace ILauncher.BootstrapperUi
         private void ClampToWorkArea()
         {
             Rectangle area = Screen.FromPoint(Cursor.Position).WorkingArea;
-            int width = Math.Max(480, Math.Min(1240, area.Width - 24));
+            int width = Math.Max(480, Math.Min(1100, area.Width - 24));
             int height = Math.Max(360, Math.Min(480, area.Height - 24));
             MinimumSize = new Size(Math.Min(720, width), Math.Min(420, height));
             Width = width;
@@ -1478,7 +1479,8 @@ namespace ILauncher.BootstrapperUi
         private readonly Label _description;
         private readonly Label _name;
         private readonly CategoryBadge _category;
-        public bool CategoryBadgeClearsContent { get { return _category.Left >= _name.Right + 10 && _category.Right == Width - 14 && _category.Bottom + 10 <= _install.Top; } }
+        public bool CategoryBadgeClearsContent { get { return _category.Left >= _name.Right + 10 && _category.Right + 6 == _install.Left && _install.Right == Width - 14 && _install.Bottom + 10 <= _run.Top; } }
+        public bool TitleFitsHeader { get { return TextRenderer.MeasureText(_name.Text, _name.Font).Width <= _name.Width; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
         private readonly RoundedActionButton _run;
@@ -1494,25 +1496,26 @@ namespace ILauncher.BootstrapperUi
             Width = width; Height = 112; Margin = new Padding(6); Padding = new Padding(14);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            PictureBox icon = new PictureBox { Left = 14, Top = 24, Width = 40, Height = 40, SizeMode = PictureBoxSizeMode.Zoom };
+            PictureBox icon = new PictureBox { Left = 14, Top = 16, Width = 32, Height = 32, SizeMode = PictureBoxSizeMode.Zoom };
             bool iconDecoded;
             icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(icon);
-            _name = new Label { Text = app.Name, Left = 64, Top = 20, Width = width - 196, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 52, Top = 15, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
             _category = new CategoryBadge { Text = app.Category, Top = 14, Height = 22, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(157, 181, 221) };
-            _category.Width = Math.Min(106, TextRenderer.MeasureText(app.Category, _category.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + 20);
-            _category.Left = width - 14 - _category.Width;
+            _category.Width = Math.Min(90, TextRenderer.MeasureText(app.Category, _category.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + 20);
+            _category.Left = width - 50 - _category.Width;
+            _name.Width = _category.Left - 10 - _name.Left;
             Controls.Add(_category);
-            _description = new Label { Text = app.Description, Left = 64, Top = 51, Width = width - 196, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
+            _description = new Label { Text = app.Description, Left = 52, Top = 52, Width = width - 144, Height = 34, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
             Controls.Add(_description);
             _status = new Label { Text = "", Bounds = _description.Bounds, Font = _description.Font, Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 14, Top = 104, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new RoundedActionButton { Text = "", Left = width - 120, Top = 51, Width = 34, Height = 34 };
-            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 51, Width = 66, Height = 34 };
+            _install = new RoundedActionButton { Text = "", Left = width - 44, Top = 10, Width = 30, Height = 30 };
+            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 58, Width = 66, Height = 34 };
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;

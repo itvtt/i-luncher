@@ -263,15 +263,18 @@ internal static class Program
                         ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category);
                     Rect titleBounds = BoundsInWindow(title, window);
                     Rect badgeBounds = BoundsInWindow((Border)category.Parent, window);
-                    return Math.Abs(installBounds.Top - runBounds.Top) < 1 && install.ActualWidth == 34
-                        && Math.Abs(runBounds.Left - installBounds.Right - 6) < 1
-                        && installBounds.Left >= descriptionBounds.Right + 10
+                    var titleMeasure = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentCulture,
+                        title.FlowDirection, new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
+                        title.FontSize, Brushes.White, VisualTreeHelper.GetDpi(title).PixelsPerDip);
+                    return installBounds.Bottom + 10 <= runBounds.Top && install.ActualWidth == 30
+                        && Math.Abs(installBounds.Right - runBounds.Right) < 1
+                        && runBounds.Left >= descriptionBounds.Right + 10
                         && badgeBounds.Left >= titleBounds.Right + 10
-                        && Math.Abs(badgeBounds.Right - runBounds.Right) < 1
-                        && badgeBounds.Bottom + 10 <= runBounds.Top
+                        && Math.Abs(badgeBounds.Right + 6 - installBounds.Left) < 1
+                        && titleMeasure.WidthIncludingTrailingWhitespace <= title.ActualWidth + 0.1
                         && run.ActualWidth is >= 64 and <= 68
                         && run.ActualHeight >= 32 && runBounds.Top < descriptionBounds.Bottom;
-                }), "Upper-right category badges clear titles and the aligned action group below");
+                }), "Narrow cards keep full titles clear of category and top install actions, with Run beside the description");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
@@ -370,7 +373,7 @@ internal static class Program
                     Descendants<ItemsControl>(scroll).Any(items => ReferenceEquals(items, window.FindName("LauncherItems"))));
                 Check(nineBounds.Select(bounds => Math.Round(bounds.Left)).Distinct().Count() == 3
                     && nineBounds.Select(bounds => Math.Round(bounds.Top)).Distinct().Count() == 3
-                    && Descendants<Border>(window).Count(border => border.Width == 374 && border.ActualHeight == 112) == 9
+                    && Descendants<Border>(window).Count(border => border.Width == 340 && border.ActualHeight == 112) == 9
                     && cardScroll.ScrollableHeight < 1,
                     "Nine fixture cards fit three columns and three rows at the default window size");
                 Directory.CreateDirectory(imageDirectory);
@@ -396,7 +399,7 @@ internal static class Program
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
                     return run.ActualWidth is >= 64 and <= 68 && run.ActualHeight >= 32
-                           && install.ActualWidth >= 32 && install.ActualHeight >= 32
+                           && install.ActualWidth >= 28 && install.ActualHeight >= 28
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;
                 });
@@ -414,7 +417,7 @@ internal static class Program
                 string minimumPreview = Path.Combine(imageDirectory, "i-luncher-minimum-preview.png");
                 SaveScreenshot(window, minimumPreview);
                 Check(File.Exists(minimumPreview), "Minimum-size RenderTargetBitmap screenshot saved");
-                window.Width = 1240;
+                window.Width = 1100;
                 window.Height = 580;
                 window.UpdateLayout();
                 await Idle(window);
