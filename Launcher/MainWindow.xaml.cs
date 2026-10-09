@@ -533,8 +533,8 @@ public partial class MainWindow : Window
             : IsBusy && IsUninstalling ? "\uC81C\uAC70 \uC911\u2026"
             : IsInstalled ? (Entry.CanUninstall ? "\uC81C\uAC70" : "\uC124\uCE58\uC644\uB8CC") : "\uC124\uCE58";
         public string InstallAutomationId => $"Install_{Entry.Id}";
-        public string RunAccessibleName => $"{Entry.Name} \uC2E4\uD589";
-        public string RunToolTip => "\uC571 \uC2E4\uD589";
+        public string RunAccessibleName => $"\uC2E4\uD589 {Entry.Name}";
+        public string RunToolTip => $"\uC2E4\uD589 {Entry.Name}";
         public string InstallAccessibleName => $"{Entry.Name} {InstallLabel}";
         public string InstallToolTip => IsInstalled && Entry.CanUninstall
             ? "\uC2DC\uC791 \uBA54\uB274 \uB4F1\uB85D \uC81C\uAC70"

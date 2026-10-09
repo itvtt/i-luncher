@@ -526,7 +526,7 @@ namespace ILauncher.BootstrapperUi
             _emptyState.Controls.Add(emptyText);
             _emptyState.Controls.Add(clearFilters);
             results.Controls.Add(_emptyState);
-            int cardWidth = 292;
+            int cardWidth = 220;
             foreach (BootstrapApp app in catalog.Apps)
             {
                 AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
@@ -1073,7 +1073,7 @@ namespace ILauncher.BootstrapperUi
                 while (_grid.Controls.Count < 9)
                 {
                     BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
-                    AppCard fixture = new AppCard(fixtureApp, 292, delegate { }, delegate { }, delegate { }, true);
+                    AppCard fixture = new AppCard(fixtureApp, 220, delegate { }, delegate { }, delegate { }, true);
                     fixture.SetStatus(null);
                     fixtures.Add(fixture);
                     _grid.Controls.Add(fixture);
@@ -1082,10 +1082,10 @@ namespace ILauncher.BootstrapperUi
                 Application.DoEvents();
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
                 _resultCount.Text = all.Length + "개 앱";
-                result["compactCardHeight"] = all.All(card => card.Height == 124);
+                result["compactCardHeight"] = all.All(card => card.Height == 104);
                 result["iconTitleAndActionsDoNotOverlap"] = all.All(card => card.ContentClearsActions);
                 result["fullTitlesFitHeader"] = all.All(card => card.TitleFitsHeader);
-                result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
+                result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 4 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
                     all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
                 string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".nine-cards.png");
@@ -1626,12 +1626,14 @@ namespace ILauncher.BootstrapperUi
 
     internal sealed class RoundedActionButton : Button
     {
+        public float CornerRadius { get; set; }
         private bool _hovered;
         private bool _pressed;
         internal event PaintEventHandler PaintGlyph;
 
         public RoundedActionButton()
         {
+            CornerRadius = 11;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             FlatStyle = FlatStyle.Flat;
@@ -1655,7 +1657,7 @@ namespace ILauncher.BootstrapperUi
                 fill = FlatAppearance.MouseOverBackColor.IsEmpty ? ControlPaint.Light(BackColor, 0.12F) : FlatAppearance.MouseOverBackColor;
             bool focused = Enabled && Focused;
             float inset = focused ? 1F : 0.5F;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(inset, inset, Width - inset * 2 - 1, Height - inset * 2 - 1), 11))
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(inset, inset, Width - inset * 2 - 1, Height - inset * 2 - 1), CornerRadius))
             using (SolidBrush brush = new SolidBrush(fill))
             using (Pen border = new Pen(focused ? Color.FromArgb(124, 156, 255) : FlatAppearance.BorderColor, focused ? 2F : 1F))
             {
@@ -1716,18 +1718,18 @@ namespace ILauncher.BootstrapperUi
         public string InstallActionLabel { get { return _installed ? "제거" : "설치"; } }
         public string InstallActionColor { get { return ColorTranslator.ToHtml(_install.BackColor); } }
         public string InstallAccessibleName { get { return _install.AccessibleName; } }
-        public string RunActionLabel { get { return _run.Text; } }
+        public string RunActionLabel { get { return "실행"; } }
         public string RunActionPlacement { get { return "right-side"; } }
         public Rectangle RunActionBounds { get { return _run.Bounds; } }
         public Rectangle InstallActionBounds { get { return _install.Bounds; } }
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
         public bool ActionsLocked { get { return !_install.Enabled && !_run.Enabled; } }
-        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Bottom <= _run.Top && _status.Left >= _icon.Right + 10; } }
+        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Right + 6 <= _run.Left && _status.Left >= _icon.Right + 10; } }
         public bool HasCompactIdleState { get { return !_status.Visible && !_progress.Visible && _status.Text.Length == 0 && Controls.OfType<Label>().Count(label => label.Visible) == 1; } }
         private readonly PictureBox _icon;
         private readonly Label _name;
-        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 10 <= _install.Left && _install.Right == Width - 14 && _name.Bottom <= _status.Top && _status.Bottom <= _run.Top && _install.Bottom + 10 <= _run.Top; } }
+        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _install.Bottom <= _name.Top && _install.Right == Width - 10 && _name.Bottom <= _status.Top && _name.Bottom <= _run.Top && _status.Right + 6 <= _run.Left && ClientRectangle.Contains(_run.Bounds); } }
         public bool TitleFitsHeader { get { return TextRenderer.MeasureText(_name.Text, _name.Font).Width <= _name.Width; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
@@ -1741,22 +1743,23 @@ namespace ILauncher.BootstrapperUi
         {
             App = app;
             _actionsEnabled = actionsEnabled;
-            Width = width; Height = 124; Margin = new Padding(0, 0, 10, 10); Padding = new Padding(14);
+            Width = width; Height = 104; Margin = new Padding(0, 0, 10, 10); Padding = new Padding(14);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            _icon = new PictureBox { Left = 18, Top = 26, Width = 64, Height = 64, SizeMode = PictureBoxSizeMode.Zoom, AccessibleName = app.Name, AccessibleDescription = app.Category + ": " + app.Description };
+            _icon = new PictureBox { Left = 14, Top = 20, Width = 64, Height = 64, SizeMode = PictureBoxSizeMode.Zoom, AccessibleName = app.Name, AccessibleDescription = app.Category + ": " + app.Description };
             bool iconDecoded;
             _icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(_icon);
-            _name = new Label { Text = app.Name, Left = 98, Top = 24, Width = width - 152, Height = 24, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 90, Top = 39, Width = width - 104, Height = 22, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
-            _status = new Label { Text = "", Left = 98, Top = 52, Width = width - 112, Height = 20, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _status = new Label { Text = "", Left = 90, Top = 64, Width = 84, Height = 30, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
-            _progress = new ProgressBar { Left = 14, Top = 116, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
+            _progress = new ProgressBar { Left = 14, Top = 98, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new RoundedActionButton { Text = "", Left = width - 44, Top = 10, Width = 30, Height = 30 };
-            _run = new RoundedActionButton { Text = "실행", Left = width - 80, Top = 76, Width = 66, Height = 34 };
+            _install = new RoundedActionButton { Text = "", Left = width - 36, Top = 8, Width = 26, Height = 26 };
+            _run = new RoundedActionButton { Text = "", Left = width - 40, Top = 68, Width = 30, Height = 30, CornerRadius = 15 };
+            _run.PaintGlyph += DrawPlayActionIcon;
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
             _install.FlatStyle = FlatStyle.Flat;
@@ -1766,6 +1769,7 @@ namespace ILauncher.BootstrapperUi
             _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
             _toolTip = new ToolTip { ShowAlways = true };
             _toolTip.SetToolTip(_name, app.Name);
+            _toolTip.SetToolTip(_run, "실행 " + app.Name);
             _toolTip.SetToolTip(_icon, app.Name + "\r\n" + app.Category + " · " + app.Description);
             _toolTip.SetToolTip(this, app.Category + " · " + app.Description);
             LauncherFormStyle(_run, true);
@@ -1803,8 +1807,7 @@ namespace ILauncher.BootstrapperUi
             _progress.Visible = busy;
             _status.Visible = busy;
             UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
-            _run.Text = "실행";
-            _run.AccessibleName = _run.Text + " " + App.Name;
+            _run.AccessibleName = "실행 " + App.Name;
             _status.Text = busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : "";
             ApplyInstallActionStyle();
         }
@@ -1820,16 +1823,26 @@ namespace ILauncher.BootstrapperUi
             _toolTip.SetToolTip(_install, busyLabel != null ? action : App.Name + " " + action + ": " + description);
             _install.Invalidate();
         }
+        private void DrawPlayActionIcon(object sender, PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (SolidBrush fill = new SolidBrush(_run.Enabled ? _run.ForeColor : Color.FromArgb(137, 146, 163)))
+                e.Graphics.FillPolygon(fill, new[] { new PointF(11, 8.5F), new PointF(11, 20.5F), new PointF(21, 14.5F) });
+        }
         private void DrawInstallActionIcon(object sender, PaintEventArgs e)
         {
             Graphics graphics = e.Graphics;
+            GraphicsState saved = graphics.Save();
+            try
+            {
+            graphics.ScaleTransform(_install.Width / 30F, _install.Height / 30F);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Color color = _install.ForeColor;
             using (Pen pen = new Pen(color, 2.1F))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
-                float cx = _install.ClientSize.Width / 2F;
+                float cx = 15F;
                 if (_installed)
                 {
                     graphics.DrawLine(pen, cx - 7, 11, cx + 7, 11);
@@ -1850,6 +1863,8 @@ namespace ILauncher.BootstrapperUi
                     graphics.DrawLine(pen, cx, 19, cx + 5, 14);
                 }
             }
+            }
+            finally { graphics.Restore(saved); }
         }
         private void ApplyInstallActionStyle()
         {
@@ -1874,7 +1889,7 @@ namespace ILauncher.BootstrapperUi
         {
             e.Graphics.Clear(Parent == null ? Color.FromArgb(17, 20, 27) : Parent.BackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 16))
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 14))
             using (SolidBrush fill = new SolidBrush(BackColor))
                 e.Graphics.FillPath(fill, path);
         }
@@ -1882,7 +1897,7 @@ namespace ILauncher.BootstrapperUi
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 16))
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 14))
             using (Pen border = new Pen(Color.FromArgb(47, 56, 71)))
                 e.Graphics.DrawPath(border, path);
         }

@@ -75,7 +75,7 @@ internal static class Program
                     "Delayed catalog load did not populate launcher cards.");
                 responsivenessWindow.UpdateLayout();
                 Button runOnlyButton = ActionButtons(responsivenessWindow, "Launch_").Single();
-                Check(runOnlyButton.ActualWidth is >= 64 and <= 68
+                Check(runOnlyButton.ActualWidth == 30 && runOnlyButton.ActualHeight == 30
                       && ActionButtons(responsivenessWindow, "Install_").All(button =>
                           !button.IsVisible || !KeyboardNavigation.GetIsTabStop(button)),
                     "Run-only app keeps the compact right-side action and no install tab stop");
@@ -290,11 +290,11 @@ internal static class Program
                           && button.IsEnabled && button.Focusable && KeyboardNavigation.GetIsTabStop(button)
                           && ExpectedInstalledAwareInstallLabel(button, window.LauncherCards)),
                     "Every supported app exposes an enabled, accessible install action");
-                Check(launchButtons.All(button => Equals(button.Content, "실행")
-                                                   && AutomationProperties.GetName(button).EndsWith(" 실행", StringComparison.Ordinal)
-                                                   && Equals(button.ToolTip, "앱 실행")
+                Check(launchButtons.All(button => button.Content is System.Windows.Shapes.Path
+                                                   && AutomationProperties.GetName(button).StartsWith("실행 ", StringComparison.Ordinal)
+                                                   && Equals(button.ToolTip, AutomationProperties.GetName(button))
                                                    && button.Focusable && KeyboardNavigation.GetIsTabStop(button)),
-                    "Run actions keep concise accessible labels and tooltips");
+                    "Play actions keep app-specific accessible labels and tooltips");
                 Check(!Descendants<TextBlock>(window).Any(text => text.Text.Equals("오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.", StringComparison.Ordinal))
                       && window.LauncherCards.All(card => Descendants<Image>(window).Any(image =>
                           ReferenceEquals(image.DataContext, card)
@@ -322,21 +322,24 @@ internal static class Program
                     var titleMeasure = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentCulture,
                         title.FlowDirection, new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
                         title.FontSize, Brushes.White, VisualTreeHelper.GetDpi(title).PixelsPerDip);
-                    return Math.Abs(cardBounds.Width - 292) < 1 && Math.Abs(cardBounds.Height - 124) < 1
-                        && install.ActualWidth == 30 && Math.Abs(installBounds.Left - (cardBounds.Left + 248)) < 2
-                        && Math.Abs(installBounds.Top - (cardBounds.Top + 10)) < 2
+                    Border? playBorder = run.Template.FindName("ButtonBorder", run) as Border;
+                    return Math.Abs(cardBounds.Width - 220) < 1 && Math.Abs(cardBounds.Height - 104) < 1
+                        && install.ActualWidth == 26 && install.ActualHeight == 26
+                        && Math.Abs(installBounds.Left - (cardBounds.Left + 184)) < 2
+                        && Math.Abs(installBounds.Top - (cardBounds.Top + 8)) < 2
                         && Math.Abs(iconBounds.Width - 64) < 1 && Math.Abs(iconBounds.Height - 64) < 1
-                        && Math.Abs(iconBounds.Left - (cardBounds.Left + 18)) < 2
-                        && Math.Abs(iconBounds.Top - (cardBounds.Top + 26)) < 2
-                        && Math.Abs(titleBounds.Left - (cardBounds.Left + 98)) < 2
-                        && Math.Abs(titleBounds.Top - (cardBounds.Top + 24)) < 2
-                        && Math.Abs(title.ActualWidth - 140) < 1
-                        && Math.Abs(runBounds.Left - (cardBounds.Left + 212)) < 2
-                        && Math.Abs(runBounds.Top - (cardBounds.Top + 76)) < 2
+                        && Math.Abs(iconBounds.Left - (cardBounds.Left + 14)) < 2
+                        && Math.Abs(iconBounds.Top - (cardBounds.Top + 20)) < 2
+                        && Math.Abs(titleBounds.Left - (cardBounds.Left + 90)) < 2
+                        && Math.Abs(titleBounds.Top - (cardBounds.Top + 39)) < 2
+                        && Math.Abs(title.ActualWidth - 116) < 1
+                        && Math.Abs(run.ActualWidth - 30) < 1 && Math.Abs(run.ActualHeight - 30) < 1
+                        && Math.Abs(runBounds.Left - (cardBounds.Left + 180)) < 2
+                        && Math.Abs(runBounds.Top - (cardBounds.Top + 68)) < 2
+                        && playBorder?.CornerRadius.TopLeft == 15
                         && titleMeasure.WidthIncludingTrailingWhitespace <= title.ActualWidth + 0.1
-                        && run.ActualWidth is >= 64 and <= 68
-                        && run.ActualHeight >= 32;
-                }), "Cards match the 292×124 large-icon, title, install, and right-side Run layout");
+                        && run.Content is System.Windows.Shapes.Path;
+                }), "Cards match the compact 220×104 icon, title, install, and circular play layout");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
@@ -369,15 +372,15 @@ internal static class Program
                 await Idle(window);
                 Check(window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
                           ReferenceEquals(text.DataContext, card) && text.Text == card.StatusMessage
-                          && text.IsVisible && text.Width == 180 && text.Height == 20
-                          && text.Margin.Left == 98 && text.Margin.Top == 52
+                          && text.IsVisible && text.Width == 84 && text.Height == 30
+                          && text.Margin.Left == 89 && text.Margin.Top == 63
                           && AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite)),
                     "Busy progress remains visible through polite live status text");
                 Check(launchButtons.All(button => !button.IsEnabled), "Busy state disables every run action");
                 Check(installButtons.All(button => button.IsVisible && !button.IsEnabled
                     && !AutomationProperties.GetName(button).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)),
                     "Run activity disables install actions without showing an install-in-progress label");
-                Check(launchButtons.All(button => Equals(button.Content, "실행"))
+                Check(launchButtons.All(button => button.Content is System.Windows.Shapes.Path)
                     && window.LauncherCards.All(card => card.DescriptionText == card.StatusMessage)
                     && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible).Count() == window.LauncherCards.Count
                     && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible)
@@ -419,7 +422,7 @@ internal static class Program
                 Check(!installingButton.IsEnabled && !installingRunButton.IsEnabled
                       && installButtons.Where(button => !ReferenceEquals(button, installingButton)).All(button => button.IsEnabled)
                       && AutomationProperties.GetName(installingButton).EndsWith(" \uC124\uCE58 \uC911\u2026", StringComparison.Ordinal)
-                      && Equals(installingRunButton.Content, "\uC2E4\uD589"),
+                      && installingRunButton.Content is System.Windows.Shapes.Path,
                     "Install activity disables both actions for that card and shows the install-specific label");
                 installingCard.IsBusy = false;
                 installingCard.IsInstalling = false;
@@ -440,11 +443,11 @@ internal static class Program
                 var nineBounds = ActionButtons(window, "Launch_").Select(button => BoundsInWindow(button, window)).ToList();
                 ScrollViewer cardScroll = Descendants<ScrollViewer>(window).Single(scroll =>
                     Descendants<ItemsControl>(scroll).Any(items => ReferenceEquals(items, window.FindName("LauncherItems"))));
-                Check(nineBounds.Select(bounds => Math.Round(bounds.Left)).Distinct().Count() == 3
+                Check(nineBounds.Select(bounds => Math.Round(bounds.Left)).Distinct().Count() == 4
                     && nineBounds.Select(bounds => Math.Round(bounds.Top)).Distinct().Count() == 3
-                    && Descendants<Border>(window).Count(border => border.Width == 292 && border.ActualHeight == 124) == 9
+                    && Descendants<Border>(window).Count(border => border.Width == 220 && border.ActualHeight == 104) == 9
                     && cardScroll.ScrollableHeight < 1,
-                    "Nine fixture cards fit three columns and three rows at the default window size");
+                    "Nine fixture cards fit four columns and three rows at the default window size");
                 Directory.CreateDirectory(imageDirectory);
                 SaveScreenshot(window, Path.Combine(imageDirectory, "i-luncher-nine-cards-preview.png"));
                 foreach (var fixture in gridFixtures) window.LauncherCards.Remove(fixture);
@@ -467,8 +470,8 @@ internal static class Program
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
-                    return run.ActualWidth is >= 64 and <= 68 && run.ActualHeight >= 32
-                           && install.ActualWidth >= 28 && install.ActualHeight >= 28
+                    return run.ActualWidth == 30 && run.ActualHeight == 30
+                           && install.ActualWidth == 26 && install.ActualHeight == 26
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;
                 });
