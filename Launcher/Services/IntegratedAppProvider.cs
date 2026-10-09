@@ -18,7 +18,7 @@ internal sealed class IntegratedAppProvider : IIntegratedAppProvider
 
     public IReadOnlyList<LauncherEntry> Entries { get; } =
     [
-        CreateEntry(FolderCompareId, "FolderCompareWPF", "두 폴더의 파일과 내용을 비교합니다.", "파일 도구",
+        CreateEntry(FolderCompareId, "Compare", "두 폴더의 파일과 내용을 비교합니다.", "파일 도구",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/FolderCompare.png"),
         CreateEntry(SwiftCopyId, "SwiftCopy", "파일과 폴더를 빠르게 복사하고 이동합니다.", "파일 도구",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/SwiftCopy-128.png"),

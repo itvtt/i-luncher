@@ -1,8 +1,8 @@
 # i-luncher
 
-FolderCompareWPF, SwiftCopy, DiskAtlas, DeskCal을 함께 빌드하는 통합 WPF 프로그램입니다. 실행 파일은 `i-luncher.exe` 하나이며 네 도구는 함께 배포되는 DLL에 포함됩니다.
+Compare, SwiftCopy, DiskAtlas, DeskCal을 함께 빌드하는 통합 WPF 프로그램입니다. 실행 파일은 `i-luncher.exe` 하나이며 네 도구는 함께 배포되는 DLL에 포함됩니다.
 
-FolderCompareWPF·SwiftCopy·DeskCal은 실행 버튼을 누르면 런처 프로세스 안에서 창을 바로 엽니다. 처음 클릭할 때 별도 빌드, SDK 확인, EXE 압축 해제 또는 소스 복사를 하지 않습니다. 이미 열린 도구를 다시 누르면 기존 창을 앞으로 가져옵니다. 런처 창을 닫아도 열린 도구는 계속 사용할 수 있습니다.
+Compare·SwiftCopy·DeskCal은 실행 버튼을 누르면 런처 프로세스 안에서 창을 바로 엽니다. 처음 클릭할 때 별도 빌드, SDK 확인, EXE 압축 해제 또는 소스 복사를 하지 않습니다. 이미 열린 도구를 다시 누르면 기존 창을 앞으로 가져옵니다. 런처 창을 닫아도 열린 도구는 계속 사용할 수 있습니다.
 
 DiskAtlas는 디스크 직접 읽기에 필요한 관리자 권한을 받기 위해 같은 `i-luncher.exe --app disk-atlas`를 별도 프로세스로 실행합니다. Windows 관리자 권한 확인은 유지됩니다. 기존 DiskAtlas 작업 스케줄러 등록 도우미는 통합 배포본에서 사용하지 않습니다.
 
