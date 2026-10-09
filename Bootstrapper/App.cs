@@ -870,14 +870,14 @@ namespace ILauncher.BootstrapperUi
                         { "action", card.InstallActionLabel },
                         { "actionColor", card.InstallActionColor },
                         { "actionAccessibleName", card.InstallAccessibleName },
-                        { "actionPlacement", "top-right-icon" },
+                        { "actionPlacement", "grouped-right-column" },
                         { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
                         { "portableAction", card.RunActionLabel },
                         { "portablePlacement", card.RunActionPlacement },
                         { "runBounds", RectangleToDictionary(card.RunActionBounds) },
                         { "cardBounds", RectangleToDictionary(card.CardBounds) },
                         { "status", card.StatusLabel },
-                        { "installAboveRun", card.InstallActionBounds.Bottom + 10 <= card.RunActionBounds.Top && card.InstallActionBounds.Right == card.RunActionBounds.Right },
+                        { "installAboveRun", card.InstallActionBounds.Bottom + 8 == card.RunActionBounds.Top && card.InstallActionBounds.Left == card.RunActionBounds.Left && card.InstallActionBounds.Size == card.RunActionBounds.Size },
                         { "titleHasFullTooltip", card.TitleHasFullTooltip },
                         { "iconSourceWidth", card.IconSourceSize.Width },
                         { "iconSourceHeight", card.IconSourceSize.Height }
@@ -1084,7 +1084,7 @@ namespace ILauncher.BootstrapperUi
                 _resultCount.Text = all.Length + "개 앱";
                 result["compactCardHeight"] = all.All(card => card.Height == 104);
                 result["iconTitleAndActionsDoNotOverlap"] = all.All(card => card.ContentClearsActions);
-                result["fullTitlesFitHeader"] = all.All(card => card.TitleFitsHeader);
+                result["fullTitlesFitNameArea"] = all.All(card => card.TitleFitsNameArea);
                 result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 4 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
                     all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
@@ -1096,6 +1096,18 @@ namespace ILauncher.BootstrapperUi
                     screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
                 }
                 result["nineCardScreenshotPath"] = path;
+                AppCard busyFixture = fixtures.FirstOrDefault(card => card.App.Name.Contains(" ")) ?? fixtures.FirstOrDefault();
+                if (busyFixture != null)
+                {
+                    busyFixture.SetBusy(true, "설치 중…");
+                    using (Bitmap screenshot = new Bitmap(Width, Height))
+                    {
+                        DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
+                        string busyPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".busy.png");
+                        screenshot.Save(busyPath, System.Drawing.Imaging.ImageFormat.Png);
+                        result["busyFixtureScreenshotPath"] = busyPath;
+                    }
+                }
             }
             finally
             {
@@ -1729,8 +1741,8 @@ namespace ILauncher.BootstrapperUi
         public bool HasCompactIdleState { get { return !_status.Visible && !_progress.Visible && _status.Text.Length == 0 && Controls.OfType<Label>().Count(label => label.Visible) == 1; } }
         private readonly PictureBox _icon;
         private readonly Label _name;
-        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _install.Bottom <= _name.Top && _install.Right == Width - 10 && _name.Bottom <= _status.Top && _name.Bottom <= _run.Top && _status.Right + 6 <= _run.Left && ClientRectangle.Contains(_run.Bounds); } }
-        public bool TitleFitsHeader { get { return TextRenderer.MeasureText(_name.Text, _name.Font).Width <= _name.Width; } }
+        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 10 <= _install.Left && _install.Right == Width - 14 && _name.Bottom <= _status.Top && _status.Right + 10 <= _run.Left && _install.Left == _run.Left && _install.Size == _run.Size && _install.Bottom + 8 == _run.Top && ClientRectangle.Contains(_run.Bounds); } }
+        public bool TitleFitsNameArea { get { Size measured = TextRenderer.MeasureText(_name.Text, _name.Font, new Size(_name.Width, Int32.MaxValue), TextFormatFlags.WordBreak); return measured.Width <= _name.Width && measured.Height <= _name.Height; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
         private readonly RoundedActionButton _run;
@@ -1751,14 +1763,14 @@ namespace ILauncher.BootstrapperUi
             _icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(_icon);
-            _name = new Label { Text = app.Name, Left = 90, Top = 39, Width = width - 104, Height = 22, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 88, Top = 28, Width = width - 142, Height = 48, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
-            _status = new Label { Text = "", Left = 90, Top = 64, Width = 84, Height = 30, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _status = new Label { Text = "", Left = 88, Top = 78, Width = width - 142, Height = 16, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 14, Top = 98, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new RoundedActionButton { Text = "", Left = width - 36, Top = 8, Width = 26, Height = 26 };
-            _run = new RoundedActionButton { Text = "", Left = width - 40, Top = 68, Width = 30, Height = 30, CornerRadius = 15 };
+            _install = new RoundedActionButton { Text = "", Left = width - 44, Top = 18, Width = 30, Height = 30, CornerRadius = 15 };
+            _run = new RoundedActionButton { Text = "", Left = width - 44, Top = 56, Width = 30, Height = 30, CornerRadius = 15 };
             _run.PaintGlyph += DrawPlayActionIcon;
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";

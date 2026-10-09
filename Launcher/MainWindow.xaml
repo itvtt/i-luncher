@@ -107,7 +107,7 @@
                             <Border x:Name="ButtonBorder" Padding="{TemplateBinding Padding}"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="11">
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="15">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
@@ -300,11 +300,11 @@
                                                     <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="SemiBold" Foreground="#FFC6D3FF" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
                                                 </Grid>
                                             </Border>
-                                            <Button Width="26" Height="26" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,7,9,0" Tag="{Binding}" Visibility="{Binding InstallVisibility}" Click="InstallButton_Click" IsEnabled="{Binding CanInstall}" ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="{Binding InstallAutomationId}" AutomationProperties.Name="{Binding InstallAccessibleName}" ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
+                                            <Button Width="30" Height="30" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,17,13,0" Tag="{Binding}" Visibility="{Binding InstallVisibility}" Click="InstallButton_Click" IsEnabled="{Binding CanInstall}" ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="{Binding InstallAutomationId}" AutomationProperties.Name="{Binding InstallAccessibleName}" ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
                                                 <Path Width="17" Height="17" Stretch="Uniform" Data="{Binding RegistrationGlyphData}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                                             </Button>
-                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="89,38,0,0" Width="116" Height="22" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{Binding Entry.Name}" ToolTip="{Binding Entry.Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="89,63,0,0" Width="84" Height="30" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" AutomationProperties.LiveSetting="Polite" TextTrimming="CharacterEllipsis" TextWrapping="Wrap">
+                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Margin="87,0,0,0" Width="78" MaxHeight="48" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{Binding Entry.Name}" ToolTip="{Binding Entry.Name}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="87,77,0,0" Width="78" Height="16" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" AutomationProperties.LiveSetting="Polite" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -316,7 +316,7 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
-                                            <Button HorizontalAlignment="Left" VerticalAlignment="Top" Margin="179,67,0,0" Tag="{Binding}" Click="LauncherCard_Click" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding RunAccessibleName}" ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}" Style="{StaticResource CircularPlayButtonStyle}">
+                                            <Button Width="30" Height="30" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,55,13,0" Tag="{Binding}" Click="LauncherCard_Click" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding RunAccessibleName}" ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}" Style="{StaticResource CircularPlayButtonStyle}">
                                                 <Path Width="12" Height="14" Stretch="Uniform" Data="M 1,0 L 12,7 L 1,14 Z" Fill="White" Margin="1,0,0,0" />
                                             </Button>
                                             <ProgressBar Height="3" Margin="14,0,14,4" VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False" AutomationProperties.Name="작업 진행 상황">
