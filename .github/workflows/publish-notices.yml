@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '공지.txt'
       - 'Notices/**'
       - 'Tools/CI/Publish-Notices.py'
       - 'Tools/CI/Check-Notices.py'
@@ -26,11 +27,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
       - name: Check validator
         run: python3 Tools/CI/Check-Notices.py
       - name: Validate and stage the public feed
-        run: python3 Tools/CI/Publish-Notices.py Notices/notices.json --output "$RUNNER_TEMP/notice-site"
+        run: python3 Tools/CI/Publish-Notices.py Notices/notices.json --text '공지.txt' --output "$RUNNER_TEMP/notice-site"
       - name: Publish only the validated feed to the public notice repository
         shell: bash
         env:

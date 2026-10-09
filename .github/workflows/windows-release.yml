@@ -5,6 +5,7 @@ on:
     branches: [main]
     tags: ['v*']
     paths-ignore:
+      - '공지.txt'
       - 'Notices/**'
       - 'Tools/CI/Publish-Notices.py'
       - 'Tools/CI/Check-Notices.py'

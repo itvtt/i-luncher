@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -101,6 +102,120 @@ class NoticeChecks(unittest.TestCase):
         self.assertEqual(1, subprocess.run(command[:-1] + [str(bad_output)],
                                           capture_output=True).returncode)
         self.assertFalse(bad_output.exists())
+
+
+class TextNoticeChecks(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        self.text = self.root / "공지.txt"
+        self.source = self.root / "notices.json"
+        self.source.write_text(json.dumps({"schemaVersion": 1, "notices": [NOTICE]}), encoding="utf-8")
+        self.git("init", "--quiet")
+        self.git("config", "user.name", "Notice Checks")
+        self.git("config", "user.email", "notice-checks@example.invalid")
+        self.git("config", "core.autocrlf", "false")
+
+    def git(self, *arguments, timestamp=None):
+        env = os.environ.copy()
+        if timestamp:
+            env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = timestamp
+        result = subprocess.run(["git", "-C", str(self.root), *arguments], env=env,
+                                capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def commit_text(self, text, timestamp="2026-10-09T09:00:00+09:00"):
+        self.text.write_text(text, encoding="utf-8")
+        self.git("add", "--", self.text.name)
+        self.git("commit", "--quiet", "-m", "Update notice", timestamp=timestamp)
+
+    def test_text_parsing(self):
+        self.text.write_bytes("\ufeff  제목 😀  \r\n  본문 \\\" <tag>\r\n\r\n두 번째 줄  \r\n".encode("utf-8"))
+        self.assertEqual(("제목 😀", '본문 \\\" <tag>\n\n두 번째 줄'), publisher.read_notice_text(self.text))
+        for text in ("", "\ufeff \r\n\t", "제목", "제목\n ", "\n본문", "a" * 121 + "\n본문",
+                     "제목\n" + "a" * 12001):
+            with self.subTest(text=text[:20]):
+                self.text.write_text(text, encoding="utf-8")
+                if not text.lstrip("\ufeff").strip():
+                    self.assertIsNone(publisher.read_notice_text(self.text))
+                else:
+                    with self.assertRaises(ValueError):
+                        publisher.read_notice_text(self.text)
+        self.text.write_text("😀" * 120 + "\n" + "a" * 12000, encoding="utf-8")
+        self.assertEqual(12000, len(publisher.read_notice_text(self.text)[1]))
+        for raw in (b'\xff', b'a' * (publisher.MAX_SOURCE_BYTES + 1)):
+            self.text.write_bytes(raw)
+            with self.assertRaises(ValueError):
+                publisher.read_notice_text(self.text)
+
+    def test_revision_date_and_rerun(self):
+        self.commit_text("제목\n본문")
+        first = publisher.build_feed(self.source, self.text)
+        self.assertEqual(NOTICE, first["notices"][0])
+        managed = first["notices"][1]
+        self.assertEqual(publisher.TEXT_NOTICE_ID, managed["id"])
+        self.assertEqual(1, managed["revision"])
+        self.assertEqual("2026-10-09T00:00:00Z", managed["publishedAt"])
+        self.assertTrue(managed["important"])
+        (self.root / "unrelated.txt").write_text("unrelated", encoding="utf-8")
+        self.git("add", "--", "unrelated.txt")
+        self.git("commit", "--quiet", "-m", "Unrelated", timestamp="2026-10-10T00:00:00Z")
+        self.assertEqual(first, publisher.build_feed(self.source, self.text))
+        self.commit_text("제목\n수정한 본문", "2026-10-10T01:00:00Z")
+        self.assertEqual(2, publisher.build_feed(self.source, self.text)["notices"][1]["revision"])
+        self.commit_text("", "2026-10-10T02:00:00Z")
+        self.assertEqual([NOTICE], publisher.build_feed(self.source, self.text)["notices"])
+        self.commit_text("새 제목\n재게시", "2026-10-10T03:00:00Z")
+        repost = publisher.build_feed(self.source, self.text)["notices"][1]
+        self.assertEqual(4, repost["revision"])
+        self.assertEqual("2026-10-10T03:00:00Z", repost["publishedAt"])
+
+    def test_reserved_id_and_feed_limit(self):
+        self.commit_text("제목\n본문")
+        for text in ("제목\n본문", ""):
+            self.text.write_text(text, encoding="utf-8")
+            self.source.write_text(json.dumps({"schemaVersion": 1, "notices": [
+                dict(NOTICE, id=publisher.TEXT_NOTICE_ID)]}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "reserved"):
+                publisher.build_feed(self.source, self.text)
+        self.text.write_text("제목\n본문", encoding="utf-8")
+        self.source.write_text(json.dumps({"schemaVersion": 1, "notices": [
+            dict(NOTICE, id=f"notice-{n}") for n in range(100)]}), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "100"):
+            publisher.build_feed(self.source, self.text)
+
+    def test_history_requirements_and_first_parent(self):
+        self.text.write_text("제목\n본문", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            publisher.git_notice_metadata(self.text)
+        self.commit_text("제목\n본문")
+        branch = self.git("branch", "--show-current")
+        self.git("checkout", "--quiet", "-b", "notice-edit")
+        self.commit_text("제목\n분기 본문", "2026-10-10T01:00:00Z")
+        self.git("checkout", "--quiet", branch)
+        self.git("merge", "--quiet", "--no-ff", "notice-edit", "-m", "Merge notice",
+                 timestamp="2026-10-10T02:00:00Z")
+        revision, date = publisher.git_notice_metadata(self.text)
+        self.assertEqual((2, "2026-10-10T02:00:00Z"), (revision, date))
+        shallow = self.root / "shallow"
+        self.git("clone", "--quiet", "--depth", "1", self.root.as_uri(), str(shallow))
+        with self.assertRaisesRegex(ValueError, "full Git history"):
+            publisher.git_notice_metadata(shallow / self.text.name)
+
+    def test_text_staging_preserves_sources(self):
+        self.commit_text("제목\n본문")
+        original_json, original_text = self.source.read_bytes(), self.text.read_bytes()
+        output = self.root / "site"
+        command = [sys.executable, str(pathlib.Path(__file__).with_name("Publish-Notices.py")),
+                   str(self.source), "--text", str(self.text), "--output", str(output)]
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["notices.json"], [p.name for p in output.iterdir()])
+        self.assertEqual(publisher.build_feed(self.source, self.text), publisher.validate(output / "notices.json"))
+        self.assertEqual(original_json, self.source.read_bytes())
+        self.assertEqual(original_text, self.text.read_bytes())
 
 
 if __name__ == "__main__":
