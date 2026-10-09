@@ -174,8 +174,10 @@ internal static class Program
                     "Integrated apps and TerminalNotes support install before output is built");
                 Check(expectedSupportedAppIds.All(id => window.LauncherCards.Single(card => card.Entry.Id == id).CanInstall),
                     "Supported app cards expose enabled install actions");
-                Check(window.LauncherCards.Where(card => card.Entry.IsIntegrated).All(card => card.IconSource != null),
-                    "Integrated app cards load their embedded icons");
+                Check(window.LauncherCards.Where(card => card.Entry.IsIntegrated).All(card => card.IconSource != null)
+                      && window.LauncherCards.Single(card => card.Entry.Id == "deskcal").IconSource
+                          is BitmapSource { PixelWidth: 64, PixelHeight: 64 },
+                    "Integrated app cards load embedded icons and choose a sharp ICO frame");
                 Check(application.Resources.Count == 0 && window.TryFindResource("WindowBrush") is SolidColorBrush,
                     "Launcher resources are scoped to MainWindow");
                 Check(window.Content is Grid { Background: SolidColorBrush background }
@@ -294,9 +296,14 @@ internal static class Program
                                                    && button.Focusable && KeyboardNavigation.GetIsTabStop(button)),
                     "Run actions keep concise accessible labels and tooltips");
                 Check(!Descendants<TextBlock>(window).Any(text => text.Text.Equals("오른쪽 위 설치 아이콘으로 시작 메뉴에 등록할 수 있습니다.", StringComparison.Ordinal))
-                      && window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
-                          ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category)),
-                    "Cards show app categories without persistent install guidance");
+                      && window.LauncherCards.All(card => Descendants<Image>(window).Any(image =>
+                          ReferenceEquals(image.DataContext, card)
+                          && ((Border)((FrameworkElement)image.Parent).Parent).ToolTip?.ToString()?.Contains(card.Entry.Category, StringComparison.CurrentCultureIgnoreCase) == true
+                          && ((Border)((FrameworkElement)image.Parent).Parent).ToolTip?.ToString()?.Contains(card.Entry.Description, StringComparison.CurrentCultureIgnoreCase) == true))
+                      && !Descendants<TextBlock>(window).Any(text => text.IsVisible
+                          && window.LauncherCards.Any(card => ReferenceEquals(text.DataContext, card)
+                              && text.Text == card.Entry.Category)),
+                    "Cards keep category and description in icon tooltips without persistent category labels");
                 Check(expectedSupportedAppIds.All(id =>
                 {
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
@@ -304,15 +311,12 @@ internal static class Program
                     Rect installBounds = BoundsInWindow(install, window);
                     Rect runBounds = BoundsInWindow(run, window);
                     MainWindow.LauncherCard card = window.LauncherCards.Single(candidate => candidate.Entry.Id == id);
-                    TextBlock description = Descendants<TextBlock>(window).Single(text =>
-                        ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Description);
-                    Rect descriptionBounds = BoundsInWindow(description, window);
+                    Image icon = Descendants<Image>(window).Single(image => ReferenceEquals(image.DataContext, card));
+                    Border iconBorder = (Border)((FrameworkElement)icon.Parent).Parent;
+                    Rect iconBounds = BoundsInWindow(iconBorder, window);
                     TextBlock title = Descendants<TextBlock>(window).Single(text =>
                         ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Name);
-                    TextBlock category = Descendants<TextBlock>(window).Single(text =>
-                        ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category);
                     Rect titleBounds = BoundsInWindow(title, window);
-                    Rect badgeBounds = BoundsInWindow((Border)category.Parent, window);
                     Border cardBorder = (Border)((FrameworkElement)title.Parent).Parent;
                     Rect cardBounds = BoundsInWindow(cardBorder, window);
                     var titleMeasure = new FormattedText(title.Text, System.Globalization.CultureInfo.CurrentCulture,
@@ -321,24 +325,26 @@ internal static class Program
                     return Math.Abs(cardBounds.Width - 292) < 1 && Math.Abs(cardBounds.Height - 124) < 1
                         && install.ActualWidth == 30 && Math.Abs(installBounds.Left - (cardBounds.Left + 248)) < 2
                         && Math.Abs(installBounds.Top - (cardBounds.Top + 10)) < 2
-                        && Math.Abs(titleBounds.Left - (cardBounds.Left + 14)) < 2
-                        && Math.Abs(titleBounds.Top - (cardBounds.Top + 52)) < 2
-                        && Math.Abs(descriptionBounds.Left - (cardBounds.Left + 14)) < 2
-                        && Math.Abs(descriptionBounds.Top - (cardBounds.Top + 78)) < 2
-                        && Math.Abs(descriptionBounds.Width - 186) < 1
+                        && Math.Abs(iconBounds.Width - 64) < 1 && Math.Abs(iconBounds.Height - 64) < 1
+                        && Math.Abs(iconBounds.Left - (cardBounds.Left + 18)) < 2
+                        && Math.Abs(iconBounds.Top - (cardBounds.Top + 26)) < 2
+                        && Math.Abs(titleBounds.Left - (cardBounds.Left + 98)) < 2
+                        && Math.Abs(titleBounds.Top - (cardBounds.Top + 24)) < 2
+                        && Math.Abs(title.ActualWidth - 140) < 1
                         && Math.Abs(runBounds.Left - (cardBounds.Left + 212)) < 2
                         && Math.Abs(runBounds.Top - (cardBounds.Top + 76)) < 2
-                        && Math.Abs(badgeBounds.Right - (cardBounds.Left + 242)) < 2
-                        && badgeBounds.Bottom <= titleBounds.Top
                         && titleMeasure.WidthIncludingTrailingWhitespace <= title.ActualWidth + 0.1
                         && run.ActualWidth is >= 64 and <= 68
-                        && run.ActualHeight >= 32 && runBounds.Left >= descriptionBounds.Right + 10;
-                }), "Cards match the 292×124 icon, title, description, category, install, and right-side Run layout");
+                        && run.ActualHeight >= 32;
+                }), "Cards match the 292×124 large-icon, title, install, and right-side Run layout");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
                         && text.Text == card.Entry.Name && Equals(text.ToolTip, card.Entry.Name)
-                        && text.TextTrimming == TextTrimming.CharacterEllipsis))
+                        && text.TextTrimming == TextTrimming.CharacterEllipsis)
+                    && !Descendants<TextBlock>(window).Any(text => text.IsVisible
+                        && window.LauncherCards.Any(card => ReferenceEquals(text.DataContext, card)
+                            && text.Text == card.DescriptionText)))
                     && !Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "설치완료"),
                     "Idle cards omit installed labels and retain full-title ellipsis tooltips");
 
@@ -363,6 +369,8 @@ internal static class Program
                 await Idle(window);
                 Check(window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
                           ReferenceEquals(text.DataContext, card) && text.Text == card.StatusMessage
+                          && text.IsVisible && text.Width == 180 && text.Height == 20
+                          && text.Margin.Left == 98 && text.Margin.Top == 52
                           && AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite)),
                     "Busy progress remains visible through polite live status text");
                 Check(launchButtons.All(button => !button.IsEnabled), "Busy state disables every run action");
@@ -371,7 +379,9 @@ internal static class Program
                     "Run activity disables install actions without showing an install-in-progress label");
                 Check(launchButtons.All(button => Equals(button.Content, "실행"))
                     && window.LauncherCards.All(card => card.DescriptionText == card.StatusMessage)
-                    && Descendants<ProgressBar>(window).Count(progress => progress.IsVisible) == window.LauncherCards.Count,
+                    && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible).Count() == window.LauncherCards.Count
+                    && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible)
+                        .All(progress => progress.Height == 3 && progress.Margin.Bottom == 4),
                     "Busy text replaces descriptions while short Run labels and thin progress remain visible");
                 Check(!firstLaunch.Focus(), "Disabled run action rejects keyboard focus");
                 foreach (MainWindow.LauncherCard card in window.LauncherCards)

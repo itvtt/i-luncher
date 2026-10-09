@@ -878,7 +878,9 @@ namespace ILauncher.BootstrapperUi
                         { "cardBounds", RectangleToDictionary(card.CardBounds) },
                         { "status", card.StatusLabel },
                         { "installAboveRun", card.InstallActionBounds.Bottom + 10 <= card.RunActionBounds.Top && card.InstallActionBounds.Right == card.RunActionBounds.Right },
-                        { "titleHasFullTooltip", card.TitleHasFullTooltip }
+                        { "titleHasFullTooltip", card.TitleHasFullTooltip },
+                        { "iconSourceWidth", card.IconSourceSize.Width },
+                        { "iconSourceHeight", card.IconSourceSize.Height }
                     }).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
                 { "iconsDecoded", _cards.Values.Count(card => card.HasDecodedIcon) },
@@ -1065,9 +1067,9 @@ namespace ILauncher.BootstrapperUi
             try
             {
                 sample.SetBusy(true, "설치 중…");
-                result["busyReplacesDescription"] = sample.HasCompactBusyState;
+                result["busyShowsTransientStatus"] = sample.HasCompactBusyState;
                 sample.SetBusy(false, null);
-                result["idleRestoresDescription"] = sample.HasCompactIdleState;
+                result["idleRestoresMinimalCard"] = sample.HasCompactIdleState;
                 while (_grid.Controls.Count < 9)
                 {
                     BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
@@ -1081,7 +1083,7 @@ namespace ILauncher.BootstrapperUi
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
                 _resultCount.Text = all.Length + "개 앱";
                 result["compactCardHeight"] = all.All(card => card.Height == 124);
-                result["categoryBadgesClearTitlesAndActions"] = all.All(card => card.CategoryBadgeClearsContent);
+                result["iconTitleAndActionsDoNotOverlap"] = all.All(card => card.ContentClearsActions);
                 result["fullTitlesFitHeader"] = all.All(card => card.TitleFitsHeader);
                 result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
@@ -1709,6 +1711,7 @@ namespace ILauncher.BootstrapperUi
     {
         public BootstrapApp App { get; private set; }
         public bool HasDecodedIcon { get; private set; }
+        public Size IconSourceSize { get { return _icon.Image.Size; } }
         public bool IsInstalled { get { return _installed; } }
         public string InstallActionLabel { get { return _installed ? "제거" : "설치"; } }
         public string InstallActionColor { get { return ColorTranslator.ToHtml(_install.BackColor); } }
@@ -1720,12 +1723,11 @@ namespace ILauncher.BootstrapperUi
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
         public bool ActionsLocked { get { return !_install.Enabled && !_run.Enabled; } }
-        public bool HasCompactBusyState { get { return _status.Visible && !_description.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Bounds == _description.Bounds; } }
-        public bool HasCompactIdleState { get { return !_status.Visible && _description.Visible && !_progress.Visible && _status.Text.Length == 0; } }
-        private readonly Label _description;
+        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Bottom <= _run.Top && _status.Left >= _icon.Right + 10; } }
+        public bool HasCompactIdleState { get { return !_status.Visible && !_progress.Visible && _status.Text.Length == 0 && Controls.OfType<Label>().Count(label => label.Visible) == 1; } }
+        private readonly PictureBox _icon;
         private readonly Label _name;
-        private readonly CategoryBadge _category;
-        public bool CategoryBadgeClearsContent { get { return _category.Left >= 56 && _category.Bottom + 10 <= _name.Top && _category.Right + 6 == _install.Left && _install.Right == Width - 14 && _install.Bottom + 10 <= _run.Top && _description.Right + 10 <= _run.Left; } }
+        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 10 <= _install.Left && _install.Right == Width - 14 && _name.Bottom <= _status.Top && _status.Bottom <= _run.Top && _install.Bottom + 10 <= _run.Top; } }
         public bool TitleFitsHeader { get { return TextRenderer.MeasureText(_name.Text, _name.Font).Width <= _name.Width; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
@@ -1742,20 +1744,14 @@ namespace ILauncher.BootstrapperUi
             Width = width; Height = 124; Margin = new Padding(0, 0, 10, 10); Padding = new Padding(14);
             BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            PictureBox icon = new PictureBox { Left = 14, Top = 14, Width = 32, Height = 32, SizeMode = PictureBoxSizeMode.Zoom };
+            _icon = new PictureBox { Left = 18, Top = 26, Width = 64, Height = 64, SizeMode = PictureBoxSizeMode.Zoom, AccessibleName = app.Name, AccessibleDescription = app.Category + ": " + app.Description };
             bool iconDecoded;
-            icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
+            _icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
-            Controls.Add(icon);
-            _name = new Label { Text = app.Name, Left = 14, Top = 52, Width = width - 106, Height = 23, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
+            Controls.Add(_icon);
+            _name = new Label { Text = app.Name, Left = 98, Top = 24, Width = width - 152, Height = 24, Font = new Font("Segoe UI Semibold", 11F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
-            _category = new CategoryBadge { Text = app.Category, Top = 14, Height = 22, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(157, 181, 221) };
-            _category.Width = Math.Min(90, TextRenderer.MeasureText(app.Category, _category.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + 20);
-            _category.Left = width - 50 - _category.Width;
-            Controls.Add(_category);
-            _description = new Label { Text = app.Description, Left = 14, Top = 78, Width = width - 106, Height = 32, Font = new Font("Segoe UI", 8.5F), ForeColor = Color.FromArgb(181, 188, 201), AutoEllipsis = true };
-            Controls.Add(_description);
-            _status = new Label { Text = "", Bounds = _description.Bounds, Font = _description.Font, Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _status = new Label { Text = "", Left = 98, Top = 52, Width = width - 112, Height = 20, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 14, Top = 116, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
@@ -1770,8 +1766,8 @@ namespace ILauncher.BootstrapperUi
             _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
             _toolTip = new ToolTip { ShowAlways = true };
             _toolTip.SetToolTip(_name, app.Name);
-            _toolTip.SetToolTip(_description, app.Description);
-            _toolTip.SetToolTip(_category, app.Category);
+            _toolTip.SetToolTip(_icon, app.Name + "\r\n" + app.Category + " · " + app.Description);
+            _toolTip.SetToolTip(this, app.Category + " · " + app.Description);
             LauncherFormStyle(_run, true);
             _install.Click += delegate { if (_installed) remove(App); else install(App); };
             _run.Click += delegate { run(App); };
@@ -1805,7 +1801,6 @@ namespace ILauncher.BootstrapperUi
             _install.Enabled = _actionsEnabled && !busy;
             _run.Enabled = _actionsEnabled && !busy;
             _progress.Visible = busy;
-            _description.Visible = !busy;
             _status.Visible = busy;
             UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
             _run.Text = "실행";
@@ -1897,8 +1892,7 @@ namespace ILauncher.BootstrapperUi
             {
                 _toolTip.Dispose();
                 _name.Font.Dispose();
-                _description.Font.Dispose();
-                _category.Font.Dispose();
+                _status.Font.Dispose();
                 foreach (PictureBox icon in Controls.OfType<PictureBox>())
                     if (icon.Image != null) icon.Image.Dispose();
             }
@@ -1936,7 +1930,7 @@ namespace ILauncher.BootstrapperUi
                                 }
                             }
                         }
-                        using (Icon icon = new Icon(stream))
+                        using (Icon icon = new Icon(stream, 64, 64))
                         {
                             if (icon.Width > 512 || icon.Height > 512) throw new InvalidDataException("Icon dimensions exceed the display limit.");
                             decoded = true;

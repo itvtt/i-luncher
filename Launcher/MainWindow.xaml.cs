@@ -543,6 +543,7 @@ public partial class MainWindow : Window
             : "\uC124\uCE58 \uBD88\uAC00";
         public LauncherEntry Entry { get; }
         public ImageSource? IconSource { get; }
+        public string IconToolTip => $"{Entry.Name}\n{Entry.Category}\n{Entry.Description}";
         public Visibility IconVisibility => IconSource is null ? Visibility.Collapsed : Visibility.Visible;
         public Visibility InitialsVisibility => IconSource is null ? Visibility.Visible : Visibility.Collapsed;
         public string Initials { get; }
@@ -600,6 +601,13 @@ public partial class MainWindow : Window
                 if (Uri.TryCreate(iconPath, UriKind.Absolute, out Uri? resourceUri) &&
                     string.Equals(resourceUri.Scheme, "pack", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (string.Equals(Path.GetExtension(resourceUri.AbsolutePath), ".ico", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var iconDecoder = new IconBitmapDecoder(resourceUri,
+                            BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                        return SelectIconFrame(iconDecoder);
+                    }
+
                     var resourceBitmap = new BitmapImage(resourceUri);
                     resourceBitmap.Freeze();
                     return resourceBitmap;
@@ -609,10 +617,17 @@ public partial class MainWindow : Window
                     return null;
 
                 using FileStream stream = File.OpenRead(iconPath);
+                if (string.Equals(Path.GetExtension(iconPath), ".ico", StringComparison.OrdinalIgnoreCase))
+                {
+                    var iconDecoder = new IconBitmapDecoder(stream,
+                        BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    return SelectIconFrame(iconDecoder);
+                }
+
                 BitmapImage bitmap = new();
                 bitmap.BeginInit();
                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = 96;
+                bitmap.DecodePixelWidth = 128;
                 bitmap.StreamSource = stream;
                 bitmap.EndInit();
                 bitmap.Freeze();
@@ -622,6 +637,18 @@ public partial class MainWindow : Window
             {
                 return null;
             }
+        }
+
+        private static BitmapFrame? SelectIconFrame(IconBitmapDecoder decoder)
+        {
+            BitmapFrame? frame = decoder.Frames
+                .OrderBy(candidate => candidate.PixelWidth >= 64 && candidate.PixelHeight >= 64 ? 0 : 1)
+                .ThenBy(candidate => candidate.PixelWidth >= 64 && candidate.PixelHeight >= 64
+                    ? Math.Max(candidate.PixelWidth, candidate.PixelHeight)
+                    : -Math.Min(candidate.PixelWidth, candidate.PixelHeight))
+                .FirstOrDefault();
+            frame?.Freeze();
+            return frame;
         }
 
         private static string GetInitials(string name)
