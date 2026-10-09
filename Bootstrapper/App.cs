@@ -870,14 +870,15 @@ namespace ILauncher.BootstrapperUi
                         { "action", card.InstallActionLabel },
                         { "actionColor", card.InstallActionColor },
                         { "actionAccessibleName", card.InstallAccessibleName },
-                        { "actionPlacement", "grouped-right-column" },
+                        { "actionPlacement", "above-name" },
                         { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
                         { "portableAction", card.RunActionLabel },
                         { "portablePlacement", card.RunActionPlacement },
                         { "runBounds", RectangleToDictionary(card.RunActionBounds) },
                         { "cardBounds", RectangleToDictionary(card.CardBounds) },
                         { "status", card.StatusLabel },
-                        { "installAboveRun", card.InstallActionBounds.Bottom + 8 == card.RunActionBounds.Top && card.InstallActionBounds.Left == card.RunActionBounds.Left && card.InstallActionBounds.Size == card.RunActionBounds.Size },
+                        { "registrationAboveName", card.RegistrationAboveName },
+                        { "playCenteredWithIcon", card.PlayCenteredWithIcon },
                         { "titleHasFullTooltip", card.TitleHasFullTooltip },
                         { "iconSourceWidth", card.IconSourceSize.Width },
                         { "iconSourceHeight", card.IconSourceSize.Height }
@@ -1100,13 +1101,9 @@ namespace ILauncher.BootstrapperUi
                 if (busyFixture != null)
                 {
                     busyFixture.SetBusy(true, "설치 중…");
-                    using (Bitmap screenshot = new Bitmap(Width, Height))
-                    {
-                        DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
-                        string busyPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".busy.png");
-                        screenshot.Save(busyPath, System.Drawing.Imaging.ImageFormat.Png);
-                        result["busyFixtureScreenshotPath"] = busyPath;
-                    }
+                    string busyPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".busy.png");
+                    SavePhysicalSmokeScreenshot(busyPath);
+                    result["busyFixtureScreenshotPath"] = busyPath;
                 }
             }
             finally
@@ -1116,6 +1113,21 @@ namespace ILauncher.BootstrapperUi
                 ApplyFilters();
             }
             return result;
+        }
+
+        private void SavePhysicalSmokeScreenshot(string path)
+        {
+            Activate();
+            BringToFront();
+            Refresh();
+            Application.DoEvents();
+            DwmFlush();
+            using (Bitmap screenshot = new Bitmap(Width, Height))
+            using (Graphics capture = Graphics.FromImage(screenshot))
+            {
+                capture.CopyFromScreen(Left, Top, 0, 0, Size);
+                screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            }
         }
 
         private Dictionary<string, object> RunChromeSmokeChecks()
@@ -1176,13 +1188,9 @@ namespace ILauncher.BootstrapperUi
                 sidebar.ScrollControlIntoView(lastCategory);
                 minimumSizeSidebarEndAccessible = sidebar.ClientRectangle.Contains(lastCategory.Bounds);
                 _grid.AutoScrollPosition = Point.Empty;
-                using (Bitmap screenshot = new Bitmap(Width, Height))
-                {
-                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
-                    string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".minimum.png");
-                    Directory.CreateDirectory(Path.GetDirectoryName(path));
-                    screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-                }
+                string minimumPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".minimum.png");
+                Directory.CreateDirectory(Path.GetDirectoryName(minimumPath));
+                SavePhysicalSmokeScreenshot(minimumPath);
                 Bounds = originalBounds;
                 PerformLayout();
                 _grid.PerformLayout();
@@ -1737,11 +1745,13 @@ namespace ILauncher.BootstrapperUi
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
         public bool ActionsLocked { get { return !_install.Enabled && !_run.Enabled; } }
-        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _status.Right + 6 <= _run.Left && _status.Left >= _icon.Right + 10; } }
+        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _run.Bottom + 6 <= _status.Top && _status.Left >= _icon.Right + 10; } }
         public bool HasCompactIdleState { get { return !_status.Visible && !_progress.Visible && _status.Text.Length == 0 && Controls.OfType<Label>().Count(label => label.Visible) == 1; } }
         private readonly PictureBox _icon;
         private readonly Label _name;
-        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 10 <= _install.Left && _install.Right == Width - 14 && _name.Bottom <= _status.Top && _status.Right + 10 <= _run.Left && _install.Left == _run.Left && _install.Size == _run.Size && _install.Bottom + 8 == _run.Top && ClientRectangle.Contains(_run.Bounds); } }
+        public bool RegistrationAboveName { get { return _install.Left == _name.Left && _install.Bottom + 4 <= _name.Top && _install.Left >= _icon.Right + 10; } }
+        public bool PlayCenteredWithIcon { get { return _run.Top + _run.Height / 2 == _icon.Top + _icon.Height / 2 && _run.Width == _run.Height; } }
+        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 6 <= _run.Left && RegistrationAboveName && PlayCenteredWithIcon && _name.Bottom <= _status.Top && _run.Bottom + 6 <= _status.Top && _status.Bottom <= _progress.Top && ClientRectangle.Contains(_run.Bounds); } }
         public bool TitleFitsNameArea { get { Size measured = TextRenderer.MeasureText(_name.Text, _name.Font, new Size(_name.Width, Int32.MaxValue), TextFormatFlags.WordBreak); return measured.Width <= _name.Width && measured.Height <= _name.Height; } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
         private readonly RoundedActionButton _install;
@@ -1763,14 +1773,14 @@ namespace ILauncher.BootstrapperUi
             _icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
             HasDecodedIcon = iconDecoded;
             Controls.Add(_icon);
-            _name = new Label { Text = app.Name, Left = 88, Top = 28, Width = width - 142, Height = 48, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 88, Top = 32, Width = width - 146, Height = 40, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
             Controls.Add(_name);
-            _status = new Label { Text = "", Left = 88, Top = 78, Width = width - 142, Height = 16, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _status = new Label { Text = "", Left = 88, Top = 80, Width = width - 102, Height = 16, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
             Controls.Add(_status);
             _progress = new ProgressBar { Left = 14, Top = 98, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new RoundedActionButton { Text = "", Left = width - 44, Top = 18, Width = 30, Height = 30, CornerRadius = 15 };
-            _run = new RoundedActionButton { Text = "", Left = width - 44, Top = 56, Width = 30, Height = 30, CornerRadius = 15 };
+            _install = new RoundedActionButton { Text = "", Left = 88, Top = 4, Width = 24, Height = 24, CornerRadius = 12 };
+            _run = new RoundedActionButton { Text = "", Left = width - 52, Top = 30, Width = 44, Height = 44, CornerRadius = 22 };
             _run.PaintGlyph += DrawPlayActionIcon;
             _run.AccessibleName = "실행 " + app.Name;
             _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
@@ -1839,7 +1849,7 @@ namespace ILauncher.BootstrapperUi
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (SolidBrush fill = new SolidBrush(_run.Enabled ? _run.ForeColor : Color.FromArgb(137, 146, 163)))
-                e.Graphics.FillPolygon(fill, new[] { new PointF(11, 8.5F), new PointF(11, 20.5F), new PointF(21, 14.5F) });
+                e.Graphics.FillPolygon(fill, new[] { new PointF(16.5F, 11.5F), new PointF(16.5F, 31.5F), new PointF(33, 21.5F) });
         }
         private void DrawInstallActionIcon(object sender, PaintEventArgs e)
         {

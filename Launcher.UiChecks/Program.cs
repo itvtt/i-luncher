@@ -75,7 +75,7 @@ internal static class Program
                     "Delayed catalog load did not populate launcher cards.");
                 responsivenessWindow.UpdateLayout();
                 Button runOnlyButton = ActionButtons(responsivenessWindow, "Launch_").Single();
-                Check(runOnlyButton.ActualWidth == 30 && runOnlyButton.ActualHeight == 30
+                Check(runOnlyButton.ActualWidth == 44 && runOnlyButton.ActualHeight == 44
                       && ActionButtons(responsivenessWindow, "Install_").All(button =>
                           !button.IsVisible || !KeyboardNavigation.GetIsTabStop(button)),
                     "Run-only app keeps the compact right-side action and no install tab stop");
@@ -325,26 +325,26 @@ internal static class Program
                     Border? installBorder = install.Template.FindName("ButtonBorder", install) as Border;
                     Border? playBorder = run.Template.FindName("ButtonBorder", run) as Border;
                     return Math.Abs(cardBounds.Width - 220) < 1 && Math.Abs(cardBounds.Height - 104) < 1
-                        && install.ActualWidth == 30 && install.ActualHeight == 30
-                        && Math.Abs(installBounds.Left - (cardBounds.Left + 176)) < 2
-                        && Math.Abs(installBounds.Top - (cardBounds.Top + 18)) < 2
-                        && installBorder?.CornerRadius.TopLeft == 15
+                        && install.ActualWidth == 24 && install.ActualHeight == 24
+                        && Math.Abs(installBounds.Left - (cardBounds.Left + 88)) < 2
+                        && Math.Abs(installBounds.Top - (cardBounds.Top + 4)) < 2
+                        && installBorder?.CornerRadius.TopLeft == 12
                         && Math.Abs(iconBounds.Width - 64) < 1 && Math.Abs(iconBounds.Height - 64) < 1
                         && Math.Abs(iconBounds.Left - (cardBounds.Left + 14)) < 2
                         && Math.Abs(iconBounds.Top - (cardBounds.Top + 20)) < 2
                         && Math.Abs(titleBounds.Left - (cardBounds.Left + 88)) < 2
                         && Math.Abs(titleBounds.Top + titleBounds.Height / 2 - iconCenterY) < 2
                         && Math.Abs(titleBounds.Top + titleBounds.Height / 2
-                            - ((installBounds.Top + installBounds.Height / 2 + runBounds.Top + runBounds.Height / 2) / 2)) < 2
-                        && Math.Abs(title.ActualWidth - 78) < 1 && title.ActualHeight > 0 && title.ActualHeight <= 48
+                            - (runBounds.Top + runBounds.Height / 2)) < 2
+                        && Math.Abs(title.ActualWidth - 74) < 1 && title.ActualHeight > 0 && title.ActualHeight <= 40
                         && title.TextWrapping == TextWrapping.Wrap && title.TextTrimming == TextTrimming.CharacterEllipsis
                         && (id != "terminal-notes" || (Math.Abs(titleFirstLine.Top - titleLastLine.Top) > 0 && title.ActualHeight > 16))
-                        && Math.Abs(run.ActualWidth - 30) < 1 && Math.Abs(run.ActualHeight - 30) < 1
-                        && Math.Abs(runBounds.Left - (cardBounds.Left + 176)) < 2
-                        && Math.Abs(runBounds.Top - (cardBounds.Top + 56)) < 2
-                        && playBorder?.CornerRadius.TopLeft == 15
+                        && Math.Abs(run.ActualWidth - 44) < 1 && Math.Abs(run.ActualHeight - 44) < 1
+                        && Math.Abs(runBounds.Left - (cardBounds.Left + 168)) < 2
+                        && Math.Abs(runBounds.Top - (cardBounds.Top + 30)) < 2
+                        && playBorder?.CornerRadius.TopLeft == 22
                         && run.Content is System.Windows.Shapes.Path;
-                }), "Cards keep titles wrapped in a separate area and align circular actions in one column");
+                }), "Cards keep centered titles beside the larger Play action and top-left registration icon");
                 Check(window.LauncherCards.All(card => card.StatusMessage.Length == 0
                     && card.DescriptionText == card.Entry.Description
                     && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
@@ -377,8 +377,8 @@ internal static class Program
                 await Idle(window);
                 Check(window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text =>
                           ReferenceEquals(text.DataContext, card) && text.Text == card.StatusMessage
-                          && text.IsVisible && text.Width == 78 && text.Height == 16
-                          && text.Margin.Left == 87 && text.Margin.Top == 77
+                          && text.IsVisible && text.Width == 118 && text.Height == 16
+                          && text.Margin.Left == 87 && text.Margin.Top == 79
                           && AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite)),
                     "Busy progress remains visible through polite live status text");
                 Check(launchButtons.All(button => !button.IsEnabled), "Busy state disables every run action");
@@ -389,7 +389,7 @@ internal static class Program
                     && window.LauncherCards.All(card => card.DescriptionText == card.StatusMessage)
                     && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible).Count() == window.LauncherCards.Count
                     && Descendants<ProgressBar>(window).Where(progress => progress.IsVisible)
-                        .All(progress => progress.Height == 3 && progress.Margin.Bottom == 4),
+                        .All(progress => progress.Height == 3 && progress.Margin.Bottom == 2),
                     "Busy text appears beside circular actions and thin progress remains visible");
                 Check(!firstLaunch.Focus(), "Disabled run action rejects keyboard focus");
                 foreach (MainWindow.LauncherCard card in window.LauncherCards)
@@ -475,8 +475,8 @@ internal static class Program
                     Button install = installButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Install_{id}");
                     Rect runBounds = BoundsInWindow(run, window);
                     Rect installBounds = BoundsInWindow(install, window);
-                    return run.ActualWidth == 30 && run.ActualHeight == 30
-                           && install.ActualWidth == 30 && install.ActualHeight == 30
+                    return run.ActualWidth == 44 && run.ActualHeight == 44
+                           && install.ActualWidth == 24 && install.ActualHeight == 24
                            && runBounds.Left >= 0 && runBounds.Right <= window.ActualWidth
                            && installBounds.Left >= 0 && installBounds.Right <= window.ActualWidth;
                 });
