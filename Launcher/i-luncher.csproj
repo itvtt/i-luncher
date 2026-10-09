@@ -11,17 +11,22 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
-    <Resource Include="Assets/ILauncher.ico" />
-    <Resource Include="Assets/ILauncher.png" />
-    <Resource Include="..\FolderCompareWPF\Assets\FolderCompare.png" Link="Assets\BuiltIns\FolderCompare.png" />
-    <Resource Include="..\SwiftCopy\SwiftCopy.App\Assets\SwiftCopy-128.png" Link="Assets\BuiltIns\SwiftCopy-128.png" />
-    <Resource Include="..\DiskAtlas\DiskAtlas.App\Assets\DiskAtlas.png" Link="Assets\BuiltIns\DiskAtlas.png" />
-    <Resource Include="..\DeskCal\cal.ico" Link="Assets\BuiltIns\DeskCal.ico" />
+    <Compile Include="..\Bootstrapper\Core\*.cs"
+             Exclude="..\Bootstrapper\Core\FrameworkCompatibility.cs"
+             Link="Bootstrapper\Core\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FolderCompareWPF\FolderCompareWPF.csproj" />
-    <ProjectReference Include="..\SwiftCopy\SwiftCopy.App\SwiftCopy.App.csproj" />
-    <ProjectReference Include="..\DiskAtlas\DiskAtlas.App\DiskAtlas.App.csproj" />
-    <ProjectReference Include="..\DeskCal\DeskCal.csproj" />
+    <Resource Include="Assets/ILauncher.ico" />
+    <Resource Include="Assets/ILauncher.png" />
+    <Resource Include="..\Projects\FolderCompareWPF\Assets\FolderCompare.png" Link="Assets\BuiltIns\FolderCompare.png" />
+    <Resource Include="..\Projects\SwiftCopy\SwiftCopy.App\Assets\SwiftCopy-128.png" Link="Assets\BuiltIns\SwiftCopy-128.png" />
+    <Resource Include="..\Projects\DiskAtlas\DiskAtlas.App\Assets\DiskAtlas.png" Link="Assets\BuiltIns\DiskAtlas.png" />
+    <Resource Include="..\Projects\DeskCal\cal.ico" Link="Assets\BuiltIns\DeskCal.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Projects\FolderCompareWPF\FolderCompareWPF.csproj" />
+    <ProjectReference Include="..\Projects\SwiftCopy\SwiftCopy.App\SwiftCopy.App.csproj" />
+    <ProjectReference Include="..\Projects\DiskAtlas\DiskAtlas.App\DiskAtlas.App.csproj" />
+    <ProjectReference Include="..\Projects\DeskCal\DeskCal.csproj" />
   </ItemGroup>
 </Project>

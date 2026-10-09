@@ -19,6 +19,7 @@ namespace ILauncher.Bootstrapper
             MaximumExpandedBytes = 2L * 1024L * 1024L * 1024L;
             MaximumArchiveEntries = 10000;
             MaximumPathLength = 240;
+            ReadOnlyStatus = false;
             StartMenuRoot = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu) +
                             "\\Programs\\i-luncher";
         }
@@ -35,6 +36,7 @@ namespace ILauncher.Bootstrapper
         public long MaximumExpandedBytes { get; set; }
         public int MaximumArchiveEntries { get; set; }
         public int MaximumPathLength { get; set; }
+        public bool ReadOnlyStatus { get; set; }
     }
 
     public interface IBootstrapperCredentialProvider
@@ -87,13 +89,16 @@ namespace ILauncher.Bootstrapper
     public sealed class BootstrapperApp
     {
         internal BootstrapperApp(string id, string name, string description, string category,
-            string executable, string iconBase64, string asset, string sha256, long bytes)
+            string version, string versionSource, string executable, IList<string> arguments, string iconBase64, string asset, string sha256, long bytes)
         {
             Id = id;
             Name = name;
             Description = description;
             Category = category;
+            Version = version;
+            VersionSource = versionSource;
             Executable = executable;
+            Arguments = new ReadOnlyCollection<string>(new List<string>(arguments ?? new string[0]));
             IconBase64 = iconBase64;
             Asset = asset;
             Sha256 = sha256;
@@ -104,7 +109,10 @@ namespace ILauncher.Bootstrapper
         public string Name { get; private set; }
         public string Description { get; private set; }
         public string Category { get; private set; }
+        public string Version { get; private set; }
+        public string VersionSource { get; private set; }
         public string Executable { get; private set; }
+        public ReadOnlyCollection<string> Arguments { get; private set; }
         public string IconBase64 { get; private set; }
         public string Asset { get; private set; }
         public string Sha256 { get; private set; }
@@ -114,7 +122,7 @@ namespace ILauncher.Bootstrapper
     public sealed class BootstrapperCatalog
     {
         internal BootstrapperCatalog(int schemaVersion, string version, BootstrapperSource source,
-            BootstrapperRuntime runtime, IList<BootstrapperApp> apps, string sha256)
+            BootstrapperRuntime runtime, IList<BootstrapperApp> apps, string sha256, bool isFromCache = false)
         {
             SchemaVersion = schemaVersion;
             Version = version;
@@ -122,6 +130,7 @@ namespace ILauncher.Bootstrapper
             Runtime = runtime;
             Apps = new ReadOnlyCollection<BootstrapperApp>(new List<BootstrapperApp>(apps));
             Sha256 = sha256;
+            IsFromCache = isFromCache;
         }
 
         public int SchemaVersion { get; private set; }
@@ -130,6 +139,8 @@ namespace ILauncher.Bootstrapper
         public BootstrapperRuntime Runtime { get; private set; }
         public ReadOnlyCollection<BootstrapperApp> Apps { get; private set; }
         public string Sha256 { get; private set; }
+        public string Json { get; internal set; }
+        public bool IsFromCache { get; internal set; }
 
         public BootstrapperApp FindApp(string id)
         {
@@ -142,13 +153,17 @@ namespace ILauncher.Bootstrapper
     public sealed class BootstrapperAppStatus
     {
         internal BootstrapperAppStatus(BootstrapperApp app, bool isReady, bool isInstalled,
-            string executablePath, string error)
+            string executablePath, string error, string availableVersion, string installedVersion,
+            bool updateAvailable)
         {
             App = app;
             IsReady = isReady;
             IsInstalled = isInstalled;
             ExecutablePath = executablePath;
             Error = error;
+            AvailableVersion = availableVersion;
+            InstalledVersion = installedVersion;
+            UpdateAvailable = updateAvailable;
         }
 
         public BootstrapperApp App { get; private set; }
@@ -156,6 +171,9 @@ namespace ILauncher.Bootstrapper
         public bool IsInstalled { get; private set; }
         public string ExecutablePath { get; private set; }
         public string Error { get; private set; }
+        public string AvailableVersion { get; private set; }
+        public string InstalledVersion { get; private set; }
+        public bool UpdateAvailable { get; private set; }
     }
 
     public sealed class BootstrapperReadyApp
@@ -236,12 +254,16 @@ namespace ILauncher.Bootstrapper
         event EventHandler<BootstrapperProgressEventArgs> ProgressChanged;
         System.Threading.Tasks.Task<BootstrapperCatalog> LoadCatalogAsync(
             System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<BootstrapperCatalog> CheckForUpdatesAsync(
+            System.Threading.CancellationToken cancellationToken);
         BootstrapperAppStatus GetStatus(string appId);
         System.Threading.Tasks.Task<BootstrapperReadyApp> EnsureReadyAsync(string appId,
             System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<BootstrapperLaunchResult> LaunchAsync(string appId,
             System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<BootstrapperInstallResult> InstallAsync(string appId,
+            System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<BootstrapperInstallResult> UpdateAsync(string appId,
             System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<BootstrapperUninstallResult> UninstallAsync(string appId,
             System.Threading.CancellationToken cancellationToken);

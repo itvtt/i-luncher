@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security;
 using System.Text;
@@ -22,6 +26,8 @@ namespace ILauncher.Bootstrapper
         private readonly IBootstrapperCredentialProvider _credentials;
         private readonly Func<IBootstrapperHttpTransport> _transportFactory;
         private readonly Func<IBootstrapperHttpTransport> _anonymousTransportFactory;
+        private readonly SemaphoreSlim _catalogUpdateGate = new SemaphoreSlim(1, 1);
+        private BootstrapperCatalog _embeddedCatalog;
         private BootstrapperCatalog _catalog;
 
         public event EventHandler<BootstrapperProgressEventArgs> ProgressChanged;
@@ -29,6 +35,16 @@ namespace ILauncher.Bootstrapper
         public BootstrapperEngine(BootstrapperOptions options, IBootstrapperCredentialProvider credentials)
             : this(options, credentials, delegate { return new BootstrapperHttpTransport(); },
                 delegate { return new BootstrapperHttpTransport(); }) { }
+
+        public BootstrapperEngine(string embeddedCatalogJson, string expectedCatalogSha256,
+            string cacheRoot, string bootstrapperExecutablePath, IBootstrapperCredentialProvider credentials)
+            : this(CreateOptions(embeddedCatalogJson, expectedCatalogSha256, cacheRoot, bootstrapperExecutablePath), credentials) { }
+
+        private static BootstrapperOptions CreateOptions(string catalogJson, string catalogSha256,
+            string cacheRoot, string executablePath)
+        {
+            return new BootstrapperOptions(catalogJson, catalogSha256, cacheRoot, executablePath);
+        }
 
         internal BootstrapperEngine(BootstrapperOptions options, IBootstrapperCredentialProvider credentials,
             Func<IBootstrapperHttpTransport> transportFactory,
@@ -57,30 +73,102 @@ namespace ILauncher.Bootstrapper
             string actualHash = SafeFiles.Sha256(bytes);
             if (!String.Equals(actualHash, _options.ExpectedCatalogSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The embedded online catalog failed its integrity check.");
-            _catalog = CatalogParser.Parse(_options.EmbeddedCatalogJson, actualHash, _options);
+            _embeddedCatalog = CatalogParser.Parse(_options.EmbeddedCatalogJson, actualHash, _options);
+            _catalog = _embeddedCatalog;
+            if (!_options.ReadOnlyStatus) SaveCatalogArchive(_embeddedCatalog);
+            BootstrapperCatalog cached = TryReadLastGoodCatalog();
+            if (cached != null && CompareReleaseVersions(cached.Version, _catalog.Version) >= 0)
+            {
+                if (CompareReleaseVersions(cached.Version, _catalog.Version) != 0 ||
+                    String.Equals(cached.Sha256, _catalog.Sha256, StringComparison.OrdinalIgnoreCase))
+                    _catalog = cached;
+            }
             return Task.FromResult(_catalog);
+        }
+
+        public async Task<BootstrapperCatalog> CheckForUpdatesAsync(CancellationToken cancellationToken)
+        {
+            await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+            if (_options.ReadOnlyStatus) return _catalog;
+            await _catalogUpdateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    BootstrapperCatalog latest = await FetchLatestCatalogAsync(cancellationToken).ConfigureAwait(false);
+                    int comparison = CompareReleaseVersions(latest.Version, _catalog.Version);
+                    if (comparison < 0)
+                        throw new InvalidDataException("The release feed moved behind the last known catalog; the cached catalog was preserved.");
+                    if (comparison == 0 && !String.Equals(latest.Sha256, _catalog.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("An immutable catalog version changed content; the cached catalog was preserved.");
+                    EnsureInstalledAppsRemainAvailable(latest);
+                    latest.IsFromCache = false;
+                    SaveCatalogArchive(latest);
+                    SaveLastGoodCatalog(latest);
+                    _catalog = latest;
+                    return latest;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch
+                {
+                    BootstrapperCatalog cached = TryReadLastGoodCatalog();
+                    if (cached != null && CompareReleaseVersions(cached.Version, _catalog.Version) >= 0)
+                    {
+                        cached.IsFromCache = true;
+                        _catalog = cached;
+                    }
+                    else if (_catalog != _embeddedCatalog)
+                    {
+                        _catalog.IsFromCache = true;
+                    }
+                    return _catalog;
+                }
+            }
+            finally { _catalogUpdateGate.Release(); }
         }
 
         public BootstrapperAppStatus GetStatus(string appId)
         {
             BootstrapperCatalog catalog = GetCatalog();
-            BootstrapperApp app = FindApp(catalog, appId);
+            BootstrapperApp app = catalog.FindApp(appId);
+            if (app == null) app = FindInstalledAppFromReceipt(appId) ?? (_embeddedCatalog == null ? null : _embeddedCatalog.FindApp(appId));
+            if (app == null) throw new ArgumentException("The app is not in the current catalog and has no known installation.", "appId");
+            BootstrapperApp availableApp = catalog.FindApp(appId);
+            string receipt = ReceiptPath(app);
+            string ownedShortcut;
+            Dictionary<string, string> receiptFields;
+            bool installed = TryGetValidInstallReceipt(app, receipt, out ownedShortcut, out receiptFields);
+            string installedExecutable = null;
+            bool installedReady = installed && TryResolveReceiptReady(app, receiptFields, out installedExecutable);
             string appDirectory = AppCachePath(app);
             string executable = SafeFiles.CombineContained(appDirectory, app.Executable, "App executable");
             string runtimeDirectory = RuntimeCachePath(catalog.Runtime);
-            bool ready = IsValidAppCache(app, appDirectory, executable) && IsValidRuntimeCache(catalog.Runtime, runtimeDirectory);
-            string receipt = ReceiptPath(app);
-            string ownedShortcut;
-            bool installed = TryGetValidInstallReceipt(app, receipt, out ownedShortcut);
+            bool ready = installedReady || (IsValidAppCache(app, appDirectory, executable) && IsValidRuntimeCache(catalog.Runtime, runtimeDirectory));
             LegacyManagedInstall legacy = TryFindLegacyInstall(app);
-            string statusExecutable = ready ? executable : legacy == null ? null : legacy.ExecutablePath;
-            return new BootstrapperAppStatus(app, ready || legacy != null, installed || legacy != null,
-                statusExecutable, null);
+            string statusExecutable = installedReady ? installedExecutable : ready ? executable : legacy == null ? null : legacy.ExecutablePath;
+            bool anyInstalled = installed || legacy != null;
+            string installedVersion = installed ? ResolveInstalledVersion(app, receiptFields) : null;
+            if (installedVersion == null && installedReady)
+                installedVersion = ReadInstalledBinaryVersion(installedExecutable);
+            if (installedVersion == null && legacy != null)
+                installedVersion = ReadInstalledBinaryVersion(legacy.ExecutablePath);
+            bool updateAvailable = anyInstalled && availableApp != null &&
+                IsNewerAppVersion(availableApp.Version, installedVersion);
+            return new BootstrapperAppStatus(app, ready || legacy != null, anyInstalled,
+                statusExecutable, null, availableApp == null ? null : availableApp.Version, installedVersion, updateAvailable);
         }
 
-        public async Task<BootstrapperReadyApp> EnsureReadyAsync(string appId, CancellationToken cancellationToken)
+        public Task<BootstrapperReadyApp> EnsureReadyAsync(string appId, CancellationToken cancellationToken)
         {
-            BootstrapperCatalog catalog = GetCatalog();
+            return EnsureReadyAsync(GetCatalog(), appId, cancellationToken);
+        }
+
+        public async Task<BootstrapperReadyApp> EnsureReadyAsync(BootstrapperCatalog catalog, string appId,
+            CancellationToken cancellationToken)
+        {
+            if (catalog == null) throw new ArgumentNullException("catalog");
+            EnsureCatalogSourcePinned(catalog);
             BootstrapperApp app = FindApp(catalog, appId);
             SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, true);
             string runtimeDestination = RuntimeCachePath(catalog.Runtime);
@@ -94,34 +182,39 @@ namespace ILauncher.Bootstrapper
             return new BootstrapperReadyApp(app, executable, Path.GetDirectoryName(executable), runtime);
         }
 
-        public async Task<BootstrapperLaunchResult> LaunchAsync(string appId, CancellationToken cancellationToken)
+        public Task<BootstrapperLaunchResult> LaunchAsync(string appId, CancellationToken cancellationToken)
         {
             BootstrapperCatalog catalog = GetCatalog();
-            BootstrapperApp app = FindApp(catalog, appId);
-            string currentAppDirectory = AppCachePath(app);
-            string currentExecutable = SafeFiles.CombineContained(currentAppDirectory, app.Executable, "App executable");
-            string currentRuntime = RuntimeCachePath(catalog.Runtime);
-            bool currentCacheReady = IsValidAppCache(app, currentAppDirectory, currentExecutable) &&
-                                     IsValidRuntimeCache(catalog.Runtime, currentRuntime);
-            if (!currentCacheReady)
+            BootstrapperApp app = catalog.FindApp(appId) ?? FindInstalledAppFromReceipt(appId);
+            if (app == null) throw new ArgumentException("The app is not in the current catalog and has no known installation.", "appId");
+            if (!GetStatus(appId).IsInstalled)
+                throw new InvalidOperationException("Install the app before launching it.");
+
+            string receipt = ReceiptPath(app);
+            string ownedShortcut;
+            Dictionary<string, string> fields;
+            if (TryGetValidInstallReceipt(app, receipt, out ownedShortcut, out fields))
             {
-                LegacyManagedInstall legacy = TryFindLegacyInstall(app);
-                if (legacy != null)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    int legacyProcessId = StartShellProcess(legacy.ExecutablePath, legacy.WorkingDirectory,
-                        legacy.Arguments, legacy.RuntimeDirectory);
-                    return new BootstrapperLaunchResult(legacyProcessId, legacy.ExecutablePath);
-                }
+                string executable;
+                string workingDirectory;
+                string runtimeDirectory;
+                string[] arguments;
+                if (!TryResolveReceiptExecution(app, fields, out executable, out workingDirectory,
+                        out runtimeDirectory, out arguments))
+                    throw new InvalidDataException("The installed app cache failed validation; the current installation was preserved.");
+                cancellationToken.ThrowIfCancellationRequested();
+                int processId = StartShellProcess(executable, workingDirectory, arguments, runtimeDirectory);
+                return Task.FromResult(new BootstrapperLaunchResult(processId, executable));
             }
 
-            BootstrapperReadyApp ready = await EnsureReadyAsync(appId, cancellationToken).ConfigureAwait(false);
+            LegacyManagedInstall legacy = TryFindLegacyInstall(app);
+            if (legacy == null)
+                throw new InvalidDataException("The installed app receipt could not be validated; the installation was preserved.");
             cancellationToken.ThrowIfCancellationRequested();
-            int processId = StartShellProcess(ready.ExecutablePath, ready.WorkingDirectory,
-                new string[0], ready.RuntimeDirectory);
-            return new BootstrapperLaunchResult(processId, ready.ExecutablePath);
+            int legacyProcessId = StartShellProcess(legacy.ExecutablePath, legacy.WorkingDirectory,
+                legacy.Arguments, legacy.RuntimeDirectory);
+            return Task.FromResult(new BootstrapperLaunchResult(legacyProcessId, legacy.ExecutablePath));
         }
-
         private LegacyManagedInstall TryFindLegacyInstall(BootstrapperApp app)
         {
             try { return new LegacyManagedInstallStore(_options).Find(app); }
@@ -180,11 +273,28 @@ namespace ILauncher.Bootstrapper
             return builder.ToString();
         }
 
-        public async Task<BootstrapperInstallResult> InstallAsync(string appId, CancellationToken cancellationToken)
+        public Task<BootstrapperInstallResult> InstallAsync(string appId, CancellationToken cancellationToken)
+        {
+            return InstallForCatalogAsync(GetCatalog(), appId, cancellationToken);
+        }
+
+        public Task<BootstrapperInstallResult> UpdateAsync(string appId, CancellationToken cancellationToken)
         {
             BootstrapperCatalog catalog = GetCatalog();
+            BootstrapperAppStatus status = GetStatus(appId);
+            if (!status.IsInstalled)
+                throw new InvalidOperationException("Install the app before updating it.");
+            if (!status.UpdateAvailable)
+                throw new InvalidOperationException("No update is available.");
+            return InstallForCatalogAsync(catalog, appId, cancellationToken);
+        }
+
+        private async Task<BootstrapperInstallResult> InstallForCatalogAsync(BootstrapperCatalog catalog,
+            string appId, CancellationToken cancellationToken)
+        {
+            EnsureCatalogSourcePinned(catalog);
             BootstrapperApp app = FindApp(catalog, appId);
-            await EnsureReadyAsync(app.Id, cancellationToken).ConfigureAwait(false);
+            await EnsureReadyAsync(catalog, app.Id, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             string stableBootstrapper = StableBootstrapperPath(catalog);
             string receipt = ReceiptPath(app);
@@ -204,8 +314,11 @@ namespace ILauncher.Bootstrapper
             try
             {
                 string previousOwnedShortcut;
-                if (TryGetValidInstallReceipt(app, receipt, out previousOwnedShortcut))
+                Dictionary<string, string> previousFields;
+                bool hadManagedReceipt = TryGetValidInstallReceipt(app, receipt, out previousOwnedShortcut, out previousFields);
+                if (hadManagedReceipt)
                     shortcut = previousOwnedShortcut;
+                LegacyManagedInstall legacyInstall = hadManagedReceipt ? null : TryFindLegacyInstall(app);
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(shortcut, false);
                 Directory.CreateDirectory(Path.GetDirectoryName(stableBootstrapper));
                 if (!File.Exists(stableBootstrapper) ||
@@ -228,16 +341,25 @@ namespace ILauncher.Bootstrapper
                 byte[] receiptBytes = new UTF8Encoding(false).GetBytes(
                     "appId=" + app.Id + "\r\n" + "catalogSha256=" + catalog.Sha256 + "\r\n" +
                     "packageSha256=" + app.Sha256 + "\r\n" + "runtimeSha256=" + catalog.Runtime.Sha256 + "\r\n" +
+                    "appVersion=" + (app.Version ?? String.Empty) + "\r\n" +
+                    "appVersionSource=" + (app.VersionSource ?? (app.Version == null ? "unknown" : "catalog")) + "\r\n" +
+                    "runtimeVersion=" + catalog.Runtime.Version + "\r\n" +
+                    "argumentsBase64=" + EncodeArguments(app.Arguments) + "\r\n" +
                     "executable=" + app.Executable + "\r\n" + "launcher=" + stableBootstrapper + "\r\n");
                 try
                 {
                     CreateShortcut(shortcut, stableBootstrapper, app.Id, iconPath);
                     SafeFiles.WriteAtomic(receipt, receiptBytes);
+                    if (legacyInstall != null)
+                        RetireLegacyRegistrations(legacyInstall, shortcut);
                 }
                 catch
                 {
                     RestoreFile(shortcut, oldShortcut);
                     RestoreFile(receipt, oldReceipt);
+                    if (legacyInstall != null)
+                        foreach (KeyValuePair<string, byte[]> legacyFile in legacyInstall.RegistrationFiles)
+                            RestoreFile(legacyFile.Key, legacyFile.Value);
                     throw;
                 }
                 return new BootstrapperInstallResult(shortcut, receipt, stableBootstrapper);
@@ -248,7 +370,9 @@ namespace ILauncher.Bootstrapper
         public async Task<BootstrapperUninstallResult> UninstallAsync(string appId, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            BootstrapperApp app = FindApp(GetCatalog(), appId);
+            BootstrapperCatalog catalog = GetCatalog();
+            BootstrapperApp app = catalog.FindApp(appId) ?? FindInstalledAppFromReceipt(appId);
+            if (app == null) throw new ArgumentException("The app is not in the current catalog and has no known installation.", "appId");
             SemaphoreSlim gate = InstallLocks.GetOrAdd("install:" + app.Id, delegate { return new SemaphoreSlim(1, 1); });
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -355,6 +479,23 @@ namespace ILauncher.Bootstrapper
                 return;
             }
             snapshots.Add(fullPath, bytes);
+        }
+
+        private void RetireLegacyRegistrations(LegacyManagedInstall legacy, string replacementShortcut)
+        {
+            if (legacy == null) return;
+            string appsRoot = SafeFiles.CombineContained(_options.CacheRoot, "Apps", "Legacy app registration root");
+            foreach (KeyValuePair<string, byte[]> registration in legacy.RegistrationFiles)
+            {
+                string path = Path.GetFullPath(registration.Key);
+                if (String.Equals(path, Path.GetFullPath(replacementShortcut), StringComparison.OrdinalIgnoreCase)) continue;
+                if (!SafeFiles.IsWithinOrEqual(appsRoot, path) && !SafeFiles.IsWithinOrEqual(_options.StartMenuRoot, path))
+                    throw new InvalidDataException("A legacy registration file is outside its owned directory.");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(path, false);
+                if (!File.Exists(path) || !BytesEqual(File.ReadAllBytes(path), registration.Value))
+                    throw new InvalidDataException("A legacy registration changed during migration; it was preserved.");
+                File.Delete(path);
+            }
         }
 
         private async Task EnsureRuntimeAsync(BootstrapperCatalog catalog, string destination,
@@ -489,6 +630,64 @@ namespace ILauncher.Bootstrapper
                 Path.Combine("installed", app.Id, "current.receipt"), "Install receipt");
         }
 
+        private string ReceiptPath(string appId)
+        {
+            if (String.IsNullOrWhiteSpace(appId) || appId.Length > 80 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(appId, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"))
+                return null;
+            return SafeFiles.CombineContained(_options.CacheRoot,
+                Path.Combine("installed", appId, "current.receipt"), "Install receipt");
+        }
+
+        private BootstrapperApp FindInstalledAppFromReceipt(string appId)
+        {
+            string receipt = ReceiptPath(appId);
+            if (receipt == null) return null;
+            try
+            {
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(receipt, false);
+                if (!File.Exists(receipt) || new FileInfo(receipt).Length > 16 * 1024) return null;
+                string[] lines = File.ReadAllLines(receipt, new UTF8Encoding(false, true));
+                Dictionary<string, string> fields = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (string line in lines)
+                {
+                    int separator = line.IndexOf('=');
+                    if (separator <= 0 || fields.ContainsKey(line.Substring(0, separator))) return null;
+                    fields.Add(line.Substring(0, separator), line.Substring(separator + 1));
+                }
+                string receiptAppId, catalogSha, packageSha, runtimeSha;
+                if (!fields.TryGetValue("appId", out receiptAppId) || !String.Equals(receiptAppId, appId, StringComparison.Ordinal) ||
+                    !fields.TryGetValue("catalogSha256", out catalogSha) || !SafeFiles.IsHash(catalogSha) ||
+                    !fields.TryGetValue("packageSha256", out packageSha) || !SafeFiles.IsHash(packageSha) ||
+                    !fields.TryGetValue("runtimeSha256", out runtimeSha) || !SafeFiles.IsHash(runtimeSha)) return null;
+                BootstrapperCatalog recorded = FindCatalogByHash(catalogSha);
+                BootstrapperApp app = recorded == null ? null : recorded.FindApp(appId);
+                if (app == null || !String.Equals(app.Sha256, packageSha, StringComparison.OrdinalIgnoreCase) ||
+                    !String.Equals(recorded.Runtime.Sha256, runtimeSha, StringComparison.OrdinalIgnoreCase)) return null;
+                string ownedShortcut;
+                Dictionary<string, string> validatedFields;
+                return TryGetValidInstallReceipt(app, receipt, out ownedShortcut, out validatedFields) ? app : null;
+            }
+            catch { return null; }
+        }
+
+        private void EnsureInstalledAppsRemainAvailable(BootstrapperCatalog candidate)
+        {
+            if (_catalog == null || candidate == null) return;
+            foreach (BootstrapperApp currentApp in _catalog.Apps)
+            {
+                if (candidate.FindApp(currentApp.Id) != null) continue;
+                try
+                {
+                    if (GetStatus(currentApp.Id).IsInstalled)
+                        throw new InvalidDataException("The release catalog omitted an installed app; the last-good catalog was preserved.");
+                }
+                catch (InvalidDataException) { throw; }
+                catch { }
+            }
+        }
+
         private string ShortcutPath(BootstrapperApp app)
         {
             string suffix = " (" + app.Id + ").lnk";
@@ -509,7 +708,15 @@ namespace ILauncher.Bootstrapper
 
         private bool TryGetValidInstallReceipt(BootstrapperApp app, string receiptPath, out string ownedShortcut)
         {
+            Dictionary<string, string> ignored;
+            return TryGetValidInstallReceipt(app, receiptPath, out ownedShortcut, out ignored);
+        }
+
+        private bool TryGetValidInstallReceipt(BootstrapperApp app, string receiptPath,
+            out string ownedShortcut, out Dictionary<string, string> receiptFields)
+        {
             ownedShortcut = null;
+            receiptFields = null;
             try
             {
                 SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
@@ -524,12 +731,23 @@ namespace ILauncher.Bootstrapper
                     if (separator <= 0 || fields.ContainsKey(lines[i].Substring(0, separator))) return false;
                     fields.Add(lines[i].Substring(0, separator), lines[i].Substring(separator + 1));
                 }
-                if (fields.Count != 6 || !fields.ContainsKey("appId") || !fields.ContainsKey("catalogSha256") ||
+                if ((fields.Count != 6 && fields.Count != 9 && fields.Count != 10) || !fields.ContainsKey("appId") || !fields.ContainsKey("catalogSha256") ||
                     !fields.ContainsKey("packageSha256") || !fields.ContainsKey("runtimeSha256") ||
                     !fields.ContainsKey("executable") || !fields.ContainsKey("launcher")) return false;
+                string[] allowedFields = { "appId", "catalogSha256", "packageSha256", "runtimeSha256", "executable", "launcher",
+                    "appVersion", "appVersionSource", "runtimeVersion", "argumentsBase64" };
+                if (fields.Keys.Any(key => !allowedFields.Contains(key, StringComparer.Ordinal))) return false;
+                bool hasRuntimeMetadata = fields.ContainsKey("runtimeVersion") && fields.ContainsKey("argumentsBase64");
+                bool hasLegacyVersionedMetadata = fields.ContainsKey("appVersion") && hasRuntimeMetadata && !fields.ContainsKey("appVersionSource");
+                bool hasNewVersionedMetadata = fields.ContainsKey("appVersion") && fields.ContainsKey("appVersionSource") && hasRuntimeMetadata;
+                if (!IsValidReceiptVersionMetadata(fields)) return false;
                 if (!String.Equals(fields["appId"], app.Id, StringComparison.Ordinal) ||
                     !SafeFiles.IsHash(fields["catalogSha256"]) || !SafeFiles.IsHash(fields["packageSha256"]) ||
                     !SafeFiles.IsHash(fields["runtimeSha256"])) return false;
+                string[] decodedArguments;
+                if (hasRuntimeMetadata && (!IsSafeVersion(fields["runtimeVersion"]) ||
+                    !TryDecodeArguments(fields["argumentsBase64"], out decodedArguments))) return false;
+                if (hasLegacyVersionedMetadata && !IsSafeVersion(fields["appVersion"])) return false;
 
                 string appDirectory = SafeFiles.CombineContained(_options.CacheRoot,
                     Path.Combine("apps", app.Id, fields["packageSha256"]), "Installed app cache");
@@ -562,6 +780,288 @@ namespace ILauncher.Bootstrapper
                 }
                 if (matchingShortcut == null) return false;
                 ownedShortcut = matchingShortcut;
+                receiptFields = fields;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private bool TryResolveReceiptReady(BootstrapperApp app, IDictionary<string, string> fields,
+            out string executable)
+        {
+            string ignoredWorkingDirectory, ignoredRuntimeDirectory;
+            string[] ignoredArguments;
+            return TryResolveReceiptExecution(app, fields, out executable, out ignoredWorkingDirectory,
+                out ignoredRuntimeDirectory, out ignoredArguments);
+        }
+
+        private bool TryResolveReceiptExecution(BootstrapperApp app, IDictionary<string, string> fields,
+            out string executable, out string workingDirectory, out string runtimeDirectory,
+            out string[] arguments)
+        {
+            executable = null;
+            workingDirectory = null;
+            runtimeDirectory = null;
+            arguments = new string[0];
+            try
+            {
+                string appDirectory = SafeFiles.CombineContained(_options.CacheRoot,
+                    Path.Combine("apps", app.Id, fields["packageSha256"]), "Installed app cache");
+                executable = SafeFiles.CombineContained(appDirectory, fields["executable"], "Installed app executable");
+                if (!String.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase)) return false;
+                string appMarker = Path.Combine(appDirectory, ".ready");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(appDirectory, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(executable, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(appMarker, false);
+                string expectedAppMarker = app.Id + "\n" + fields["packageSha256"] + "\n\n";
+                if (!File.Exists(executable) || !File.Exists(appMarker) ||
+                    !String.Equals(File.ReadAllText(appMarker, Encoding.UTF8), expectedAppMarker, StringComparison.Ordinal)) return false;
+
+                runtimeDirectory = SafeFiles.CombineContained(_options.CacheRoot,
+                    Path.Combine("runtime", fields["runtimeSha256"]), "Installed runtime cache");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(runtimeDirectory, false);
+                string runtimeMarker = SafeFiles.CombineContained(runtimeDirectory, ".ready", "Installed runtime marker");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(runtimeMarker, false);
+                if (!File.Exists(runtimeMarker)) return false;
+                string[] markerLines = File.ReadAllLines(runtimeMarker, new UTF8Encoding(false, true));
+                if (markerLines.Length != 3 || !String.Equals(markerLines[0], "runtime", StringComparison.Ordinal) ||
+                    !String.Equals(markerLines[1], fields["runtimeSha256"], StringComparison.OrdinalIgnoreCase)) return false;
+                if (fields.ContainsKey("runtimeVersion") && !String.Equals(markerLines[2], fields["runtimeVersion"], StringComparison.Ordinal)) return false;
+                if (!File.Exists(Path.Combine(runtimeDirectory, "dotnet.exe")) ||
+                    !File.Exists(Path.Combine(runtimeDirectory, "host", "fxr", markerLines[2], "hostfxr.dll")) ||
+                    !File.Exists(Path.Combine(runtimeDirectory, "shared", "Microsoft.NETCore.App", markerLines[2], "coreclr.dll")) ||
+                    !File.Exists(Path.Combine(runtimeDirectory, "shared", "Microsoft.WindowsDesktop.App", markerLines[2], "PresentationFramework.dll"))) return false;
+
+                if (fields.ContainsKey("argumentsBase64") && !TryDecodeArguments(fields["argumentsBase64"], out arguments)) return false;
+                workingDirectory = Path.GetDirectoryName(executable);
+                return Directory.Exists(workingDirectory);
+            }
+            catch
+            {
+                executable = null;
+                workingDirectory = null;
+                runtimeDirectory = null;
+                arguments = new string[0];
+                return false;
+            }
+        }
+
+        private string ResolveInstalledVersion(BootstrapperApp app, IDictionary<string, string> fields)
+        {
+            string value;
+            string versionSource;
+            if (fields.TryGetValue("appVersionSource", out versionSource) &&
+                (versionSource == "manifest" || versionSource == "project") &&
+                fields.TryGetValue("appVersion", out value) && IsSafeVersion(value)) return value;
+            string packageSha;
+            string packageVersion;
+            if (versionSource == "package" && fields.TryGetValue("appVersion", out value) &&
+                fields.TryGetValue("packageSha256", out packageSha) &&
+                LegacyAppVersionIndex.TryResolve(app.Id, packageSha, out packageVersion) &&
+                String.Equals(value, packageVersion, StringComparison.Ordinal)) return value;
+            string catalogSha;
+            if (!fields.TryGetValue("catalogSha256", out catalogSha)) return null;
+            BootstrapperCatalog recorded = FindCatalogByHash(catalogSha);
+            if (recorded == null) return null;
+            BootstrapperApp recordedApp = recorded.FindApp(app.Id);
+            return recordedApp != null && String.Equals(recordedApp.Sha256, fields["packageSha256"], StringComparison.OrdinalIgnoreCase) &&
+                   String.Equals(recorded.Runtime.Sha256, fields["runtimeSha256"], StringComparison.OrdinalIgnoreCase)
+                ? recordedApp.Version : null;
+        }
+
+        private static string ReadInstalledBinaryVersion(string executablePath)
+        {
+            try
+            {
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(executablePath, false);
+                if (!File.Exists(executablePath)) return null;
+                string version = ReadBinaryVersion(executablePath);
+                if (!String.IsNullOrEmpty(version)) return version;
+                string assemblyPath = Path.Combine(Path.GetDirectoryName(executablePath),
+                    Path.GetFileNameWithoutExtension(executablePath) + ".dll");
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(assemblyPath, false);
+                return File.Exists(assemblyPath) ? ReadBinaryVersion(assemblyPath) : null;
+            }
+            catch { return null; }
+        }
+
+        private static string ReadBinaryVersion(string path)
+        {
+            FileVersionInfo info = FileVersionInfo.GetVersionInfo(path);
+            string version = info.ProductVersion == null ? null : info.ProductVersion.Trim();
+            if (IsSafeVersion(version)) return version;
+            version = info.FileVersion == null ? null : info.FileVersion.Trim();
+            return IsSafeVersion(version) ? version : null;
+        }
+
+        internal static bool IsValidReceiptVersionMetadata(IDictionary<string, string> fields)
+        {
+            if (fields == null) return false;
+            bool hasRuntimeVersion = fields.ContainsKey("runtimeVersion");
+            bool hasArguments = fields.ContainsKey("argumentsBase64");
+            bool hasAppVersion = fields.ContainsKey("appVersion");
+            bool hasVersionSource = fields.ContainsKey("appVersionSource");
+            bool hasRuntimeMetadata = hasRuntimeVersion && hasArguments;
+            bool legacyVersioned = hasAppVersion && hasRuntimeMetadata && !hasVersionSource;
+            bool sourcedVersioned = hasAppVersion && hasVersionSource && hasRuntimeMetadata;
+            if (hasRuntimeVersion != hasArguments || (hasVersionSource && !hasAppVersion)) return false;
+            if ((fields.Count == 9) != legacyVersioned || (fields.Count == 10) != sourcedVersioned ||
+                (fields.Count == 6 && (hasRuntimeMetadata || hasAppVersion || hasVersionSource))) return false;
+            if (fields.Count == 9) return IsSafeVersion(fields["appVersion"]);
+            if (fields.Count != 10) return fields.Count == 6 && !hasRuntimeVersion && !hasAppVersion && !hasVersionSource;
+            string source = fields["appVersionSource"];
+            string version = fields["appVersion"];
+            return (source == "unknown" && version.Length == 0) ||
+                ((source == "manifest" || source == "project" || source == "catalog" || source == "package") && IsSafeVersion(version));
+        }
+
+        private BootstrapperCatalog FindCatalogByHash(string sha256)
+        {
+            if (_embeddedCatalog != null && String.Equals(_embeddedCatalog.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+                return _embeddedCatalog;
+            if (_catalog != null && String.Equals(_catalog.Sha256, sha256, StringComparison.OrdinalIgnoreCase)) return _catalog;
+            string path = CatalogArchivePath(sha256);
+            try
+            {
+                if (!File.Exists(path)) return null;
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(path, false);
+                string json = new UTF8Encoding(false, true).GetString(File.ReadAllBytes(path));
+                string actual = SafeFiles.Sha256(new UTF8Encoding(false, true).GetBytes(json));
+                if (!String.Equals(actual, sha256, StringComparison.OrdinalIgnoreCase)) return null;
+                BootstrapperCatalog parsed = CatalogParser.Parse(json, actual, _options);
+                EnsureCatalogSourcePinned(parsed);
+                return parsed;
+            }
+            catch { return null; }
+        }
+
+        private static bool IsSafeVersion(string value)
+        {
+            return !String.IsNullOrWhiteSpace(value) && value.Length <= 64 &&
+                System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$");
+        }
+
+        internal static bool IsNewerAppVersion(string available, string installed)
+        {
+            string[] availableCore, availablePre, installedCore, installedPre;
+            if (!TryParseAppVersion(available, out availableCore, out availablePre) ||
+                !TryParseAppVersion(installed, out installedCore, out installedPre)) return false;
+            for (int i = 0; i < 4; i++)
+            {
+                string left = i < availableCore.Length ? availableCore[i] : "0";
+                string right = i < installedCore.Length ? installedCore[i] : "0";
+                int comparison = CompareNumericText(left, right);
+                if (comparison != 0) return comparison > 0;
+            }
+            if (availablePre == null) return installedPre != null;
+            if (installedPre == null) return false;
+            int count = Math.Min(availablePre.Length, installedPre.Length);
+            for (int i = 0; i < count; i++)
+            {
+                bool leftNumeric = IsAsciiDigits(availablePre[i]);
+                bool rightNumeric = IsAsciiDigits(installedPre[i]);
+                int comparison;
+                if (leftNumeric && rightNumeric) comparison = CompareNumericText(availablePre[i], installedPre[i]);
+                else if (leftNumeric != rightNumeric) comparison = leftNumeric ? -1 : 1;
+                else comparison = String.CompareOrdinal(availablePre[i], installedPre[i]);
+                if (comparison != 0) return comparison > 0;
+            }
+            return availablePre.Length > installedPre.Length;
+        }
+
+        private static bool TryParseAppVersion(string value, out string[] core, out string[] prerelease)
+        {
+            core = null;
+            prerelease = null;
+            if (String.IsNullOrEmpty(value) || value.Length > 64) return false;
+            if (value[0] == 'v' || value[0] == 'V') value = value.Substring(1);
+            int plus = value.IndexOf('+');
+            if (plus >= 0)
+            {
+                if (value.IndexOf('+', plus + 1) >= 0 || !IsVersionIdentifiers(value.Substring(plus + 1), false)) return false;
+                value = value.Substring(0, plus);
+            }
+            int dash = value.IndexOf('-');
+            if (dash >= 0)
+            {
+                string prereleaseText = value.Substring(dash + 1);
+                if (!IsVersionIdentifiers(prereleaseText, true)) return false;
+                prerelease = prereleaseText.Split('.');
+                value = value.Substring(0, dash);
+            }
+            string[] parts = value.Split('.');
+            if (parts.Length < 2 || parts.Length > 4) return false;
+            foreach (string part in parts)
+                if (!IsAsciiDigits(part) || (part.Length > 1 && part[0] == '0')) return false;
+            core = parts;
+            return true;
+        }
+
+        private static bool IsVersionIdentifiers(string value, bool prerelease)
+        {
+            if (String.IsNullOrEmpty(value)) return false;
+            string[] identifiers = value.Split('.');
+            foreach (string identifier in identifiers)
+            {
+                if (identifier.Length == 0) return false;
+                bool numeric = true;
+                foreach (char c in identifier)
+                {
+                    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                          (c >= 'a' && c <= 'z') || c == '-')) return false;
+                    if (c < '0' || c > '9') numeric = false;
+                }
+                if (prerelease && numeric && identifier.Length > 1 && identifier[0] == '0') return false;
+            }
+            return true;
+        }
+
+        private static bool IsAsciiDigits(string value)
+        {
+            if (String.IsNullOrEmpty(value)) return false;
+            foreach (char c in value) if (c < '0' || c > '9') return false;
+            return true;
+        }
+
+        private static int CompareNumericText(string left, string right)
+        {
+            int leftStart = 0, rightStart = 0;
+            while (leftStart < left.Length - 1 && left[leftStart] == '0') leftStart++;
+            while (rightStart < right.Length - 1 && right[rightStart] == '0') rightStart++;
+            int leftLength = left.Length - leftStart, rightLength = right.Length - rightStart;
+            if (leftLength != rightLength) return leftLength < rightLength ? -1 : 1;
+            return String.CompareOrdinal(left, leftStart, right, rightStart, leftLength);
+        }
+
+        private static string EncodeArguments(IList<string> arguments)
+        {
+            if (arguments == null || arguments.Count == 0) return String.Empty;
+            List<string> encoded = new List<string>();
+            foreach (string argument in arguments)
+                encoded.Add(Convert.ToBase64String(new UTF8Encoding(false, true).GetBytes(argument ?? String.Empty)));
+            return String.Join(",", encoded.ToArray());
+        }
+
+        private static bool TryDecodeArguments(string encoded, out string[] arguments)
+        {
+            arguments = new string[0];
+            try
+            {
+                if (String.IsNullOrEmpty(encoded)) return true;
+                string[] parts = encoded.Split(',');
+                if (parts.Length > 32) return false;
+                List<string> decoded = new List<string>();
+                int total = 0;
+                foreach (string part in parts)
+                {
+                    string value = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(part));
+                    if (value.Any(character => character < 0x20)) return false;
+                    total += value.Length;
+                    if (value.Length > 4096 || total > 8192) return false;
+                    decoded.Add(value);
+                }
+                arguments = decoded.ToArray();
                 return true;
             }
             catch { return false; }
@@ -705,6 +1205,294 @@ namespace ILauncher.Bootstrapper
         {
             EventHandler<BootstrapperProgressEventArgs> handler = ProgressChanged;
             if (handler != null) handler(this, new BootstrapperProgressEventArgs(appId, "download", transferred, total));
+        }
+
+        private async Task<BootstrapperCatalog> FetchLatestCatalogAsync(CancellationToken cancellationToken)
+        {
+            BootstrapperCatalog pinned = _embeddedCatalog ?? await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+            Uri apiBase = new Uri(pinned.Source.ApiUrl.TrimEnd('/') + "/", UriKind.Absolute);
+            string[] ownerRepository = pinned.Source.Repository.Split('/');
+            string repositoryPath = Uri.EscapeDataString(ownerRepository[0]) + "/" + Uri.EscapeDataString(ownerRepository[1]);
+            Uri releaseUri = new Uri(apiBase, "repos/" + repositoryPath + "/releases/latest");
+            byte[] releaseBytes = await RequestApiBytesAsync(releaseUri, "application/vnd.github+json",
+                _options.MaximumCatalogBytes, cancellationToken).ConfigureAwait(false);
+            Dictionary<string, object> release = CatalogParser.Object(StrictJson.Parse(new UTF8Encoding(false, true).GetString(releaseBytes)), "latest release");
+            string tag = JsonText(release, "tag_name", 64);
+            if (!RegexSafeTag(tag)) throw new InvalidDataException("The release feed returned an invalid release tag.");
+            string version = tag.TrimStart('v', 'V');
+            int rollback = CompareReleaseVersions(version, _catalog.Version);
+            if (rollback < 0) throw new InvalidDataException("The release feed is older than the last known catalog.");
+            string assetName = "i-luncher-online-catalog-" + version + ".json";
+            List<object> assets = JsonArray(release, "assets");
+            Dictionary<string, object> selected = null;
+            foreach (object value in assets)
+            {
+                Dictionary<string, object> asset = CatalogParser.Object(value, "release asset");
+                if (!String.Equals(JsonText(asset, "name", 200), assetName, StringComparison.Ordinal)) continue;
+                if (selected != null) throw new InvalidDataException("The release contains duplicate online catalogs.");
+                selected = asset;
+            }
+            if (selected == null) throw new FileNotFoundException("The latest release does not contain its versioned online catalog.");
+
+            long assetId = JsonInteger(selected, "id");
+            long assetSize = JsonInteger(selected, "size");
+            if (assetId <= 0 || assetSize <= 0 || assetSize > _options.MaximumCatalogBytes)
+                throw new InvalidDataException("The latest catalog asset exceeds its size limit.");
+            string assetUrl = JsonText(selected, "url", 2048);
+            Uri expectedAssetUri = new Uri(apiBase, "repos/" + repositoryPath + "/releases/assets/" +
+                assetId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Uri reportedAssetUri;
+            if (!Uri.TryCreate(assetUrl, UriKind.Absolute, out reportedAssetUri) ||
+                !SameOrigin(new Uri(apiBase.GetLeftPart(UriPartial.Authority)), reportedAssetUri) ||
+                !String.Equals(expectedAssetUri.AbsoluteUri, reportedAssetUri.AbsoluteUri, StringComparison.OrdinalIgnoreCase) ||
+                !String.IsNullOrEmpty(reportedAssetUri.UserInfo) || !String.IsNullOrEmpty(reportedAssetUri.Fragment) ||
+                !String.IsNullOrEmpty(reportedAssetUri.Query))
+                throw new InvalidDataException("The latest catalog asset URL is outside the pinned release API endpoint.");
+
+            string digest = JsonOptionalText(selected, "digest", 80);
+            string expectedDigest = null;
+            if (!String.IsNullOrEmpty(digest))
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(digest, "^sha256:[0-9a-fA-F]{64}$"))
+                    throw new InvalidDataException("The release catalog has an unsupported asset digest.");
+                expectedDigest = digest.Substring(7);
+            }
+            byte[] catalogBytes = await RequestAssetBytesAsync(reportedAssetUri, assetSize, cancellationToken).ConfigureAwait(false);
+            if (catalogBytes.LongLength != assetSize) throw new InvalidDataException("The catalog asset size does not match release metadata.");
+            string actualDigest = SafeFiles.Sha256(catalogBytes);
+            if (expectedDigest != null && !String.Equals(actualDigest, expectedDigest, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The catalog asset digest does not match release metadata.");
+            string json = new UTF8Encoding(false, true).GetString(catalogBytes);
+            BootstrapperCatalog catalog = CatalogParser.Parse(json, actualDigest, _options);
+            if (!String.Equals(catalog.Version, version, StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(catalog.Source.TagName, tag, StringComparison.Ordinal))
+                throw new InvalidDataException("The latest release tag and catalog version do not match.");
+            EnsureCatalogSourcePinned(catalog);
+            return catalog;
+        }
+
+        private async Task<byte[]> RequestApiBytesAsync(Uri uri, string accept, long maximumBytes,
+            CancellationToken cancellationToken)
+        {
+            Uri apiOrigin = new Uri(new Uri((_embeddedCatalog ?? _catalog).Source.ApiUrl).GetLeftPart(UriPartial.Authority));
+            if (!SameOrigin(apiOrigin, uri)) throw new InvalidDataException("Refusing to send API credentials outside the pinned API origin.");
+            using (IBootstrapperHttpTransport transport = _transportFactory())
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, uri))
+            {
+                request.Headers.Accept.ParseAdd(accept);
+                AddApiCredential(request, apiOrigin);
+                using (HttpResponseMessage response = await transport.SendAsync(request, cancellationToken).ConfigureAwait(false))
+                {
+                    if (IsRedirect(response.StatusCode)) throw new InvalidDataException("The release API metadata request attempted to redirect.");
+                    if (!response.IsSuccessStatusCode) throw new IOException("The release API request failed with HTTP status " + (int)response.StatusCode + ".");
+                    return await ReadBoundedResponseAsync(response.Content, maximumBytes, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private async Task<byte[]> RequestAssetBytesAsync(Uri uri, long expectedBytes, CancellationToken cancellationToken)
+        {
+            Uri apiOrigin = new Uri(new Uri((_embeddedCatalog ?? _catalog).Source.ApiUrl).GetLeftPart(UriPartial.Authority));
+            if (!SameOrigin(apiOrigin, uri)) throw new InvalidDataException("Refusing to send API credentials outside the pinned API origin.");
+            using (IBootstrapperHttpTransport transport = _transportFactory())
+            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, uri))
+            {
+                request.Headers.Accept.ParseAdd("application/octet-stream");
+                AddApiCredential(request, apiOrigin);
+                using (HttpResponseMessage response = await transport.SendAsync(request, cancellationToken).ConfigureAwait(false))
+                {
+                    if (IsRedirect(response.StatusCode))
+                    {
+                        Uri location = response.Headers.Location;
+                        ValidateHttpsRedirect(location);
+                        using (IBootstrapperHttpTransport anonymous = _anonymousTransportFactory())
+                        using (HttpRequestMessage redirected = new HttpRequestMessage(HttpMethod.Get, location))
+                        using (HttpResponseMessage downloaded = await anonymous.SendAsync(redirected, cancellationToken).ConfigureAwait(false))
+                        {
+                            if (IsRedirect(downloaded.StatusCode)) throw new InvalidDataException("The catalog download redirected more than once.");
+                            if (!downloaded.IsSuccessStatusCode) throw new IOException("The catalog asset download failed with HTTP status " + (int)downloaded.StatusCode + ".");
+                            return await ReadBoundedResponseAsync(downloaded.Content, Math.Min(_options.MaximumCatalogBytes, expectedBytes), cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    if (!response.IsSuccessStatusCode) throw new IOException("The catalog asset request failed with HTTP status " + (int)response.StatusCode + ".");
+                    return await ReadBoundedResponseAsync(response.Content, Math.Min(_options.MaximumCatalogBytes, expectedBytes), cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private void AddApiCredential(HttpRequestMessage request, Uri apiOrigin)
+        {
+            string token;
+            try { token = _credentials == null ? null : _credentials.GetToken(apiOrigin); }
+            catch { throw new InvalidDataException("Credential provider failed."); }
+            if (String.IsNullOrWhiteSpace(token)) return;
+            if (token.Length > 4096 || token.IndexOf('\r') >= 0 || token.IndexOf('\n') >= 0)
+                throw new InvalidDataException("Credential provider returned an invalid token.");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        private static async Task<byte[]> ReadBoundedResponseAsync(HttpContent content, long maximumBytes,
+            CancellationToken cancellationToken)
+        {
+            if (content.Headers.ContentLength.HasValue && content.Headers.ContentLength.Value > maximumBytes)
+                throw new InvalidDataException("Release metadata exceeds the configured size limit.");
+            using (Stream input = await content.ReadAsStreamAsync().ConfigureAwait(false))
+            using (MemoryStream output = new MemoryStream())
+            {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    if (output.Length > maximumBytes - count) throw new InvalidDataException("Release metadata exceeds the configured size limit.");
+                    output.Write(buffer, 0, count);
+                }
+                return output.ToArray();
+            }
+        }
+
+        private void EnsureCatalogSourcePinned(BootstrapperCatalog candidate)
+        {
+            BootstrapperCatalog pinned = _embeddedCatalog ?? _catalog;
+            if (candidate == null || pinned == null ||
+                !String.Equals(candidate.Source.ApiUrl.TrimEnd('/'), pinned.Source.ApiUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(candidate.Source.ServerUrl.TrimEnd('/'), pinned.Source.ServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+                !String.Equals(candidate.Source.Repository, pinned.Source.Repository, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The online catalog source does not match the embedded trust anchor.");
+        }
+
+        private string CatalogArchivePath(string sha256)
+        {
+            if (!SafeFiles.IsHash(sha256)) throw new InvalidDataException("Catalog archive hash is invalid.");
+            return SafeFiles.CombineContained(_options.CacheRoot, Path.Combine("updates", "catalogs", sha256.ToLowerInvariant() + ".json"), "Catalog archive");
+        }
+
+        private void SaveCatalogArchive(BootstrapperCatalog catalog)
+        {
+            try
+            {
+                string path = CatalogArchivePath(catalog.Sha256);
+                SafeFiles.EnsureSafeDirectory(_options.CacheRoot, Path.GetDirectoryName(path), true);
+                SafeFiles.WriteAtomic(path, new UTF8Encoding(false, true).GetBytes(catalog.Json));
+            }
+            catch { }
+        }
+
+        private string LastGoodCatalogPath
+        {
+            get { return SafeFiles.CombineContained(_options.CacheRoot, Path.Combine("updates", "last-good.catalog"), "Last-good catalog"); }
+        }
+
+        private void SaveLastGoodCatalog(BootstrapperCatalog catalog)
+        {
+            SafeFiles.EnsureSafeDirectory(_options.CacheRoot, Path.GetDirectoryName(LastGoodCatalogPath), true);
+            byte[] json = new UTF8Encoding(false, true).GetBytes(catalog.Json);
+            string envelope = catalog.Sha256 + "\n" + Convert.ToBase64String(json);
+            SafeFiles.WriteAtomic(LastGoodCatalogPath, new UTF8Encoding(false).GetBytes(envelope));
+        }
+
+        private BootstrapperCatalog TryReadLastGoodCatalog()
+        {
+            try
+            {
+                string path = LastGoodCatalogPath;
+                if (!File.Exists(path)) return null;
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(_options.CacheRoot, false);
+                SafeFiles.EnsureExistingPathHasNoReparsePoints(path, false);
+                byte[] envelopeBytes = File.ReadAllBytes(path);
+                if (envelopeBytes.Length > _options.MaximumCatalogBytes * 2 + 128) return null;
+                string envelope = new UTF8Encoding(false, true).GetString(envelopeBytes);
+                int separator = envelope.IndexOf('\n');
+                if (separator != 64) return null;
+                string expectedHash = envelope.Substring(0, separator);
+                if (!SafeFiles.IsHash(expectedHash)) return null;
+                byte[] catalogBytes = Convert.FromBase64String(envelope.Substring(separator + 1));
+                if (catalogBytes.Length > _options.MaximumCatalogBytes ||
+                    !String.Equals(SafeFiles.Sha256(catalogBytes), expectedHash, StringComparison.OrdinalIgnoreCase)) return null;
+                string json = new UTF8Encoding(false, true).GetString(catalogBytes);
+                BootstrapperCatalog cached = CatalogParser.Parse(json, expectedHash, _options);
+                EnsureCatalogSourcePinned(cached);
+                cached.IsFromCache = true;
+                return cached;
+            }
+            catch { return null; }
+        }
+
+        private static int CompareReleaseVersions(string left, string right)
+        {
+            string leftCore = left.Split('+')[0].Split('-')[0];
+            string rightCore = right.Split('+')[0].Split('-')[0];
+            Version leftVersion, rightVersion;
+            if (!Version.TryParse(leftCore, out leftVersion) || !Version.TryParse(rightCore, out rightVersion))
+                throw new InvalidDataException("Release version is not a comparable numeric version.");
+            int core = leftVersion.CompareTo(rightVersion);
+            if (core != 0) return core;
+            bool leftPrerelease = left.IndexOf('-') >= 0;
+            bool rightPrerelease = right.IndexOf('-') >= 0;
+            if (leftPrerelease != rightPrerelease) return leftPrerelease ? -1 : 1;
+            if (!leftPrerelease) return 0;
+            return String.Compare(left, right, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool RegexSafeTag(string value)
+        {
+            return value != null && System.Text.RegularExpressions.Regex.IsMatch(value,
+                "^v?[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$");
+        }
+
+        private static string JsonText(IDictionary<string, object> values, string key, int maxLength)
+        {
+            object value;
+            string text = values.TryGetValue(key, out value) ? value as string : null;
+            if (String.IsNullOrWhiteSpace(text) || text.Length > maxLength)
+                throw new InvalidDataException("Release API returned invalid " + key + ".");
+            return text;
+        }
+
+        private static string JsonOptionalText(IDictionary<string, object> values, string key, int maxLength)
+        {
+            object value;
+            if (!values.TryGetValue(key, out value) || value == null) return String.Empty;
+            string text = value as string;
+            if (text == null || text.Length > maxLength) throw new InvalidDataException("Release API returned invalid " + key + ".");
+            return text;
+        }
+
+        private static long JsonInteger(IDictionary<string, object> values, string key)
+        {
+            object value;
+            JsonNumber number = values.TryGetValue(key, out value) ? value as JsonNumber : null;
+            long parsed;
+            if (number == null || !Int64.TryParse(number.Text, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out parsed))
+                throw new InvalidDataException("Release API returned invalid " + key + ".");
+            return parsed;
+        }
+
+        private static List<object> JsonArray(IDictionary<string, object> values, string key)
+        {
+            object value;
+            List<object> items = values.TryGetValue(key, out value) ? value as List<object> : null;
+            if (items == null || items.Count > 1000) throw new InvalidDataException("Release API returned invalid " + key + ".");
+            return items;
+        }
+
+        private static bool IsRedirect(HttpStatusCode status)
+        {
+            int value = (int)status;
+            return value == 301 || value == 302 || value == 303 || value == 307 || value == 308;
+        }
+
+        private static void ValidateHttpsRedirect(Uri location)
+        {
+            if (location == null || location.Scheme != Uri.UriSchemeHttps ||
+                !String.IsNullOrEmpty(location.UserInfo) || !String.IsNullOrEmpty(location.Fragment))
+                throw new InvalidDataException("The catalog download redirect is not a trusted HTTPS URL.");
+        }
+
+        private static bool SameOrigin(Uri left, Uri right)
+        {
+            return String.Equals(left.Scheme, right.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                   String.Equals(left.Host, right.Host, StringComparison.OrdinalIgnoreCase) && left.Port == right.Port;
         }
 
         private BootstrapperCatalog GetCatalog()

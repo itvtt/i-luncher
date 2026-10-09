@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Text.Json;
+using ILauncher.Bootstrapper;
 using ILauncher.Models;
 using ILauncher.Services;
 
@@ -69,6 +70,25 @@ void WriteManifest(string appDirectory, object manifest)
     File.WriteAllText(
         Path.Combine(appDirectory, "launcher.app.json"),
         JsonSerializer.Serialize(manifest));
+}
+
+void WriteOnlineUpdateSidecar(string root, string starterPath, string catalogJson)
+{
+    byte[] catalogBytes = new System.Text.UTF8Encoding(false, true).GetBytes(catalogJson);
+    string catalogHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(catalogBytes)).ToLowerInvariant();
+    string starterName = Path.GetFileName(starterPath);
+    string starterHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(starterPath))).ToLowerInvariant();
+    File.WriteAllText(Path.Combine(root, "i-luncher-updates.json"), JsonSerializer.Serialize(new
+    {
+        schemaVersion = 1,
+        starterExecutable = starterName,
+        starterSha256 = starterHash,
+        catalog = new { json = catalogJson, sha256 = catalogHash },
+        source = new
+        {
+            serverUrl = "https://github.com", apiUrl = "https://api.github.com", repository = "example/iluncher"
+        }
+    }));
 }
 
 (string TargetPath, string Arguments, string IconLocation) ReadShortcut(string shortcutPath)
@@ -158,6 +178,292 @@ async Task Check(string name, Func<Task> action)
 
 try
 {
+    await Check("notice feed, cache, revisions, and transport checks", NoticeChecks.RunAsync);
+    if (args.Contains("--notice-checks", StringComparer.Ordinal))
+    {
+        Environment.ExitCode = failed == 0 ? 0 : 1;
+        return;
+    }
+    await Check("online install receipts keep legacy metadata valid and unknown versions nullable", () =>
+    {
+        var legacyReceipt = new Dictionary<string, string>
+        {
+            ["appId"] = "bundled-app", ["catalogSha256"] = new string('a', 64),
+            ["packageSha256"] = new string('b', 64), ["runtimeSha256"] = new string('c', 64),
+            ["executable"] = "BundledApp.exe", ["launcher"] = "launcher.exe"
+        };
+        Assert(BootstrapperEngine.IsValidReceiptVersionMetadata(legacyReceipt),
+            "A valid six-field receipt without app-version metadata was rejected.");
+
+        legacyReceipt["runtimeVersion"] = "10.0.1";
+        legacyReceipt["argumentsBase64"] = "";
+        legacyReceipt["appVersion"] = "7.4.2";
+        Assert(BootstrapperEngine.IsValidReceiptVersionMetadata(legacyReceipt),
+            "A legacy receipt with its historical release fallback was rejected.");
+
+        legacyReceipt["appVersionSource"] = "unknown";
+        legacyReceipt["appVersion"] = "";
+        Assert(BootstrapperEngine.IsValidReceiptVersionMetadata(legacyReceipt),
+            "A new receipt with an explicitly unknown app version was rejected.");
+        legacyReceipt["appVersionSource"] = "manifest";
+        legacyReceipt["appVersion"] = "2.3.1";
+        Assert(BootstrapperEngine.IsValidReceiptVersionMetadata(legacyReceipt),
+            "A new receipt with an authoritative app version was rejected.");
+        legacyReceipt["appVersion"] = "";
+        Assert(!BootstrapperEngine.IsValidReceiptVersionMetadata(legacyReceipt),
+            "A sourced receipt with a blank app version was accepted.");
+        return Task.CompletedTask;
+    });
+
+    await Check("legacy package versions require the exact app ID and package hash", () =>
+    {
+        const string deskcalHash = "296821d47fce35206c22864049d462fd4668cfd87c50d6f3ed9b585c9d0a6a15";
+        BootstrapperCatalog Parse(string appId, string packageHash, string versionFields)
+        {
+            string catalogJson = "{\"schemaVersion\":1,\"version\":\"7.4.3\",\"source\":{\"serverUrl\":\"https://github.com\",\"apiUrl\":\"https://api.github.com\",\"repository\":\"example/iluncher\",\"tagName\":\"v7.4.3\"},\"runtime\":{\"version\":\"10.0.1\",\"asset\":\"runtime.zip\",\"sha256\":\"" + new string('c', 64) + "\",\"bytes\":1},\"apps\":[{\"id\":\"" + appId + "\",\"name\":\"Fixture\",\"description\":\"Fixture\",\"category\":\"Tools\",\"executable\":\"App.exe\",\"asset\":\"app.zip\",\"sha256\":\"" + packageHash + "\",\"bytes\":1" + versionFields + "}]}";
+            byte[] bytes = new System.Text.UTF8Encoding(false, true).GetBytes(catalogJson);
+            string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+            return CatalogParser.Parse(catalogJson, hash,
+                new BootstrapperOptions(catalogJson, hash, CreateDirectory("legacy version index cache"), Path.Combine(workspace, "launcher.exe")));
+        }
+
+        var indexed = Parse("deskcal", deskcalHash, "").Apps.Single();
+        Assert(indexed.Version == "1.0.0" && indexed.VersionSource == "package",
+            "A verified legacy package did not resolve with package provenance.");
+        var wrongHash = Parse("deskcal", new string('d', 64), "").Apps.Single();
+        Assert(wrongHash.Version is null && wrongHash.VersionSource is null,
+            "An unmatched package hash inherited a compatibility version.");
+        var wrongId = Parse("other-app", deskcalHash, "").Apps.Single();
+        Assert(wrongId.Version is null && wrongId.VersionSource is null,
+            "A package hash was accepted under a different app ID.");
+        var explicitVersion = Parse("deskcal", deskcalHash, ",\"version\":\"4.2.0\",\"versionSource\":\"manifest\"").Apps.Single();
+        Assert(explicitVersion.Version == "4.2.0" && explicitVersion.VersionSource == "manifest",
+            "An explicit catalog app version did not take precedence over the compatibility index.");
+
+        var receipt = new Dictionary<string, string>
+        {
+            ["appId"] = "deskcal", ["catalogSha256"] = new string('a', 64),
+            ["packageSha256"] = deskcalHash, ["runtimeSha256"] = new string('c', 64),
+            ["executable"] = "App.exe", ["launcher"] = "launcher.exe",
+            ["appVersion"] = "1.0.0", ["appVersionSource"] = "package",
+            ["runtimeVersion"] = "10.0.1", ["argumentsBase64"] = ""
+        };
+        Assert(BootstrapperEngine.IsValidReceiptVersionMetadata(receipt),
+            "A new receipt with package-derived version provenance was rejected.");
+        var options = new BootstrapperOptions("{}", new string('a', 64), CreateDirectory("package receipt cache"),
+            Path.Combine(workspace, "launcher.exe")) { ReadOnlyStatus = true };
+        using var engine = new BootstrapperEngine(options, NullBootstrapperCredentialProvider.Instance);
+        var resolve = typeof(BootstrapperEngine).GetMethod("ResolveInstalledVersion",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Assert((string?)resolve.Invoke(engine, [indexed, receipt]) == "1.0.0",
+            "A package-provenance receipt did not resolve from its exact package identity.");
+        receipt["appVersion"] = "1.0.1";
+        Assert(resolve.Invoke(engine, [indexed, receipt]) is null,
+            "A package-provenance receipt with a version outside the compatibility index was trusted.");
+        return Task.CompletedTask;
+    });
+
+    await Check("owned installed legacy executable exposes its binary version when sidecar metadata is absent", () =>
+    {
+        string appsDirectory = CreateDirectory("owned binary version apps");
+        const string installHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        string installRoot = Path.Combine(appsDirectory, "fixture-app");
+        string payload = Path.Combine(installRoot, installHash);
+        Directory.CreateDirectory(payload);
+        File.WriteAllText(Path.Combine(installRoot, "current.version"), installHash);
+        File.WriteAllText(Path.Combine(payload, ".install-complete"), "complete");
+        string installedExecutable = Path.Combine(payload, "fixture.exe");
+        File.WriteAllText(installedExecutable, "non-executable fixture; never launched");
+        string installedAssembly = Path.Combine(payload, "fixture.dll");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Launcher.Checks.dll"), installedAssembly);
+        var expectedVersionInfo = FileVersionInfo.GetVersionInfo(installedAssembly);
+        string? expected = expectedVersionInfo.ProductVersion;
+        if (string.IsNullOrWhiteSpace(expected)) expected = expectedVersionInfo.FileVersion;
+        var entry = new LauncherEntry
+        {
+            Id = "fixture-app", Name = "Fixture", ExecutablePath = installedExecutable,
+            WorkingDirectory = payload, InstalledAppDirectory = installRoot,
+            InstalledExecutableRelativePath = "fixture.exe",
+            InstallDefinition = new LauncherInstallDefinition(LauncherInstallType.Portable, null, [])
+        };
+        Assert(entry.TryGetInstalledExecutablePath() == installedExecutable,
+            "The owned fixture target was not accepted by the install-marker checks.");
+        Assert(!string.IsNullOrWhiteSpace(expected) && entry.InstalledVersion == expected,
+            "A verified owned executable did not supply its product/file version metadata.");
+        return Task.CompletedTask;
+    });
+
+    await Check("legacy receipt versions resolve only from matching per-app catalog metadata", async () =>
+    {
+        async Task<string?> Resolve(string appVersionJson, string appVersionFallback)
+        {
+            string catalogJson = "{\"schemaVersion\":1,\"version\":\"7.4.3\",\"source\":{\"serverUrl\":\"https://github.com\",\"apiUrl\":\"https://api.github.com\",\"repository\":\"example/iluncher\",\"tagName\":\"v7.4.3\"},\"runtime\":{\"version\":\"10.0.1\",\"asset\":\"runtime.zip\",\"sha256\":\"" + new string('c', 64) + "\",\"bytes\":1},\"apps\":[{\"id\":\"bundled-app\",\"name\":\"Bundled App\",\"description\":\"Fixture\",\"category\":\"Tools\",\"executable\":\"BundledApp.exe\",\"asset\":\"bundled-app.zip\",\"sha256\":\"" + new string('b', 64) + "\",\"bytes\":1" + appVersionJson + "}]}";
+            byte[] bytes = new System.Text.UTF8Encoding(false, true).GetBytes(catalogJson);
+            string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+            var options = new BootstrapperOptions(catalogJson, hash, CreateDirectory("legacy receipt resolution cache"),
+                Path.Combine(workspace, "launcher.exe")) { ReadOnlyStatus = true };
+            using var engine = new BootstrapperEngine(options, NullBootstrapperCredentialProvider.Instance);
+            var catalog = await engine.LoadCatalogAsync(CancellationToken.None);
+            var fields = new Dictionary<string, string>
+            {
+                ["catalogSha256"] = hash, ["packageSha256"] = new string('b', 64),
+                ["runtimeSha256"] = new string('c', 64), ["appVersion"] = appVersionFallback
+            };
+            var resolve = typeof(BootstrapperEngine).GetMethod("ResolveInstalledVersion",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            return (string?)resolve.Invoke(engine, [catalog.Apps.Single(), fields]);
+        }
+
+        Assert(await Resolve(",\"version\":\"2.3.1\"", "7.4.2") == "2.3.1",
+            "A legacy receipt trusted its catalog-release fallback instead of its matching app version.");
+        Assert(await Resolve("", "7.4.2") is null,
+            "A legacy receipt with no catalog app version was assigned the catalog release version.");
+    });
+
+    await Check("distribution update sidecar exposes per-app release version without implying install", () =>
+    {
+        string root = CreateRoot("online update sidecar");
+        File.WriteAllText(Path.Combine(root, "i-luncher.json"),
+            "{\"schemaVersion\":1,\"distribution\":{\"integrated\":true}}");
+        string appDirectory = Path.Combine(root, "Bundled App");
+        WriteManifest(appDirectory, new
+        {
+            id = "bundled-app", name = "Bundled App", executable = "BundledApp.exe",
+            category = "Tools", install = new { type = "portable" }
+        });
+        string catalogJson = JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            version = "7.4.2",
+            source = new
+            {
+                serverUrl = "https://github.com", apiUrl = "https://api.github.com",
+                repository = "example/iluncher", tagName = "v7.4.2"
+            },
+            runtime = new
+            {
+                version = "10.0.1", asset = "i-luncher-runtime.zip", sha256 = new string('a', 64), bytes = 1
+            },
+            apps = new[]
+            {
+                new
+                {
+                    id = "bundled-app", name = "Bundled App", description = "Fixture app", category = "Tools",
+                    version = "2.3.1", versionSource = "manifest", executable = "BundledApp.exe", asset = "bundled-app.zip",
+                    sha256 = new string('b', 64), bytes = 1
+                }
+            }
+        });
+        byte[] catalogBytes = new System.Text.UTF8Encoding(false, true).GetBytes(catalogJson);
+        string catalogHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(catalogBytes)).ToLowerInvariant();
+        BootstrapperCatalog parsedCatalog = CatalogParser.Parse(catalogJson, catalogHash,
+            new BootstrapperOptions(catalogJson, catalogHash, root, Path.Combine(root, "i-luncher-start.exe")));
+        Assert(parsedCatalog.Apps.Single().VersionSource == "manifest",
+            "Catalog app version provenance was not retained by the parser.");
+        string starterName = "i-luncher-start.exe";
+        string starterPath = Path.Combine(root, starterName);
+        File.WriteAllBytes(starterPath, [0x4d, 0x5a, 0x00, 0x01]);
+        string starterHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(starterPath))).ToLowerInvariant();
+        File.WriteAllText(Path.Combine(root, "i-luncher-updates.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            starterExecutable = starterName,
+            starterSha256 = starterHash,
+            catalog = new { json = catalogJson, sha256 = catalogHash },
+            source = new
+            {
+                serverUrl = "https://github.com", apiUrl = "https://api.github.com", repository = "example/iluncher"
+            }
+        }));
+        string appsBase = CreateDirectory("online update sidecar apps");
+        string staleHash = new string('c', 64);
+        string staleAppRoot = Path.Combine(appsBase, "bundled-app");
+        string stalePayload = Path.Combine(appsBase, "_shared-payloads", staleHash);
+        Directory.CreateDirectory(staleAppRoot);
+        Directory.CreateDirectory(stalePayload);
+        File.WriteAllText(Path.Combine(staleAppRoot, "current.version"), staleHash);
+        File.WriteAllText(Path.Combine(stalePayload, ".install-complete"), "complete");
+        File.WriteAllText(Path.Combine(stalePayload, "BundledApp.exe"), "stale legacy payload");
+        var catalog = new LauncherCatalog(root, appsBase, CreateDirectory("online update sidecar menu"));
+        var result = catalog.Load();
+        var entry = result.Entries.Single(candidate => candidate.Id == "bundled-app");
+        Assert(entry.AvailableVersion == "2.3.1", "Per-app version was not sourced from the catalog.");
+        var onlineEngine = typeof(LauncherCatalog).GetField("_onlineEngine",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(catalog);
+        var engineOptions = onlineEngine?.GetType().GetField("_options",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(onlineEngine);
+        string? configuredStartMenu = engineOptions?.GetType().GetProperty("StartMenuRoot")?.GetValue(engineOptions) as string;
+        Assert(configuredStartMenu == Path.GetFullPath(Path.Combine(root, "..", "online update sidecar menu")),
+            "The online engine ignored the injected Start Menu root.");
+        Assert(entry.CanInstall && entry.HasInstallFiles, "A catalog-backed app was not installable.");
+        Assert(entry.InstalledVersion is null && !entry.UpdateAvailable && !entry.CanUninstall,
+            "An uninstalled app with a stale legacy receipt was shown as installed or updatable.");
+        Assert(entry.TryGetInstalledExecutablePath() is null,
+            "An online-managed app fell through to a stale legacy current.version marker.");
+
+        var newerReleaseCatalog = System.Text.Json.Nodes.JsonNode.Parse(catalogJson)!.AsObject();
+        newerReleaseCatalog["version"] = "7.4.3";
+        newerReleaseCatalog["source"]!["tagName"] = "v7.4.3";
+        string newerReleaseJson = newerReleaseCatalog.ToJsonString();
+        WriteOnlineUpdateSidecar(root, starterPath, newerReleaseJson);
+        var newerReleaseResult = new LauncherCatalog(root, appsBase, CreateDirectory("online update newer release menu")).Load();
+        Assert(newerReleaseResult.Entries.Single(candidate => candidate.Id == "bundled-app").AvailableVersion == "2.3.1",
+            "Changing the catalog release changed an unchanged app's available version.");
+
+        newerReleaseCatalog["apps"]![0]!.AsObject().Remove("version");
+        newerReleaseCatalog["apps"]![0]!.AsObject().Remove("versionSource");
+        string legacyCatalogJson = newerReleaseCatalog.ToJsonString();
+        WriteOnlineUpdateSidecar(root, starterPath, legacyCatalogJson);
+        var legacyResult = new LauncherCatalog(root, appsBase, CreateDirectory("online update legacy version menu")).Load();
+        Assert(legacyResult.Entries.Single(candidate => candidate.Id == "bundled-app").AvailableVersion is null,
+            "A catalog without app.version was relabeled with the global release version.");
+
+        string sidecarPath = Path.Combine(root, "i-luncher-updates.json");
+        string validSidecar = File.ReadAllText(sidecarPath);
+        var sourceMismatchSidecar = System.Text.Json.Nodes.JsonNode.Parse(validSidecar)!.AsObject();
+        var mismatchedCatalog = System.Text.Json.Nodes.JsonNode.Parse(
+            sourceMismatchSidecar["catalog"]!["json"]!.GetValue<string>())!.AsObject();
+        mismatchedCatalog["source"]!["serverUrl"] = "https://untrusted.example";
+        string mismatchedCatalogJson = mismatchedCatalog.ToJsonString();
+        byte[] mismatchedCatalogBytes = new System.Text.UTF8Encoding(false, true).GetBytes(mismatchedCatalogJson);
+        sourceMismatchSidecar["catalog"]!["json"] = mismatchedCatalogJson;
+        sourceMismatchSidecar["catalog"]!["sha256"] = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(mismatchedCatalogBytes)).ToLowerInvariant();
+        File.WriteAllText(sidecarPath, sourceMismatchSidecar.ToJsonString());
+        var mismatchedCatalogResult = new LauncherCatalog(root, appsBase,
+            CreateDirectory("online update mismatch menu")).Load();
+        Assert(mismatchedCatalogResult.Errors.Any(error => error.Contains("Online app updates are unavailable", StringComparison.Ordinal)),
+            "A catalog that changed the sidecar's pinned source was not rejected before engine creation.");
+
+        File.WriteAllText(sidecarPath, validSidecar);
+        var unsafeSidecar = System.Text.Json.Nodes.JsonNode.Parse(validSidecar)!.AsObject();
+        unsafeSidecar["starterExecutable"] = "..\\outside.exe";
+        File.WriteAllText(sidecarPath, unsafeSidecar.ToJsonString());
+        var noStarterCatalog = new LauncherCatalog(root, appsBase, CreateDirectory("online update invalid menu"));
+        var noStarterResult = noStarterCatalog.Load();
+        Assert(noStarterResult.Errors.Any(error => error.Contains("Online app updates are unavailable", StringComparison.Ordinal)),
+            "An escaping starter path did not disable online-managed installation with a catalog error.");
+        Assert(noStarterResult.Entries.Single(candidate => candidate.Id == "bundled-app").AvailableVersion is null,
+            "The invalid starter sidecar still exposed the online app version.");
+        return Task.CompletedTask;
+    });
+
+    await Check("file_shared source manifest is cataloged as a portable buildable app", () =>
+    {
+        var productionRoot = new LauncherCatalog().RootDirectory;
+        var catalog = new LauncherCatalog(productionRoot,
+            CreateDirectory("file_shared installed apps"), CreateDirectory("file_shared start menu"));
+        var result = catalog.Load();
+        var entry = result.Entries.SingleOrDefault(candidate => candidate.Id == "file_shared");
+        Assert(entry is not null, "The real file_shared manifest is missing from the source catalog: " + string.Join(" | ", result.Errors));
+        Assert(entry!.Name == "File Shared" && entry.Category == "네트워크"
+               && entry.Arguments.Count == 0 && entry.CanBuild && entry.CanInstall,
+            "The file_shared catalog entry has unexpected metadata or is not buildable/installable.");
+        Assert(entry.BuildDefinition?.ProjectPath == Path.Combine(productionRoot, "file_shared", "file_shared.csproj"),
+            "The file_shared manifest does not resolve its legacy project path.");
+        return Task.CompletedTask;
+    });
+
     await Check("source discovery finds safe runnable projects from supported roots without building", () =>
     {
         var root = CreateRoot("source discovery contract");
@@ -433,6 +739,16 @@ try
             "An integrated receipt was treated as installed before its own install completed.");
 
         var firstEntry = entries.Single(entry => entry.Id == "folder-compare");
+        try
+        {
+            await catalog.LaunchAsync(firstEntry);
+            throw new InvalidOperationException("An uninstalled integrated app launched through its provider.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
+        {
+            Assert(provider.Launches.Count == 0,
+                "An uninstalled integrated app reached the fake launcher provider.");
+        }
         await catalog.InstallAsync(firstEntry);
         Assert(firstEntry.TryGetInstalledExecutablePath() is not null,
             "Integrated install did not create its per-app receipt.");
@@ -487,6 +803,27 @@ try
         await catalog.UninstallAsync(firstEntry);
     });
 
+    await Check("offline bundles read app versions from their own executable metadata", () =>
+    {
+        var root = CreateRoot("offline bundle app version");
+        File.WriteAllText(Path.Combine(root, "i-luncher.json"),
+            "{\"schemaVersion\":1,\"distribution\":{\"version\":\"test-release-tag\",\"runtime\":\"runtime\",\"framework\":\"net10.0\"}}");
+        var app = Path.Combine(root, "Bundled Version App");
+        string executable = CopyCheckHost(app);
+        WriteManifest(app, new { id = "bundled-version-app", name = "Bundled Version App", executable = "Launcher.Checks.exe" });
+        var entry = new LauncherCatalog(root, CreateDirectory("offline version installed apps"),
+            CreateDirectory("offline version menu")).Load().Entries.Single();
+        var binary = FileVersionInfo.GetVersionInfo(executable);
+        string? expectedVersion = !string.IsNullOrWhiteSpace(binary.ProductVersion)
+            ? binary.ProductVersion.Trim() : binary.FileVersion?.Trim();
+        Assert(expectedVersion is not null && entry.BundledVersion == expectedVersion
+               && entry.BundledVersion != "test-release-tag",
+            "Offline bundle version did not come from the bundled executable's ProductVersion/FileVersion.");
+        Assert(entry.InstalledVersion is null && entry.AvailableVersion is null,
+            "A bundled local version was incorrectly treated as an installed receipt or online version.");
+        return Task.CompletedTask;
+    });
+
     await Check("distribution runs bundled apps and installs without source builds", async () =>
     {
         var root = CreateRoot("distribution 한글");
@@ -513,7 +850,9 @@ try
             id = "second-bundled", name = "Second Bundled", executable = "Launcher.Checks.exe",
             install = new { type = "portable" }
         });
-        var catalog = new LauncherCatalog(root);
+        var appsBase = CreateDirectory("distribution installed apps");
+        var startMenu = CreateDirectory("distribution installed menu");
+        var catalog = new LauncherCatalog(root, appsBase, startMenu);
         var entries = catalog.Load().Entries;
         var entry = entries.Single(candidate => candidate.Id == "bundled");
         Assert(catalog.IsDistribution && entry.IsDistribution, "Distribution marker was ignored.");
@@ -525,26 +864,19 @@ try
             await catalog.LaunchAsync(entry);
             throw new Exception("Missing distribution app launched.");
         }
-        catch (FileNotFoundException ex)
+        catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
         {
-            Assert(ex.Message.Contains("다시 설치", StringComparison.Ordinal), "Distribution failure suggests building source.");
+            Assert(!File.Exists(resultPath), "Rejected distribution launch started the fixture app.");
         }
         CopyCheckHost(app);
-        await catalog.LaunchAsync(entry);
-        var timer = Stopwatch.StartNew();
-        while (!File.Exists(resultPath) && timer.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(50);
-        Assert(File.Exists(resultPath), "Bundled distribution app did not launch.");
-        using var result = JsonDocument.Parse(File.ReadAllText(resultPath));
-        AssertPath(app, result.RootElement.GetProperty("workingDirectory").GetString()!, "Distribution did not use bundled output");
-
-        var appsBase = CreateDirectory("distribution installed apps");
-        var startMenu = CreateDirectory("distribution installed menu");
-        catalog = new LauncherCatalog(root, appsBase, startMenu);
-        entries = catalog.Load().Entries;
-        entry = entries.Single(candidate => candidate.Id == "bundled");
         await catalog.InstallAsync(entry);
         var secondEntry = entries.Single(candidate => candidate.Id == "second-bundled");
         await catalog.InstallAsync(secondEntry);
+        await catalog.LaunchAsync(entry);
+        var timer = Stopwatch.StartNew();
+        while (!File.Exists(resultPath) && timer.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(50);
+        Assert(File.Exists(resultPath), "Installed bundled distribution app did not launch.");
+        using var result = JsonDocument.Parse(File.ReadAllText(resultPath));
         var receipt = Path.Combine(appsBase, entry.Id, "current.version");
         Assert(File.Exists(receipt), "Distribution install did not write an app receipt.");
         var version = File.ReadAllText(receipt).Trim();
@@ -553,6 +885,8 @@ try
         var installedPayload = Path.Combine(appsBase, "_shared-payloads", version);
         Assert(File.Exists(Path.Combine(installedPayload, "Bundled App", "Launcher.Checks.exe")),
             "Distribution install did not copy the app from the shared bundle snapshot.");
+        AssertPath(Path.Combine(installedPayload, "Bundled App"),
+            result.RootElement.GetProperty("workingDirectory").GetString()!, "Distribution did not launch the installed copy");
         Assert(File.Exists(Path.Combine(installedPayload, "Second Bundled App", "Launcher.Checks.exe")),
             "Distribution install omitted the second app's relative executable path.");
         Assert(File.Exists(Path.Combine(installedPayload, Path.GetRelativePath(root, runtimeFile))),
@@ -897,10 +1231,10 @@ try
             new LauncherCatalog(root).Launch(entry);
             throw new InvalidOperationException("Launch accepted a missing executable.");
         }
-        catch (FileNotFoundException ex)
+        catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
         {
-            Assert(ex.Message.Contains(entry.ExecutablePath, StringComparison.OrdinalIgnoreCase),
-                "The launch failure did not identify the missing executable path.");
+            Assert(!File.Exists(entry.ExecutablePath),
+                "The missing-app rejection unexpectedly created a launchable executable.");
         }
         return Task.CompletedTask;
     });
@@ -932,7 +1266,7 @@ try
         Assert(result.Errors.Count == 2, "Malformed build settings were not isolated: " + string.Join(" | ", result.Errors));
         var source = result.Entries.Single(entry => entry.Id == "source");
         Assert(source.CanBuild && source.CanInstall && source.IsAvailable && !File.Exists(source.ExecutablePath),
-            "Source-only app without an install section must be launchable and offer portable install.");
+            "Source-only app without an install section must offer build and install actions without building during catalog load.");
         Assert(!result.Entries.Single(entry => entry.Id == "no-source").IsAvailable,
             "App with neither source nor executable is shown as runnable.");
         Assert(!Directory.Exists(Path.Combine(root, "01-source", "dist")), "Catalog loading triggered a build.");
@@ -977,33 +1311,45 @@ try
         var cache = Path.GetFullPath(Path.Combine(cacheBase, hash[..24]));
         try
         {
-            var catalog = new LauncherCatalog(root + Path.DirectorySeparatorChar);
+            var appsBase = CreateDirectory("automatic build installed apps");
+            var startMenu = CreateDirectory("automatic build installed menu");
+            var catalog = new LauncherCatalog(root + Path.DirectorySeparatorChar, appsBase, startMenu);
             var entry = catalog.Load().Entries.Single();
+            try
+            {
+                await catalog.LaunchAsync(entry);
+                throw new InvalidOperationException("An uninstalled source app launched or built.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
+            {
+                Assert(!Directory.Exists(cache) && !File.Exists(resultPath),
+                    "Rejected source launch built or started the app before installation.");
+            }
+
+            await catalog.InstallAsync(entry);
             await catalog.LaunchAsync(entry);
             var timer = Stopwatch.StartNew();
             while (!File.Exists(resultPath) && timer.Elapsed < TimeSpan.FromSeconds(15)) await Task.Delay(50);
-            Assert(File.Exists(resultPath), "Automatically built app did not run.");
+            Assert(File.Exists(resultPath), "Installed, automatically built app did not run.");
             using (var result = JsonDocument.Parse(File.ReadAllText(resultPath)))
             {
                 Assert(result.RootElement.GetProperty("arguments").EnumerateArray().Select(value => value.GetString())
                     .SequenceEqual(["두 단어", "quoted \"value\""]), "Automatic launch changed argument boundaries.");
-                AssertPath(Path.Combine(cache, "Probe App", "dist", "win-x64"),
-                    result.RootElement.GetProperty("workingDirectory").GetString()!, "Auto-build ran in source");
+                var launchedInstallRoot = Path.Combine(appsBase, entry.Id);
+                var launchedInstallVersion = File.ReadAllText(Path.Combine(launchedInstallRoot, "current.version")).Trim();
+                AssertPath(Path.Combine(launchedInstallRoot, launchedInstallVersion),
+                    result.RootElement.GetProperty("workingDirectory").GetString()!, "Auto-build launch did not use installed files");
             }
             Assert(!Directory.Exists(Path.Combine(app, "bin")) && !Directory.Exists(Path.Combine(app, "obj"))
                 && !Directory.Exists(Path.Combine(app, "dist")), "Auto-build wrote generated files into source.");
 
             var cachedExecutable = Path.Combine(cache, "Probe App", "dist", "win-x64", "Probe.exe");
             Assert(File.Exists(cachedExecutable), "Automatic build did not leave reusable output in the external workspace.");
-            File.Delete(cachedExecutable);
-            var installAppsBase = CreateDirectory("source-only install apps");
-            var installStartMenu = CreateDirectory("source-only install menu");
-            var installCatalog = new LauncherCatalog(root, installAppsBase, installStartMenu);
-            var installEntry = installCatalog.Load().Entries.Single();
+            var installEntry = entry;
             Assert(installEntry.CanInstall && installEntry.HasInstallFiles && installEntry.CanBuild,
                 "A source-only app without an install section must offer portable install and build its output first.");
-            await installCatalog.InstallAsync(installEntry);
-            var installedApp = Path.Combine(installAppsBase, installEntry.Id);
+            await catalog.InstallAsync(installEntry);
+            var installedApp = Path.Combine(appsBase, installEntry.Id);
             var installedVersion = File.ReadAllText(Path.Combine(installedApp, "current.version")).Trim();
             var installedDirectory = Path.Combine(installedApp, installedVersion);
             Assert(File.Exists(Path.Combine(installedDirectory, "Probe.exe"))
@@ -1019,7 +1365,7 @@ try
             var cachedBuildTimestamp = File.GetLastWriteTimeUtc(cachedExecutable);
             var validSourceBeforeRepeat = File.ReadAllText(programPath);
             File.WriteAllText(programPath, "this deliberately cannot compile");
-            await installCatalog.InstallAsync(installEntry);
+            await catalog.InstallAsync(installEntry);
             Assert(File.GetLastWriteTimeUtc(cachedExecutable) == cachedBuildTimestamp,
                 "Repeat source-only install rebuilt an already cached output.");
             Assert(File.ReadAllText(Path.Combine(installedApp, "current.version")).Trim() == installedVersion,
@@ -1038,7 +1384,7 @@ try
             File.Delete(Path.Combine(cache, "Probe App", "dist", "win-x64", "Probe.exe"));
             try
             {
-                await catalog.LaunchAsync(entry);
+                await catalog.InstallAsync(entry);
                 throw new Exception("Invalid source was reported as a successful build.");
             }
             catch (LauncherBuildException ex)
@@ -1048,8 +1394,21 @@ try
             }
             File.WriteAllText(programPath, validSource);
             File.Delete(resultPath);
-            var managedCatalog = new LauncherCatalog(cache);
-            await managedCatalog.LaunchAsync(managedCatalog.Load().Entries.Single());
+            var managedApps = CreateDirectory("managed workspace installed apps");
+            var managedMenu = CreateDirectory("managed workspace installed menu");
+            var managedCatalog = new LauncherCatalog(cache, managedApps, managedMenu);
+            var managedEntry = managedCatalog.Load().Entries.Single();
+            try
+            {
+                await managedCatalog.LaunchAsync(managedEntry);
+                throw new InvalidOperationException("An uninstalled managed workspace app launched.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
+            {
+                Assert(!File.Exists(resultPath), "Rejected managed workspace launch started the app.");
+            }
+            await managedCatalog.InstallAsync(managedEntry);
+            await managedCatalog.LaunchAsync(managedEntry);
             timer.Restart();
             while (!File.Exists(resultPath) && timer.Elapsed < TimeSpan.FromSeconds(15)) await Task.Delay(50);
             Assert(File.Exists(resultPath), "Launch from the managed workspace did not rebuild and run.");
@@ -1100,12 +1459,9 @@ try
     {
         var root = CreateRoot("launch boundary");
         var app = Path.Combine(root, "프로브 App space");
-        var helperDirectory = Path.Combine(app, "실행 파일 폴더");
-        Directory.CreateDirectory(helperDirectory);
-        foreach (var source in Directory.EnumerateFiles(AppContext.BaseDirectory))
-            File.Copy(source, Path.Combine(helperDirectory, Path.GetFileName(source)), overwrite: true);
+        CopyCheckHost(app);
 
-        var helperExecutable = Path.Combine(helperDirectory, "Launcher.Checks.exe");
+        var helperExecutable = Path.Combine(app, "Launcher.Checks.exe");
         Assert(File.Exists(helperExecutable), $"Check apphost is unavailable at '{helperExecutable}'.");
         var workingDirectory = Path.Combine(app, "작업 폴더 with space", "하위");
         Directory.CreateDirectory(workingDirectory);
@@ -1115,15 +1471,29 @@ try
         {
             id = "launch-probe",
             name = "Launch probe",
-            executable = "실행 파일 폴더/Launcher.Checks.exe",
+            executable = "Launcher.Checks.exe",
             workingDirectory = "작업 폴더 with space/하위",
+            install = new { type = "portable" },
             arguments = new[] { "--launch-probe", probeResult }.Concat(expectedArguments).ToArray()
         });
 
-        var catalog = new LauncherCatalog(root);
+        var appsBase = CreateDirectory("launch boundary installed apps");
+        var startMenu = CreateDirectory("launch boundary installed menu");
+        var catalog = new LauncherCatalog(root, appsBase, startMenu);
         var load = catalog.Load();
         Assert(load.Errors.Count == 0, "Unexpected launch-probe catalog error: " + string.Join(" | ", load.Errors));
-        catalog.Launch(load.Entries.Single());
+        var entry = load.Entries.Single();
+        try
+        {
+            await catalog.LaunchAsync(entry);
+            throw new InvalidOperationException("An uninstalled loose executable launched.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "설치 후 실행할 수 있습니다.")
+        {
+            Assert(!File.Exists(probeResult), "Rejected launch started the fixture process.");
+        }
+        await catalog.InstallAsync(entry);
+        catalog.Launch(entry);
 
         var timeout = Stopwatch.StartNew();
         while (!File.Exists(probeResult) && timeout.Elapsed < TimeSpan.FromSeconds(10))
@@ -1137,7 +1507,9 @@ try
             ?? throw new InvalidOperationException("The helper omitted its working directory.");
         Assert(actualArguments.SequenceEqual(expectedArguments),
             $"Argument boundaries changed. Actual: {JsonSerializer.Serialize(actualArguments)}");
-        AssertPath(workingDirectory, actualWorkingDirectory, "The launched process received the wrong working directory");
+        var installedVersion = File.ReadAllText(Path.Combine(appsBase, entry.Id, "current.version")).Trim();
+        AssertPath(Path.Combine(appsBase, entry.Id, installedVersion, Path.GetRelativePath(app, workingDirectory)),
+            actualWorkingDirectory, "The installed process received the wrong working directory");
     });
 
     await Check("portable install copies an immutable version, creates a shortcut, and launches installed copy", async () =>

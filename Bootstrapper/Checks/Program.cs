@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -24,8 +26,10 @@ internal static class Program
         Directory.CreateDirectory(root);
         try
         {
+            TestAppVersionComparison();
             TestZipRejections(root);
             TestInstallCacheAndLaunch(root).GetAwaiter().GetResult();
+            TestRefreshContinuityAndRollback(root).GetAwaiter().GetResult();
             TestLegacyManagedCompatibility(root).GetAwaiter().GetResult();
             Console.WriteLine("Bootstrapper checks passed: " + _passed);
             return 0;
@@ -98,6 +102,25 @@ internal static class Program
         }
     }
 
+    private static void TestAppVersionComparison()
+    {
+        Check(!BootstrapperEngine.IsNewerAppVersion("1.0.0", "1.0") &&
+            !BootstrapperEngine.IsNewerAppVersion("1.0.0.0", "v1.0.0+build.4"),
+            "equal normalized app versions and build metadata do not indicate an update");
+        Check(BootstrapperEngine.IsNewerAppVersion("1.0.1", "1.0.0") &&
+            BootstrapperEngine.IsNewerAppVersion("1.0.0-beta.10", "1.0.0-beta.2") &&
+            BootstrapperEngine.IsNewerAppVersion("1.0.0", "1.0.0-rc.9"),
+            "app versions compare numeric components and SemVer prerelease identifiers");
+        Check(!BootstrapperEngine.IsNewerAppVersion("1.0.0-beta.2", "1.0.0-beta.10") &&
+            !BootstrapperEngine.IsNewerAppVersion("1.0.0", "1.0.1") &&
+            !BootstrapperEngine.IsNewerAppVersion(null, "1.0.0") &&
+            !BootstrapperEngine.IsNewerAppVersion("1.0.1", "unknown"),
+            "older or unknown app versions conservatively remain non-updates");
+        Check(BootstrapperEngine.IsNewerAppVersion("1.999999999999999999999999", "1.10.0") &&
+            !BootstrapperEngine.IsNewerAppVersion("1.01.0", "1.1.0"),
+            "large numeric components avoid overflow and malformed numeric versions are rejected");
+    }
+
     private static async Task TestLegacyManagedCompatibility(string fixture)
     {
         string root = Path.Combine(fixture, "legacy-compatibility");
@@ -144,6 +167,12 @@ internal static class Program
                 BootstrapperAppStatus status = engine.GetStatus(id);
                 Check(status.IsInstalled && status.IsReady && File.Exists(status.ExecutablePath),
                     "validated legacy WPF install is shown installed and ready: " + id);
+                if (id == "terminalnotes")
+                    Check(status.InstalledVersion == "7.8.9+fixture",
+                        "validated legacy TerminalNotes executable supplies its ProductVersion without launching it");
+                if (id == "terminalnotes")
+                    Check(!status.UpdateAvailable,
+                        "legacy install with unknown catalog app version is not reported as an update");
             }
             Check(transportCreations == 0 &&
                 !Directory.Exists(Path.Combine(cache, "runtime", catalog.Runtime.Sha256)) &&
@@ -173,19 +202,56 @@ internal static class Program
             finally { Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", null); }
             Check(transportCreations == 0, "legacy launch uses its existing executable without network activity");
 
-            BootstrapperInstallResult mixedInstall = await engine.InstallAsync("terminalnotes", CancellationToken.None);
             string legacyTerminalShortcut = Path.Combine(menu, "Terminal Notes (terminalnotes).lnk");
-            Check(File.Exists(mixedInstall.ShortcutPath) && mixedInstall.ShortcutPath != legacyTerminalShortcut &&
-                File.Exists(legacyTerminalShortcut) && engine.GetStatus("terminalnotes").IsInstalled,
-                "distinct online and WPF receipts for one app are both recognized");
-            BootstrapperUninstallResult removedTerminal = await engine.UninstallAsync("terminalnotes", CancellationToken.None);
-            Check(removedTerminal.Removed && !engine.GetStatus("terminalnotes").IsInstalled &&
-                !File.Exists(mixedInstall.ReceiptPath) &&
-                !File.Exists(Path.Combine(cache, "Apps", "terminalnotes", "current.version")) &&
-                !File.Exists(mixedInstall.ShortcutPath) && !File.Exists(legacyTerminalShortcut),
-                "combined uninstall removes online and legacy registration records and both owned shortcuts");
+            string legacyAppDirectory = Path.Combine(cache, "Apps", "terminalnotes");
+            string legacyVersionReceipt = Path.Combine(legacyAppDirectory, "current.version");
+            string legacyShortcutNameReceipt = Path.Combine(legacyAppDirectory, "shortcut.name");
+            string legacyShortcutIcon = Path.Combine(legacyAppDirectory, "shortcut-icon.png");
+            Check(File.Exists(legacyVersionReceipt) && File.Exists(legacyShortcutNameReceipt) &&
+                File.Exists(legacyShortcutIcon) && File.Exists(legacyTerminalShortcut) &&
+                engine.GetStatus("terminalnotes").IsInstalled,
+                "validated legacy registration is present before online update migration");
+            string updatedTerminalAsset = "terminalnotes-update.zip";
+            string updatedTerminalZip = Path.Combine(mirror, updatedTerminalAsset);
+            CreateZip(updatedTerminalZip, new Dictionary<string, byte[]>
+            {
+                { "TerminalNotes.exe", File.ReadAllBytes(probeExe) }, { "release-note.txt", Bytes("updated") }
+            }, false);
+            byte[] updatedTerminalBytes = File.ReadAllBytes(updatedTerminalZip);
+            string updateCatalogJson = LegacyCatalogJson(runtimeZipBytes, updatedTerminalBytes, folderZipBytes, extraZipBytes)
+                .Replace("\"version\":\"1.0.0\"", "\"version\":\"1.0.1\"")
+                .Replace("\"tagName\":\"v1.0.0\"", "\"tagName\":\"v1.0.1\"")
+                .Replace("\"terminalnotes.zip\"", "\"terminalnotes-update.zip\"")
+                .Replace("\"id\":\"terminalnotes\"", "\"id\":\"terminalnotes\",\"version\":\"7.8.10\"");
+            BootstrapperOptions updateOptions = new BootstrapperOptions(updateCatalogJson,
+                Hash(new UTF8Encoding(false).GetBytes(updateCatalogJson)), cache, probeExe)
+            {
+                StartMenuRoot = menu,
+                PackageMirrorBase = mirror
+            };
+            using (BootstrapperEngine updateEngine = new BootstrapperEngine(updateOptions,
+                NullBootstrapperCredentialProvider.Instance, delegate { return new NoNetworkTransport(); },
+                delegate { return new NoNetworkTransport(); }))
+            {
+                await updateEngine.LoadCatalogAsync(CancellationToken.None);
+                Check(updateEngine.GetStatus("terminalnotes").UpdateAvailable,
+                    "online update remains available while the legacy WPF registration is present");
+                BootstrapperInstallResult updatedRegistration = await updateEngine.UpdateAsync("terminalnotes", CancellationToken.None);
+                string updatedReceiptText = File.ReadAllText(updatedRegistration.ReceiptPath);
+                Check(updatedReceiptText.Contains("appVersion=7.8.10\r\n") && updatedReceiptText.Contains("appVersionSource=catalog\r\n") &&
+                    File.Exists(updatedRegistration.ShortcutPath) && updatedRegistration.ShortcutPath != legacyTerminalShortcut &&
+                    !File.Exists(legacyVersionReceipt) && !File.Exists(legacyShortcutNameReceipt) &&
+                    !File.Exists(legacyShortcutIcon) && !File.Exists(legacyTerminalShortcut),
+                    "explicit online update retires legacy registration files and shortcut after committing managed install");
+                BootstrapperUninstallResult removedTerminal = await updateEngine.UninstallAsync("terminalnotes", CancellationToken.None);
+                Check(removedTerminal.Removed && !updateEngine.GetStatus("terminalnotes").IsInstalled &&
+                    !File.Exists(updatedRegistration.ReceiptPath) && !File.Exists(legacyVersionReceipt) &&
+                    !File.Exists(legacyShortcutNameReceipt) && !File.Exists(legacyShortcutIcon) &&
+                    !File.Exists(updatedRegistration.ShortcutPath) && !File.Exists(legacyTerminalShortcut),
+                    "uninstall after online update leaves no legacy or managed registration and no shortcut");
+            }
             Check(File.Exists(Path.Combine(terminalPayload, "TerminalNotes.exe")) && File.Exists(userData),
-                "legacy uninstall retains portable payload and user data");
+                "uninstall after online update retains legacy payload and user data");
             Check(engine.GetStatus("folder-compare").IsInstalled && engine.GetStatus("archive-app").IsInstalled &&
                 File.Exists(Path.Combine(menu, "FolderCompareWPF (folder-compare).lnk")) &&
                 File.Exists(Path.Combine(menu, "Custom Archive Tool (archive-app).lnk")),
@@ -521,6 +587,14 @@ internal static class Program
         Check(catalog.Apps.Count == 2, "embedded catalog parses two apps");
         Check(transportCreations == 0, "loading catalog performs no network activity");
 
+        bool freshLaunchRejected = false;
+        try { await engine.LaunchAsync("module-one", CancellationToken.None); }
+        catch (InvalidOperationException ex)
+        { freshLaunchRejected = String.Equals(ex.Message, "Install the app before launching it.", StringComparison.Ordinal); }
+        Check(freshLaunchRejected && transportCreations == 0 &&
+            !Directory.Exists(Path.Combine(cache, "apps")) && !Directory.Exists(Path.Combine(cache, "runtime")),
+            "fresh uninstalled launch was rejected before downloading or extracting packages");
+
         BootstrapperReadyApp one = await engine.EnsureReadyAsync("module-one", CancellationToken.None);
         Check(File.Exists(one.ExecutablePath), "first app is extracted");
         Check(Directory.Exists(Path.Combine(cache, "runtime", catalog.Runtime.Sha256)), "shared runtime is cached once");
@@ -532,6 +606,13 @@ internal static class Program
         BootstrapperReadyApp cached = await engine.EnsureReadyAsync("module-one", CancellationToken.None);
         Check(cached.ExecutablePath == one.ExecutablePath, "repeat ensure reuses the app cache");
         Check(transportCreations == 3, "only runtime and two app packages were downloaded");
+
+        bool cachedLaunchRejected = false;
+        try { await engine.LaunchAsync("module-one", CancellationToken.None); }
+        catch (InvalidOperationException ex)
+        { cachedLaunchRejected = String.Equals(ex.Message, "Install the app before launching it.", StringComparison.Ordinal); }
+        Check(cachedLaunchRejected && transportCreations == 3,
+            "uninstalled launch was rejected before any additional package request");
 
         BootstrapperInstallResult installedOne = await engine.InstallAsync("module-one", CancellationToken.None);
         BootstrapperInstallResult installedTwo = await engine.InstallAsync("module-two", CancellationToken.None);
@@ -754,14 +835,301 @@ internal static class Program
         finally { Directory.Delete(stableDirectory, false); }
     }
 
+    private static async Task TestRefreshContinuityAndRollback(string root)
+    {
+        string fixture = Path.Combine(root, "refresh-continuity");
+        string mirror = Path.Combine(fixture, "mirror");
+        string cache = Path.Combine(fixture, "cache");
+        string menu = Path.Combine(fixture, "start-menu");
+        Directory.CreateDirectory(mirror);
+        Directory.CreateDirectory(cache);
+        Directory.CreateDirectory(menu);
+
+        string probe = BuildProbe(root);
+        byte[] runtimeA = ZipBytes(Path.Combine(fixture, "runtime-a.zip"), RuntimeFiles());
+        byte[] appA = ZipBytes(Path.Combine(fixture, "app-a.zip"), new Dictionary<string, byte[]>
+        {
+            { "old/probe.exe", File.ReadAllBytes(probe) }, { "payload.txt", Bytes("A") }
+        });
+        Dictionary<string, byte[]> runtimeFilesB = RuntimeFiles();
+        runtimeFilesB["dotnet.exe"] = Bytes("dotnet-B");
+        runtimeFilesB["host/fxr/10.0.5/hostfxr.dll"] = runtimeFilesB["host/fxr/10.0.4/hostfxr.dll"];
+        runtimeFilesB.Remove("host/fxr/10.0.4/hostfxr.dll");
+        runtimeFilesB["shared/Microsoft.NETCore.App/10.0.5/coreclr.dll"] =
+            runtimeFilesB["shared/Microsoft.NETCore.App/10.0.4/coreclr.dll"];
+        runtimeFilesB.Remove("shared/Microsoft.NETCore.App/10.0.4/coreclr.dll");
+        runtimeFilesB["shared/Microsoft.WindowsDesktop.App/10.0.5/PresentationFramework.dll"] =
+            runtimeFilesB["shared/Microsoft.WindowsDesktop.App/10.0.4/PresentationFramework.dll"];
+        runtimeFilesB.Remove("shared/Microsoft.WindowsDesktop.App/10.0.4/PresentationFramework.dll");
+        byte[] runtimeB = ZipBytes(Path.Combine(fixture, "runtime-b.zip"), runtimeFilesB);
+        byte[] appB = ZipBytes(Path.Combine(fixture, "app-b.zip"), new Dictionary<string, byte[]>
+        {
+            { "new/probe.exe", File.ReadAllBytes(probe) }, { "payload.txt", Bytes("B") }
+        });
+        byte[] invalidZip = Bytes("this is not a zip archive");
+        string runtimeAPath = Path.Combine(mirror, "runtime-a.zip");
+        string appAPath = Path.Combine(mirror, "app-a.zip");
+        string runtimeBPath = Path.Combine(mirror, "runtime-b.zip");
+        string appBPath = Path.Combine(mirror, "app-b.zip");
+        string appCPath = Path.Combine(mirror, "app-c.zip");
+        File.WriteAllBytes(runtimeAPath, runtimeA);
+        File.WriteAllBytes(appAPath, appA);
+        File.WriteAllBytes(runtimeBPath, runtimeB);
+        File.WriteAllBytes(appBPath, appB);
+        File.WriteAllBytes(appCPath, invalidZip);
+
+        string catalogAJson = SingleAppCatalogJson("1.0.0", "10.0.4", "runtime-a.zip", runtimeA,
+            "app-a.zip", appA, "old/probe.exe", "old-argument", null, null);
+        string catalogBJson = SingleAppCatalogJson("1.0.1", "10.0.5", "runtime-b.zip", runtimeB,
+            "app-b.zip", appB, "new/probe.exe", "new-argument", null, null)
+            .Replace("\"id\":\"fixture-app\"", "\"id\":\"fixture-app\",\"version\":\"7.8.10\"");
+        string catalogCJson = SingleAppCatalogJson("1.0.2", "10.0.5", "runtime-b.zip", runtimeB,
+            "app-c.zip", invalidZip, "probe.exe", "bad-zip-argument", null, null)
+            .Replace("\"id\":\"fixture-app\"", "\"id\":\"fixture-app\",\"version\":\"7.8.11\"");
+
+        string releaseJson = "{\"tag_name\":\"v1.0.1\",\"assets\":[{\"name\":\"i-luncher-online-catalog-1.0.1.json\",\"id\":42,\"size\":" +
+            Encoding.UTF8.GetByteCount(catalogBJson).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            ",\"url\":\"https://api.github.com/repos/fixture/repo/releases/assets/42\",\"digest\":\"sha256:" +
+            Hash(Encoding.UTF8.GetBytes(catalogBJson)) + "\"}]}";
+        string responseCatalogJson = catalogBJson;
+        string responseAssetId = "42";
+        int apiRequests = 0;
+        Func<HttpRequestMessage, HttpResponseMessage> responder = delegate(HttpRequestMessage request)
+        {
+            Interlocked.Increment(ref apiRequests);
+            string uri = request.RequestUri.AbsoluteUri;
+            if (uri.EndsWith("/repos/fixture/repo/releases/latest", StringComparison.Ordinal))
+                return JsonResponse(releaseJson);
+            if (uri.EndsWith("/repos/fixture/repo/releases/assets/" + responseAssetId, StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes(responseCatalogJson)) };
+            throw new InvalidOperationException("Unexpected API request in catalog fixture: " + uri);
+        };
+
+        BootstrapperOptions optionsA = FixtureOptions(catalogAJson, cache, menu, mirror, probe);
+        using (BootstrapperEngine engine = new BootstrapperEngine(optionsA, NullBootstrapperCredentialProvider.Instance,
+            delegate { return new FixtureTransport(responder); }, delegate { return new FixtureTransport(responder); }))
+        {
+            await engine.LoadCatalogAsync(CancellationToken.None);
+            BootstrapperInstallResult installed = await engine.InstallAsync("fixture-app", CancellationToken.None);
+            Check(!engine.GetStatus("fixture-app").UpdateAvailable,
+                "unknown app version does not show an update after initial receipt install");
+            string[] receiptLines = File.ReadAllLines(installed.ReceiptPath);
+            File.WriteAllLines(installed.ReceiptPath, receiptLines.Where(line =>
+                !line.StartsWith("appVersionSource=", StringComparison.Ordinal)).Select(line =>
+                    line.StartsWith("appVersion=", StringComparison.Ordinal) ? "appVersion=1.0.0" : line).ToArray());
+            Check(engine.GetStatus("fixture-app").InstalledVersion == "7.8.9+fixture" && engine.GetStatus("fixture-app").IsInstalled,
+                "a legacy receipt ignores the old release fallback and reads the validated executable's product version");
+            string[] authoritativeReceiptLines = File.ReadAllLines(installed.ReceiptPath).Select(line =>
+                line.StartsWith("appVersion=", StringComparison.Ordinal) ? "appVersion=7.8.9" :
+                line.StartsWith("appVersionSource=", StringComparison.Ordinal) ? "appVersionSource=project" : line).ToArray();
+            File.WriteAllLines(installed.ReceiptPath, authoritativeReceiptLines);
+
+            string sameHashCatalogJson = SingleAppCatalogJson("1.0.0", "10.0.4", "runtime-a.zip", runtimeA,
+                "app-a.zip", appA, "old/probe.exe", "old-argument", null, null)
+                .Replace("\"id\":\"fixture-app\"", "\"id\":\"fixture-app\",\"version\":\"7.8.9\"");
+            BootstrapperOptions sameHashOptions = FixtureOptions(sameHashCatalogJson, cache, menu, mirror, probe);
+            using (BootstrapperEngine sameHashEngine = new BootstrapperEngine(sameHashOptions,
+                NullBootstrapperCredentialProvider.Instance, delegate { return new NoNetworkTransport(); },
+                delegate { return new NoNetworkTransport(); }))
+            {
+                await sameHashEngine.LoadCatalogAsync(CancellationToken.None);
+                Check(!sameHashEngine.GetStatus("fixture-app").UpdateAvailable,
+                    "receipt with the same app version remains current when package and runtime hashes match");
+            }
+
+            string sameVersionCatalogJson = SingleAppCatalogJson("1.0.1", "10.0.5", "runtime-b.zip", runtimeB,
+                "app-b.zip", appB, "new/probe.exe", "new-argument", null, null)
+                .Replace("\"id\":\"fixture-app\"", "\"id\":\"fixture-app\",\"version\":\"7.8.9+other-build\"");
+            BootstrapperOptions sameVersionOptions = FixtureOptions(sameVersionCatalogJson, cache, menu, mirror, probe);
+            Directory.CreateDirectory(sameVersionOptions.CacheRoot);
+            using (BootstrapperEngine sameVersionEngine = new BootstrapperEngine(sameVersionOptions,
+                NullBootstrapperCredentialProvider.Instance, delegate { return new NoNetworkTransport(); },
+                delegate { return new NoNetworkTransport(); }))
+            {
+                Check((await sameVersionEngine.LoadCatalogAsync(CancellationToken.None)).Version == "1.0.1" &&
+                    !sameVersionEngine.GetStatus("fixture-app").UpdateAvailable,
+                    "changed app/runtime package hashes and build metadata do not create a same-version update");
+            }
+            BootstrapperCatalog refreshed = await engine.CheckForUpdatesAsync(CancellationToken.None);
+            Check(refreshed.Version == "1.0.1" && apiRequests == 2,
+                "pinned feed refresh accepts the matching versioned catalog asset");
+            Check(engine.GetStatus("fixture-app").AvailableVersion == "7.8.10" &&
+                engine.GetStatus("fixture-app").UpdateAvailable,
+                "a higher explicit per-app version is an update despite a lower global release label");
+
+            string oldReceipt = File.ReadAllText(installed.ReceiptPath);
+            string launchReport = Path.Combine(fixture, "launch-before-update.txt");
+            Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", launchReport);
+            try
+            {
+                BootstrapperLaunchResult oldLaunch = await engine.LaunchAsync("fixture-app", CancellationToken.None);
+                Check(oldLaunch.ExecutablePath.EndsWith("old\\probe.exe", StringComparison.OrdinalIgnoreCase),
+                    "feed refresh continues launching the executable recorded by the installed receipt");
+                WaitForFile(launchReport, 15000);
+                string oldLaunchText = File.ReadAllText(launchReport);
+                Check(oldLaunchText.Contains("old-argument") && oldLaunchText.IndexOf(
+                    Path.Combine(cache, "runtime", Hash(runtimeA)), StringComparison.OrdinalIgnoreCase) >= 0,
+                    "feed refresh retains the installed launch arguments and runtime");
+            }
+            finally { Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", null); }
+
+            byte[] tamperedApp = (byte[])appB.Clone();
+            tamperedApp[0] ^= 0x01;
+            File.WriteAllBytes(appBPath, tamperedApp);
+            Check(engine.GetStatus("fixture-app").UpdateAvailable,
+                "package bytes changing locally do not alter semantic update availability");
+            await ExpectAsync<InvalidDataException>(async delegate
+            {
+                await engine.UpdateAsync("fixture-app", CancellationToken.None);
+            }, "package hash failure rejects an update");
+            Check(File.ReadAllText(installed.ReceiptPath) == oldReceipt && engine.GetStatus("fixture-app").InstalledVersion == "7.8.9+fixture",
+                "package hash failure preserves the prior receipt and binary-derived installed version");
+            File.WriteAllBytes(appBPath, appB);
+
+            BootstrapperInstallResult updated = await engine.UpdateAsync("fixture-app", CancellationToken.None);
+            Check(engine.GetStatus("fixture-app").InstalledVersion == "7.8.10" &&
+                updated.ReceiptPath == installed.ReceiptPath,
+                "explicit update switches the existing registration to the refreshed package");
+
+            string updatedReport = Path.Combine(fixture, "launch-after-update.txt");
+            Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", updatedReport);
+            try
+            {
+                BootstrapperLaunchResult newLaunch = await engine.LaunchAsync("fixture-app", CancellationToken.None);
+                Check(newLaunch.ExecutablePath.EndsWith("new\\probe.exe", StringComparison.OrdinalIgnoreCase),
+                    "successful explicit update switches launch to the new executable");
+                WaitForFile(updatedReport, 15000);
+                string newLaunchText = File.ReadAllText(updatedReport);
+                Check(newLaunchText.Contains("new-argument") && newLaunchText.IndexOf(
+                    Path.Combine(cache, "runtime", Hash(runtimeB)), StringComparison.OrdinalIgnoreCase) >= 0,
+                    "successful explicit update switches arguments and runtime together");
+            }
+            finally { Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", null); }
+
+            string validUpdatedReceipt = File.ReadAllText(updated.ReceiptPath);
+            BootstrapperOptions optionsC = FixtureOptions(catalogCJson, cache, menu, mirror, probe);
+            using (BootstrapperEngine invalidArchiveEngine = new BootstrapperEngine(optionsC, NullBootstrapperCredentialProvider.Instance,
+                delegate { return new FixtureTransport(responder); }, delegate { return new FixtureTransport(responder); }))
+            {
+                await invalidArchiveEngine.LoadCatalogAsync(CancellationToken.None);
+                await ExpectAsync<InvalidDataException>(async delegate
+                {
+                    await invalidArchiveEngine.UpdateAsync("fixture-app", CancellationToken.None);
+                }, "invalid package archive rejects an update");
+                Check(File.ReadAllText(updated.ReceiptPath) == validUpdatedReceipt &&
+                    invalidArchiveEngine.GetStatus("fixture-app").InstalledVersion == "7.8.10",
+                    "archive extraction failure preserves the previous receipt and install");
+            }
+
+            string omittedCatalogJson = CatalogWithoutFixtureAppJson("1.0.2", "10.0.5", "runtime-b.zip", runtimeB);
+            responseCatalogJson = omittedCatalogJson;
+            responseAssetId = "43";
+            releaseJson = "{\"tag_name\":\"v1.0.2\",\"assets\":[{\"name\":\"i-luncher-online-catalog-1.0.2.json\",\"id\":43,\"size\":" +
+                Encoding.UTF8.GetByteCount(omittedCatalogJson).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                ",\"url\":\"https://api.github.com/repos/fixture/repo/releases/assets/43\",\"digest\":\"sha256:" +
+                Hash(Encoding.UTF8.GetBytes(omittedCatalogJson)) + "\"}]}";
+            BootstrapperCatalog afterOmission = await engine.CheckForUpdatesAsync(CancellationToken.None);
+            BootstrapperAppStatus retainedStatus = engine.GetStatus("fixture-app");
+            Check(afterOmission.Version == "1.0.1" && afterOmission.IsFromCache &&
+                afterOmission.FindApp("fixture-app") != null && retainedStatus.IsInstalled &&
+                retainedStatus.InstalledVersion == "7.8.10" && retainedStatus.ExecutablePath.EndsWith("new\\probe.exe", StringComparison.OrdinalIgnoreCase),
+                "feed omission preserves the last-good catalog and installed receipt status");
+            string retainedLaunchReport = Path.Combine(fixture, "launch-after-omission.txt");
+            Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", retainedLaunchReport);
+            try
+            {
+                BootstrapperLaunchResult retainedLaunch = await engine.LaunchAsync("fixture-app", CancellationToken.None);
+                Check(retainedLaunch.ExecutablePath == retainedStatus.ExecutablePath,
+                    "feed omission keeps launching the executable validated by the installed receipt");
+                WaitForFile(retainedLaunchReport, 15000);
+                Check(File.ReadAllText(retainedLaunchReport).Contains("new-argument"),
+                    "feed omission retains installed launch arguments without resolving a removed app");
+            }
+            finally { Environment.SetEnvironmentVariable("BOOTSTRAPPER_ENV_PROBE_OUT", null); }
+
+            BootstrapperOptions offlineOptions = FixtureOptions(catalogAJson, cache, menu, mirror, probe);
+            using (BootstrapperEngine offlineEngine = new BootstrapperEngine(offlineOptions,
+                NullBootstrapperCredentialProvider.Instance,
+                delegate { throw new InvalidOperationException("Offline fixture must not make API requests."); },
+                delegate { throw new InvalidOperationException("Offline fixture must not make anonymous requests."); }))
+            {
+                BootstrapperCatalog offline = await offlineEngine.LoadCatalogAsync(CancellationToken.None);
+                Check(offline.Version == "1.0.1" && offline.IsFromCache,
+                    "last-good feed remains available to an older embedded catalog while offline");
+            }
+        }
+    }
+
+    private static BootstrapperOptions FixtureOptions(string catalogJson, string cache, string menu,
+        string mirror, string bootstrapper)
+    {
+        BootstrapperOptions options = Limits(cache);
+        options.EmbeddedCatalogJson = catalogJson;
+        options.ExpectedCatalogSha256 = Hash(Encoding.UTF8.GetBytes(catalogJson));
+        options.BootstrapperExecutablePath = bootstrapper;
+        options.StartMenuRoot = menu;
+        options.PackageMirrorBase = mirror;
+        return options;
+    }
+
+    private static string SingleAppCatalogJson(string version, string runtimeVersion, string runtimeAsset,
+        byte[] runtime, string appAsset, byte[] app, string executable, string argument)
+    {
+        return SingleAppCatalogJson(version, runtimeVersion, runtimeAsset, runtime, appAsset, app,
+            executable, argument, version, null);
+    }
+
+    private static string SingleAppCatalogJson(string version, string runtimeVersion, string runtimeAsset,
+        byte[] runtime, string appAsset, byte[] app, string executable, string argument,
+        string appVersion, string versionSource)
+    {
+        return "{\"schemaVersion\":1,\"version\":\"" + version + "\",\"source\":{" +
+            "\"serverUrl\":\"https://github.com\",\"apiUrl\":\"https://api.github.com\"," +
+            "\"repository\":\"fixture/repo\",\"tagName\":\"v" + version + "\"}," +
+            "\"runtime\":{\"version\":\"" + runtimeVersion + "\",\"asset\":\"" + runtimeAsset +
+            "\",\"sha256\":\"" + Hash(runtime) + "\",\"bytes\":" + runtime.Length + "}," +
+            "\"apps\":[{\"id\":\"fixture-app\",\"name\":\"Fixture App\",\"description\":\"fixture\"," +
+            "\"category\":\"Tests\"," + (appVersion == null ? String.Empty : "\"version\":\"" + appVersion + "\",") +
+            (versionSource == null ? String.Empty : "\"versionSource\":\"" + versionSource + "\",") +
+            "\"executable\":\"" + executable +
+            "\",\"arguments\":[\"" + argument + "\"],\"asset\":\"" + appAsset + "\",\"sha256\":\"" +
+            Hash(app) + "\",\"bytes\":" + app.Length + "}]}";
+    }
+
+    private static string CatalogWithoutFixtureAppJson(string version, string runtimeVersion,
+        string runtimeAsset, byte[] runtime)
+    {
+        return "{\"schemaVersion\":1,\"version\":\"" + version + "\",\"source\":{" +
+            "\"serverUrl\":\"https://github.com\",\"apiUrl\":\"https://api.github.com\"," +
+            "\"repository\":\"fixture/repo\",\"tagName\":\"v" + version + "\"}," +
+            "\"runtime\":{\"version\":\"" + runtimeVersion + "\",\"asset\":\"" + runtimeAsset +
+            "\",\"sha256\":\"" + Hash(runtime) + "\",\"bytes\":" + runtime.Length + "},\"apps\":[]}";
+    }
+
+    private static byte[] ZipBytes(string path, IDictionary<string, byte[]> files)
+    {
+        CreateZip(path, files, false);
+        return File.ReadAllBytes(path);
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(Encoding.UTF8.GetBytes(json))
+        };
+    }
+
     private static string BuildProbe(string root)
     {
         string source = Path.Combine(root, "probe-source.cs");
         string output = Path.Combine(root, "probe.exe");
         File.WriteAllText(source,
-            "using System; using System.IO; class P { static int Main() { " +
+            "using System; using System.IO; using System.Reflection; " +
+            "[assembly: AssemblyVersion(\"7.8.9.0\")] [assembly: AssemblyFileVersion(\"7.8.9.0\")] " +
+            "[assembly: AssemblyInformationalVersion(\"7.8.9+fixture\")] class P { static int Main() { " +
             "string p=Environment.GetEnvironmentVariable(\"BOOTSTRAPPER_ENV_PROBE_OUT\"); " +
-            "File.WriteAllText(p, \"DOTNET_ROOT=\"+Environment.GetEnvironmentVariable(\"DOTNET_ROOT\")+\"\\nDOTNET_ROOT_X64=\"+Environment.GetEnvironmentVariable(\"DOTNET_ROOT_X64\")); return 0; } }");
+            "File.WriteAllText(p, \"DOTNET_ROOT=\"+Environment.GetEnvironmentVariable(\"DOTNET_ROOT\")+\"\\nDOTNET_ROOT_X64=\"+Environment.GetEnvironmentVariable(\"DOTNET_ROOT_X64\")+\"\\nARGS=\"+String.Join(\"|\", Environment.GetCommandLineArgs())); return 0; } }");
         CSharpCodeProvider provider = new CSharpCodeProvider();
         CompilerParameters parameters = new CompilerParameters();
         parameters.GenerateExecutable = true;
@@ -807,7 +1175,8 @@ internal static class Program
     {
         return (BootstrapperApp)Activator.CreateInstance(typeof(BootstrapperApp),
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            null, new object[] { id, id, "", "Tests", exe, null, id + ".zip", new string('0', 64), 1L }, null);
+            null, new object[] { id, id, "", "Tests", "1.0.0", null, exe, new string[0], null,
+                id + ".zip", new string('0', 64), 1L }, null);
     }
 
     private static BootstrapperOptions Limits(string cache)
@@ -980,6 +1349,22 @@ internal static class Program
             CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("Unexpected network request in local mirror fixture.");
+        }
+        public void Dispose() { }
+    }
+
+    private sealed class FixtureTransport : IBootstrapperHttpTransport
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
+        internal FixtureTransport(Func<HttpRequestMessage, HttpResponseMessage> responder)
+        {
+            _responder = responder;
+        }
+        public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_responder(request));
         }
         public void Dispose() { }
     }

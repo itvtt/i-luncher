@@ -18,13 +18,13 @@ internal sealed class IntegratedAppProvider : IIntegratedAppProvider
 
     public IReadOnlyList<LauncherEntry> Entries { get; } =
     [
-        CreateEntry(FolderCompareId, "Compare", "두 폴더의 파일과 내용을 비교합니다.", "파일 도구",
+        CreateEntry(FolderCompareId, "Compare", "파일과 폴더의 차이를 비교하고 복사하거나 수정합니다.", "파일 도구",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/FolderCompare.png"),
-        CreateEntry(SwiftCopyId, "SwiftCopy", "파일과 폴더를 빠르게 복사하고 이동합니다.", "파일 도구",
+        CreateEntry(SwiftCopyId, "SwiftCopy", "파일과 폴더를 빠르게 복사하거나 이동합니다.", "파일 도구",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/SwiftCopy-128.png"),
-        CreateEntry(DiskAtlasId, "DiskAtlas", "디스크 용량을 한눈에 분석하고 파일 내용까지 검색합니다.", "디스크 분석",
+        CreateEntry(DiskAtlasId, "DiskAtlas", "저장 공간을 분석하고 파일을 관리합니다.", "디스크 분석",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/DiskAtlas.png"),
-        CreateEntry(DeskCalId, "DeskCal", "일정과 메모를 달력에서 관리합니다.", "일정",
+        CreateEntry(DeskCalId, "DeskCal", "캘린더, 일정과 메모", "일정",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/DeskCal.ico")
     ];
 
@@ -95,9 +95,24 @@ internal sealed class IntegratedAppProvider : IIntegratedAppProvider
         Category = category,
         IsIntegrated = true,
         ExecutablePath = string.Empty,
+        BundledVersion = ReadModuleVersion(id),
         WorkingDirectory = AppContext.BaseDirectory,
         IconPath = iconPath
     };
+
+    private static string? ReadModuleVersion(string id)
+    {
+        Assembly assembly = id switch
+        {
+            FolderCompareId => typeof(FolderCompareWPF.MainWindow).Assembly,
+            SwiftCopyId => typeof(SwiftCopy.App.MainWindow).Assembly,
+            DiskAtlasId => typeof(DiskAtlas.App.MainWindow).Assembly,
+            DeskCalId => typeof(DeskCal.MainWindow).Assembly,
+            _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown integrated app id.")
+        };
+        return LauncherEntry.ReadBundledVersion(assembly.Location)
+            ?? assembly.GetName().Version?.ToString();
+    }
 }
 
 internal static class IntegratedAppProcessLauncher

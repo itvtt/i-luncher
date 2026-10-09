@@ -239,25 +239,57 @@ namespace ILauncher.Bootstrapper
             {
                 Dictionary<string, object> appObject = Object(item, "app");
                 RequireKeys(appObject, new[] { "id", "name", "description", "category", "executable", "asset", "sha256", "bytes" },
-                    new[] { "iconBase64" });
+                    new[] { "iconBase64", "version", "versionSource", "arguments" });
                 string id = Text(appObject["id"], "app.id", 80, false);
                 if (!RegexMatch(id, "^[a-z0-9][a-z0-9._-]{0,79}$") || id.EndsWith(".", StringComparison.Ordinal) ||
                     IsReservedDeviceName(id) || !ids.Add(id))
                     throw new FormatException("Invalid or duplicate app ID.");
                 string name = Text(appObject["name"], "app.name", 128, false);
+                string appVersion = appObject.ContainsKey("version")
+                    ? Text(appObject["version"], "app.version", 64, false) : null;
+                string versionSource = appObject.ContainsKey("versionSource")
+                    ? Text(appObject["versionSource"], "app.versionSource", 16, false) : null;
+                if (versionSource != null && ((versionSource != "manifest" && versionSource != "project") || appVersion == null))
+                    throw new FormatException("Invalid app version source.");
+                string packageSha256 = Hash(appObject["sha256"], "app.sha256");
+                string indexedVersion;
+                if (appVersion == null && LegacyAppVersionIndex.TryResolve(id, packageSha256, out indexedVersion))
+                {
+                    appVersion = indexedVersion;
+                    versionSource = "package";
+                }
+                if (appVersion != null && !IsSafeToken(appVersion)) throw new FormatException("Invalid app version.");
                 string description = Text(appObject["description"], "app.description", 2048, true);
                 string category = Text(appObject["category"], "app.category", 80, false);
                 string executable = RelativeExecutable(Text(appObject["executable"], "app.executable", 240, false));
+                List<string> arguments = new List<string>();
+                if (appObject.ContainsKey("arguments"))
+                {
+                    List<object> argumentValues = Array(appObject["arguments"], "app.arguments");
+                    if (argumentValues.Count > 32) throw new FormatException("Too many app launch arguments.");
+                    int argumentCharacters = 0;
+                    foreach (object argumentValue in argumentValues)
+                    {
+                        string argument = Text(argumentValue, "app.arguments[]", 4096, true);
+                        if (argument.Any(character => character < 0x20))
+                            throw new FormatException("App launch arguments contain control characters.");
+                        argumentCharacters += argument.Length;
+                        if (argumentCharacters > 8192) throw new FormatException("App launch arguments exceed the size limit.");
+                        arguments.Add(argument);
+                    }
+                }
                 string icon = appObject.ContainsKey("iconBase64") && appObject["iconBase64"] != null
                     ? Icon(appObject["iconBase64"]) : null;
                 string asset = AssetName(appObject["asset"], "app.asset");
                 if (!assets.Add(asset)) throw new FormatException("Duplicate package asset name.");
-                apps.Add(new BootstrapperApp(id, name, description, category, executable, icon, asset,
-                    Hash(appObject["sha256"], "app.sha256"),
+                apps.Add(new BootstrapperApp(id, name, description, category, appVersion, versionSource, executable, arguments, icon, asset,
+                    packageSha256,
                     PositiveBytes(appObject["bytes"], "app.bytes", options)));
             }
-            return new BootstrapperCatalog(schema, version,
+            BootstrapperCatalog catalog = new BootstrapperCatalog(schema, version,
                 new BootstrapperSource(serverUrl, apiUrl, repository, tagName), runtime, apps, catalogHash);
+            catalog.Json = json;
+            return catalog;
         }
 
         internal static Dictionary<string, object> Object(object value, string name)

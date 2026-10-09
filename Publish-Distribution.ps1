@@ -21,6 +21,9 @@ if (-not (Test-Path -LiteralPath $workspaceHelperPath -PathType Leaf)) {
 $sourceAppsHelperPath = Join-Path $PSScriptRoot 'Tools\SourceApps.ps1'
 if (-not (Test-Path -LiteralPath $sourceAppsHelperPath -PathType Leaf)) { throw "Source app helper not found: $sourceAppsHelperPath" }
 . $sourceAppsHelperPath
+$frameworkAppsHelperPath = Join-Path $PSScriptRoot 'Tools\FrameworkApps.ps1'
+if (-not (Test-Path -LiteralPath $frameworkAppsHelperPath -PathType Leaf)) { throw "Framework app helper not found: $frameworkAppsHelperPath" }
+. $frameworkAppsHelperPath
 
 if (-not $Version) {
     $Version = '{0}-{1}' -f ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff')), ([Guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -437,7 +440,7 @@ function New-ReleaseAppManifest {
     param(
         [Parameter(Mandatory = $true)]$SourceManifest,
         [Parameter(Mandatory = $true)][string]$ExecutableName,
-        [Parameter(Mandatory = $true)][string]$IconName
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$IconName
     )
 
     $releaseManifest = [ordered]@{}
@@ -447,7 +450,7 @@ function New-ReleaseAppManifest {
             $releaseManifest.executable = $ExecutableName
         }
         elseif ($property.Name -eq 'icon') {
-            $releaseManifest.icon = $IconName
+            if (-not [string]::IsNullOrWhiteSpace($IconName)) { $releaseManifest.icon = $IconName }
         }
         else {
             $releaseManifest[$property.Name] = $property.Value
@@ -614,9 +617,20 @@ try {
 
         $appOutputPath = Join-Path $bundlePath $appDirectory.Name
         [IO.Directory]::CreateDirectory($appOutputPath) | Out-Null
-        Invoke-FrameworkDependentPublish $dotnetExe $projectPath $appOutputPath '../runtime' $runtimeVersion
         $publishedExecutable = Join-Path $appOutputPath $executableName
-        Assert-PublishedApplicationFiles $appOutputPath $executableName $runtimeVersion
+        if (Test-LegacyFrameworkProject $projectPath) {
+            Publish-LegacyFrameworkProject $projectPath $appOutputPath
+            foreach ($requiredName in @($executableName, "$executableName.config", 'Newtonsoft.Json.dll')) {
+                $requiredPath = Join-Path $appOutputPath $requiredName
+                if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+                    throw "Legacy framework app output is missing: $requiredPath"
+                }
+            }
+        }
+        else {
+            Invoke-FrameworkDependentPublish $dotnetExe $projectPath $appOutputPath '../runtime' $runtimeVersion
+            Assert-PublishedApplicationFiles $appOutputPath $executableName $runtimeVersion
+        }
 
         $iconName = ''
         if ($iconPath) {

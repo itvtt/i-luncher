@@ -93,59 +93,57 @@
                 </Setter>
             </Style>
             <Style x:Key="RegistrationActionButtonStyle" TargetType="Button">
-                <Setter Property="Width" Value="30" />
-                <Setter Property="Height" Value="30" />
-                <Setter Property="Padding" Value="3" />
-                <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Width" Value="80" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="#FFA8DAB5" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="ButtonBorder" Padding="{TemplateBinding Padding}"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
+                            <Grid>
+                                <Border x:Name="ButtonBorder" Padding="{TemplateBinding Padding}"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                                </Border>
+                                <Border x:Name="RegistrationFocus" Margin="-3,0,-3,0" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="8" Opacity="0" IsHitTestVisible="False" />
+                            </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF202635" />
-                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF46516A" />
+                                    <Setter Property="Foreground" Value="#FFC4E8CD" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF111520" />
+                                    <Setter Property="Foreground" Value="#FFF5F7FB" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
                                     <Setter Property="Cursor" Value="Arrow" />
                                 </Trigger>
                                 <DataTrigger Binding="{Binding IsManagedInstalled}" Value="True">
-                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF38232A" />
-                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF8C4655" />
-                                    <Setter Property="Foreground" Value="#FFFFC1C9" />
+                                    <Setter Property="Foreground" Value="#FFE59AA6" />
                                 </DataTrigger>
                                 <MultiDataTrigger>
                                     <MultiDataTrigger.Conditions>
                                         <Condition Binding="{Binding IsManagedInstalled}" Value="True" />
                                         <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
                                     </MultiDataTrigger.Conditions>
-                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF512B36" />
-                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FFB45A6D" />
+                                    <Setter Property="Foreground" Value="#FFF2B6BE" />
                                 </MultiDataTrigger>
                                 <MultiDataTrigger>
                                     <MultiDataTrigger.Conditions>
                                         <Condition Binding="{Binding IsManagedInstalled}" Value="True" />
                                         <Condition Binding="{Binding IsPressed, RelativeSource={RelativeSource Self}}" Value="True" />
                                     </MultiDataTrigger.Conditions>
-                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF291A1F" />
-                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FF8C4655" />
+                                    <Setter Property="Foreground" Value="#FFD98290" />
                                 </MultiDataTrigger>
                                 <Trigger Property="IsKeyboardFocused" Value="True">
-                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                    <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2" />
+                                    <Setter TargetName="RegistrationFocus" Property="Opacity" Value="1" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -246,7 +244,7 @@
             </Border>
 
             <Grid Grid.Column="1" Margin="16">
-                <Grid.RowDefinitions><RowDefinition Height="38" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="38" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <Border Height="38" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
@@ -273,6 +271,12 @@
                         </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                        <Button x:Name="NoticeButton" Height="34" Margin="0,0,6,0" Padding="10,0" Click="NoticeButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.AutomationId="NoticeButton" AutomationProperties.Name="공지" ToolTip="공지">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="공지" VerticalAlignment="Center" />
+                                <Ellipse x:Name="NoticeUnreadDot" Width="6" Height="6" Margin="6,0,0,0" Fill="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Button>
                         <Button x:Name="OpenFolderButton" Width="34" Height="34" Margin="0,0,6,0" Padding="0" AutomationProperties.AutomationId="OpenFolderButton" AutomationProperties.Name="앱 폴더 열기" Click="OpenFolderButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" ToolTip="앱 폴더 열기">
                             <Path Width="16" Height="16" Stretch="Uniform" Data="M2,4 L6,4 L8,6 L14,6 L14,13 L2,13 Z M8,10 L11,7 M9,7 L11,7 L11,9" Stroke="{StaticResource TextBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                         </Button>
@@ -281,45 +285,71 @@
                         </Button>
                     </StackPanel>
                 </Grid>
-                <Grid Grid.Row="1" Margin="0,12,0,10">
+                <Border x:Name="NoticeBanner" Grid.Row="1" Margin="0,12,0,0" Padding="12,8" Background="#FF1D2C41" BorderBrush="#FF385577" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="공지" Margin="0,0,10,0" VerticalAlignment="Center" Foreground="#FFAECFFF" FontWeight="SemiBold" />
+                        <TextBlock x:Name="NoticeBannerTitle" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="2" Content="보기" Margin="12,0,0,0" Padding="10,4" Click="NoticeBanner_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="중요 공지 보기" />
+                    </Grid>
+                </Border>
+                <Grid Grid.Row="2" Margin="0,12,0,10">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock x:Name="SectionTitle" VerticalAlignment="Center" FontSize="17" FontWeight="SemiBold" Text="전체 앱" />
                     <TextBlock x:Name="CountText" Grid.Column="1" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" Text="0개 앱" />
                 </Grid>
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
                     <ScrollViewer x:Name="CardScrollViewer" Padding="0,0,8,8" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <ItemsControl x:Name="LauncherItems" ItemsSource="{Binding LauncherCards}">
                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel IsItemsHost="True" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Width="220" Height="104" Margin="0,0,8,10" Background="{StaticResource RaisedSurfaceBrush}" BorderBrush="#FF2F3847" BorderThickness="1" CornerRadius="14">
-                                        <Grid>
-                                            <Border Width="64" Height="64" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="13,19,0,0" Background="#FF222A3A" BorderBrush="#FF343F55" BorderThickness="1" CornerRadius="16" ToolTip="{Binding IconToolTip}">
+                                    <Border Width="280" Height="108" Margin="0,0,16,12" Background="{Binding CardBackgroundBrush}" BorderBrush="{Binding CardBorderBrush}" BorderThickness="1" CornerRadius="12">
+                                        <Grid Margin="-1">
+                                            <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0" Background="{Binding CardBackgroundBrush}" BorderBrush="{Binding CardBorderBrush}" BorderThickness="1" Cursor="Hand" Tag="{Binding}" Click="LauncherCard_Click" ContextMenuOpening="LauncherCard_ContextMenuOpening" MouseEnter="LauncherCard_MouseEnter" MouseLeave="LauncherCard_MouseLeave" PreviewMouseDown="LauncherCard_PreviewMouseDown" PreviewMouseUp="LauncherCard_PreviewMouseUp" PreviewKeyDown="LauncherCard_PreviewKeyDown" PreviewKeyUp="LauncherCard_PreviewKeyUp" RenderTransformOrigin="0.5,0.5" IsEnabled="{Binding CanInteract}" ToolTipService.ShowOnDisabled="True" ToolTip="{Binding RunToolTip}" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding RunAccessibleName}">
+                                                <Button.RenderTransform>
+                                                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                                                </Button.RenderTransform>
+                                                <Button.ContextMenu>
+                                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}" AutomationProperties.Name="앱 작업 메뉴">
+                                                        <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateContextMenuItem_Click" AutomationProperties.Name="앱 업데이트" Visibility="Collapsed" />
+                                                        <MenuItem Header="제거" Tag="{Binding}" Click="RemoveContextMenuItem_Click" AutomationProperties.Name="앱 제거" />
+                                                    </ContextMenu>
+                                                </Button.ContextMenu>
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Grid>
+                                                            <Border x:Name="LaunchSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" />
+                                                            <Border x:Name="LaunchHoverOverlay" Background="{Binding CardHoverBrush}" CornerRadius="12" Opacity="0" IsHitTestVisible="False" />
+                                                            <ContentPresenter />
+                                                            <Border x:Name="CardStateOutline" CornerRadius="12" BorderBrush="{Binding CardBorderBrush}" BorderThickness="2" IsHitTestVisible="False" />
+                                                            <Border x:Name="LaunchHoverOutline" CornerRadius="12" BorderBrush="{Binding CardHoverBrush}" BorderThickness="1" Opacity="0" IsHitTestVisible="False" />
+                                                            <Border x:Name="LaunchFocusOverlay" CornerRadius="12" BorderBrush="Transparent" BorderThickness="2" IsHitTestVisible="False" />
+                                                        </Grid>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="LaunchSurface" Property="Background" Value="#FF1B222D" /></Trigger>
+                                                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="LaunchFocusOverlay" Property="BorderBrush" Value="{StaticResource AccentBrush}" /></Trigger>
+                                                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="LaunchSurface" Property="Background" Value="#FF111520" /></Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
                                                 <Grid>
-                                                    <Image Source="{Binding IconSource}" Stretch="Uniform" Visibility="{Binding IconVisibility}" />
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="SemiBold" Foreground="#FFC6D3FF" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
+                                                    <Border Width="64" Height="64" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,20,0,0" Background="#FF222A3A" BorderBrush="#FF343F55" BorderThickness="1" CornerRadius="12" ToolTip="{Binding IconToolTip}">
+                                                        <Grid>
+                                                            <Grid.Clip>
+                                                                <RectangleGeometry Rect="0,0,64,64" RadiusX="12" RadiusY="12" />
+                                                            </Grid.Clip>
+                                                            <Image Source="{Binding IconSource}" Stretch="Uniform" Opacity="{Binding IconOpacity}" Visibility="{Binding IconVisibility}" />
+                                                            <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="SemiBold" Foreground="#FFC6D3FF" Opacity="{Binding IconOpacity}" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
+                                                        </Grid>
+                                                    </Border>
+                                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="92,10,0,0" Width="176" Height="22" FontSize="14" FontWeight="SemiBold" Foreground="{Binding CardTitleBrush}" Text="{Binding Entry.Name}" ToolTip="{Binding Entry.Name}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="92,34,0,0" Width="176" Height="32" FontSize="11" Foreground="{Binding CardDescriptionBrush}" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" AutomationProperties.LiveSetting="Polite" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="92,72,0,0" Width="176" Height="24" FontSize="11" Foreground="{Binding VersionBrush}" Text="{Binding VersionText}" ToolTip="{Binding VersionToolTip}" AutomationProperties.Name="{Binding VersionToolTip}" Visibility="{Binding VersionVisibility}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                                 </Grid>
-                                            </Border>
-                                            <Button Width="24" Height="24" Padding="2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="87,3,0,0" Tag="{Binding}" Visibility="{Binding InstallVisibility}" Click="InstallButton_Click" IsEnabled="{Binding CanInstall}" ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="{Binding InstallAutomationId}" AutomationProperties.Name="{Binding InstallAccessibleName}" ToolTip="{Binding InstallToolTip}" Style="{StaticResource RegistrationActionButtonStyle}">
-                                                <Path Width="17" Height="17" Stretch="Uniform" Data="{Binding RegistrationGlyphData}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                                             </Button>
-                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Margin="87,0,0,0" Width="74" MaxHeight="40" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Text="{Binding Entry.Name}" ToolTip="{Binding Entry.Name}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Top" Margin="87,79,0,0" Width="118" Height="16" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" AutomationProperties.LiveSetting="Polite" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <Button Width="44" Height="44" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,29,7,0" Tag="{Binding}" Click="LauncherCard_Click" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding RunAccessibleName}" ToolTip="{Binding RunToolTip}" IsEnabled="{Binding CanRun}" Style="{StaticResource CircularPlayButtonStyle}">
-                                                <Path Width="18" Height="21" Stretch="Uniform" Data="M 1,0 L 18,10.5 L 1,21 Z" Fill="White" Margin="2,0,0,0" />
-                                            </Button>
-                                            <ProgressBar Height="3" Margin="14,0,14,2" VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False" AutomationProperties.Name="작업 진행 상황">
+                                            <ProgressBar Height="3" Margin="12,0,12,2" VerticalAlignment="Bottom" IsIndeterminate="True" IsHitTestVisible="False" AutomationProperties.Name="작업 진행 상황">
                                                 <ProgressBar.Style><Style TargetType="ProgressBar"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsBusy}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></ProgressBar.Style>
                                             </ProgressBar>
                                         </Grid>
@@ -333,7 +363,7 @@
                         <Button x:Name="ClearFiltersButton" Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Center" Click="ClearFiltersButton_Click" Content="필터 지우기" Style="{StaticResource RoundedToolbarButtonStyle}" Visibility="Collapsed" />
                     </StackPanel>
                 </Grid>
-                <Border x:Name="ErrorPanel" Grid.RowSpan="3" Margin="0,0,0,0" Padding="12,9,8,9" VerticalAlignment="Top" Panel.ZIndex="3" AutomationProperties.LiveSetting="Assertive" Background="#FF2B1C21" BorderBrush="#FF61313C" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
+                <Border x:Name="ErrorPanel" Grid.RowSpan="4" Margin="0,0,0,0" Padding="12,9,8,9" VerticalAlignment="Top" Panel.ZIndex="3" AutomationProperties.LiveSetting="Assertive" Background="#FF2B1C21" BorderBrush="#FF61313C" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <Path Width="14" Height="14" Margin="0,1,10,0" VerticalAlignment="Top" Data="M 7,1 L 13,12 L 1,12 Z M 7,4.3 L 7,8 M 7,10.2 L 7,10.3" Stroke="#FFFFB4C0" StrokeThickness="1.4" />
                         <TextBlock x:Name="ErrorText" Grid.Column="1" VerticalAlignment="Center" FontSize="11.5" Foreground="#FFF6BAC3" TextWrapping="Wrap" />

@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -61,9 +63,27 @@ namespace ILauncher.BootstrapperUi
 
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
+                if (args.Any(a => string.Equals(a, "--smoke-card-styles", StringComparison.OrdinalIgnoreCase)))
+                {
+                    NativeConsole.AttachParent();
+                    NativeConsole.InitializeStreams();
+                    string previewPath = GetArgument(args, "--report-path");
+                    if (string.IsNullOrWhiteSpace(previewPath))
+                        throw new ArgumentException("--smoke-card-styles requires --report-path <png>.");
+                    return RunCardStylePreview(catalog, previewPath);
+                }
+                if (args.Any(a => string.Equals(a, "--smoke-install-confirmation", StringComparison.OrdinalIgnoreCase)))
+                {
+                    NativeConsole.AttachParent();
+                    NativeConsole.InitializeStreams();
+                    string previewPath = GetArgument(args, "--report-path");
+                    if (string.IsNullOrWhiteSpace(previewPath))
+                        throw new ArgumentException("--smoke-install-confirmation requires --report-path <png>.");
+                    return RunInstallConfirmationSmoke(catalog, previewPath);
+                }
                 if (smokeRealProfile && !smokeUi)
                     throw new ArgumentException("--smoke-real-profile requires --smoke-ui.");
-                BootstrapperEngine engine = EngineFactory.Create(catalog, smokeUi && !smokeRealProfile);
+                BootstrapperEngine engine = EngineFactory.Create(catalog, smokeUi && !smokeRealProfile, smokeRealProfile);
                 if (!string.IsNullOrEmpty(appId))
                 {
                     if (smokeUi)
@@ -105,6 +125,20 @@ namespace ILauncher.BootstrapperUi
                     catch { }
                     return 1;
                 }
+                if (args.Any(a => string.Equals(a, "--smoke-card-styles", StringComparison.OrdinalIgnoreCase)))
+                {
+                    NativeConsole.AttachParent();
+                    NativeConsole.InitializeStreams();
+                    Console.Error.WriteLine(ShortError(ex));
+                    return 1;
+                }
+                if (args.Any(a => string.Equals(a, "--smoke-install-confirmation", StringComparison.OrdinalIgnoreCase)))
+                {
+                    NativeConsole.AttachParent();
+                    NativeConsole.InitializeStreams();
+                    Console.Error.WriteLine(ShortError(ex));
+                    return 1;
+                }
                 MessageBox.Show(ShortError(ex), "i-luncher", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
@@ -115,6 +149,198 @@ namespace ILauncher.BootstrapperUi
             for (int i = 0; i + 1 < args.Length; i++)
                 if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
             return null;
+        }
+
+        private static int RunInstallConfirmationSmoke(BootstrapCatalog catalog, string previewPath)
+        {
+            BootstrapApp app = catalog.Apps.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, "deskcal", StringComparison.OrdinalIgnoreCase)) ?? catalog.Apps.First();
+            using (Form owner = new Form
+            {
+                ShowInTaskbar = false,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-20000, -20000),
+                Size = new Size(1, 1),
+                Opacity = 0
+            })
+            using (InstallConfirmationDialog dialog = new InstallConfirmationDialog(app))
+            using (System.Windows.Forms.Timer dismissTimer = new System.Windows.Forms.Timer { Interval = 100 })
+            {
+                bool shownAsOwnedModal = false;
+                string previewError = null;
+                dialog.Shown += delegate
+                {
+                    shownAsOwnedModal = dialog.Modal && dialog.Owner == owner &&
+                        dialog.AcceptButton == dialog.CancelActionForSmoke &&
+                        dialog.CancelButton == dialog.CancelActionForSmoke;
+                    dismissTimer.Start();
+                };
+                dismissTimer.Tick += delegate
+                {
+                    dismissTimer.Stop();
+                    try
+                    {
+                        string fullPath = Path.GetFullPath(previewPath);
+                        Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
+                        using (Bitmap preview = new Bitmap(dialog.Width, dialog.Height))
+                        {
+                            dialog.DrawToBitmap(preview, dialog.ClientRectangle);
+                            preview.Save(fullPath, ImageFormat.Png);
+                            if (preview.GetPixel(preview.Width - 40, preview.Height / 2).ToArgb() !=
+                                InstallConfirmationDialog.CardSurfaceForSmoke.ToArgb())
+                                throw new InvalidOperationException("Install confirmation preview did not render its app surface.");
+                        }
+                    }
+                    catch (Exception ex) { previewError = Program.ShortError(ex); }
+                    finally { dialog.CancelActionForSmoke.PerformClick(); }
+                };
+                owner.Show();
+                DialogResult result = dialog.ShowDialog(owner);
+                if (!shownAsOwnedModal || result != DialogResult.Cancel ||
+                    dialog.InstallActionResultForSmoke != DialogResult.Yes ||
+                    dialog.IconAccessibleNameForSmoke != app.Name)
+                    throw new InvalidOperationException("Install confirmation dialog failed its safe modal smoke check.");
+                if (previewError != null) throw new InvalidOperationException("Install confirmation preview failed: " + previewError);
+            }
+            Console.WriteLine("Install confirmation smoke passed: owned modal, safe Enter/Escape defaults, accessible icon, no install action.");
+            return 0;
+        }
+
+        private static int RunCardStylePreview(BootstrapCatalog catalog, string previewPath)
+        {
+            BootstrapApp app = catalog.Apps.First();
+            using (Panel previewPanel = new Panel { Size = new Size(584, 120), BackColor = Color.FromArgb(11, 13, 18) })
+            using (AppCard installed = new AppCard(app, 280, delegate { }, delegate { }, delegate { }, true))
+            using (AppCard uninstalled = new AppCard(app, 280, delegate { }, delegate { }, delegate { }, true))
+            using (AppCard legacyInstalled = new AppCard(app, 280, delegate { }, delegate { }, delegate { }, true))
+            {
+                BootstrapperApp coreApp = new BootstrapperApp(app.Id, app.Name, app.Description,
+                    app.Category, null, null, app.Executable, null, app.IconBase64, app.Asset, app.Sha256, app.Bytes);
+                installed.SetSmokeInstalledStatus();
+                uninstalled.SetStatus(new BootstrapperAppStatus(coreApp, true, false,
+                    null, null, "1.2.3", null, false));
+                if (uninstalled.VersionTextForSmoke != "v1.2.3")
+                    throw new InvalidOperationException("Uninstalled app did not retain its known available version label.");
+                legacyInstalled.SetStatus(new BootstrapperAppStatus(coreApp, true, true,
+                    "C:\\fake\\installed.exe", null, "1.2.3", null, false));
+                if (legacyInstalled.VersionTextForSmoke != "버전 미확인")
+                    throw new InvalidOperationException("Installed legacy receipt displayed an available version as its installed version.");
+                installed.Location = new Point(8, 6);
+                uninstalled.Location = new Point(296, 6);
+                previewPanel.Controls.Add(installed);
+                previewPanel.Controls.Add(uninstalled);
+                previewPanel.PerformLayout();
+                Application.DoEvents();
+                using (Bitmap preview = new Bitmap(previewPanel.Width, previewPanel.Height))
+                {
+                    previewPanel.DrawToBitmap(preview, previewPanel.ClientRectangle);
+                    DrawCardPreviewDetails(preview, installed);
+                    DrawCardPreviewDetails(preview, uninstalled);
+                    int installedOutlinePixels = CountRenderedOutlinePixels(preview, installed, false);
+                    int uninstalledOutlinePixels = CountRenderedOutlinePixels(preview, uninstalled, false);
+                    int installedFullCoveragePixels = CountRenderedOutlinePixels(preview, installed, true);
+                    int uninstalledFullCoveragePixels = CountRenderedOutlinePixels(preview, uninstalled, true);
+                    bool rendered = preview.GetPixel(88, 90) == installed.CardSurfaceColor
+                        && preview.GetPixel(376, 90) == uninstalled.CardSurfaceColor
+                        && installedOutlinePixels >= installed.Width / 2
+                        && uninstalledOutlinePixels >= uninstalled.Width / 2
+                        && installedFullCoveragePixels >= installed.Width / 2
+                        && uninstalledFullCoveragePixels < uninstalled.Width / 2
+                        && installed.CardOutlineThickness == 2F && uninstalled.CardOutlineThickness == 1F
+                        && installed.LaunchChromeInset == 2F && uninstalled.LaunchChromeInset == 2F
+                        && installed.LaunchChromeCornerRadius == 10F && uninstalled.LaunchChromeCornerRadius == 10F
+                        && HasVisibleCardDetails(preview, installed)
+                        && HasVisibleCardDetails(preview, uninstalled);
+                    string fullPath = Path.GetFullPath(previewPath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
+                    preview.Save(fullPath, ImageFormat.Png);
+                    if (!rendered)
+                        throw new InvalidOperationException("Card-state preview pixel check failed: installed surface=" + preview.GetPixel(88, 90) +
+                            ", neutral surface=" + preview.GetPixel(376, 90) + ", installed outline pixels=" + installedOutlinePixels +
+                            ", neutral outline pixels=" + uninstalledOutlinePixels + ", full-coverage installed/neutral=" +
+                            installedFullCoveragePixels + "/" + uninstalledFullCoveragePixels + ", card details visible=" +
+                            (HasVisibleCardDetails(preview, installed) && HasVisibleCardDetails(preview, uninstalled)) + ".");
+                    Console.WriteLine("Card-state preview OK: " + fullPath);
+                }
+            }
+            return 0;
+        }
+
+        internal static int CountRenderedOutlinePixels(Bitmap preview, AppCard card, bool fullCoverageOnly)
+        {
+            Color surface = card.CardSurfaceColor;
+            Color outline = card.CardOutlineColor;
+            int matchingPixels = 0;
+            int startX = card.Left + 20;
+            int endX = card.Left + card.Width - 20;
+            for (int y = card.Top; y < card.Top + 4; y++)
+            {
+                for (int x = startX; x < endX; x++)
+                {
+                    Color pixel = preview.GetPixel(x, y);
+                    if (TracksOutlineColor(pixel, surface, outline, fullCoverageOnly)) matchingPixels++;
+                }
+            }
+            return matchingPixels;
+        }
+
+        private static bool TracksOutlineColor(Color pixel, Color surface, Color outline, bool fullCoverageOnly)
+        {
+            double redCoverage = ChannelCoverage(pixel.R, surface.R, outline.R);
+            double greenCoverage = ChannelCoverage(pixel.G, surface.G, outline.G);
+            double blueCoverage = ChannelCoverage(pixel.B, surface.B, outline.B);
+            double minimum = Math.Min(redCoverage, Math.Min(greenCoverage, blueCoverage));
+            double maximum = Math.Max(redCoverage, Math.Max(greenCoverage, blueCoverage));
+            return minimum >= (fullCoverageOnly ? 0.85 : 0.30) && maximum <= 1.25 && maximum - minimum <= 0.30;
+        }
+
+        private static double ChannelCoverage(int pixel, int surface, int outline)
+        {
+            int delta = outline - surface;
+            return delta == 0 ? 0 : (pixel - surface) / (double)delta;
+        }
+
+        private static bool HasVisibleCardDetails(Bitmap preview, AppCard card)
+        {
+            Rectangle icon = new Rectangle(card.Left + 12, card.Top + 20, 64, 64);
+            Rectangle title = new Rectangle(card.Left + 92, card.Top + 10, 176, 22);
+            Rectangle description = new Rectangle(card.Left + 92, card.Top + 34, 176, 32);
+            Rectangle version = new Rectangle(card.Left + 92, card.Top + 72, 176, 24);
+            return CountNonSurfacePixels(preview, icon, card.CardSurfaceColor) > 100 &&
+                CountNonSurfacePixels(preview, title, card.CardSurfaceColor) > 4 &&
+                CountNonSurfacePixels(preview, description, card.CardSurfaceColor) > 4 &&
+                CountNonSurfacePixels(preview, version, card.CardSurfaceColor) > 4;
+        }
+
+        private static int CountNonSurfacePixels(Bitmap preview, Rectangle bounds, Color surface)
+        {
+            int count = 0;
+            for (int y = bounds.Top; y < bounds.Bottom; y++)
+            {
+                for (int x = bounds.Left; x < bounds.Right; x++)
+                {
+                    Color pixel = preview.GetPixel(x, y);
+                    if (Math.Abs(pixel.R - surface.R) + Math.Abs(pixel.G - surface.G) + Math.Abs(pixel.B - surface.B) > 36)
+                        count++;
+                }
+            }
+            return count;
+        }
+
+        private static void DrawCardPreviewDetails(Bitmap preview, AppCard card)
+        {
+            using (Graphics graphics = Graphics.FromImage(preview))
+            {
+                foreach (Control child in card.Controls.Cast<Control>().Where(control =>
+                             control.Visible && (control is Label || control is PictureBox)))
+                {
+                    using (Bitmap renderedChild = new Bitmap(child.Width, child.Height))
+                    {
+                        child.DrawToBitmap(renderedChild, new Rectangle(Point.Empty, renderedChild.Size));
+                        graphics.DrawImageUnscaled(renderedChild, card.Left + child.Left, card.Top + child.Top);
+                    }
+                }
+            }
         }
 
         private static int RunAppShortcut(BootstrapperEngine engine, string appId)
@@ -314,7 +540,7 @@ namespace ILauncher.BootstrapperUi
     {
         public static UserCredentialProvider Credentials { get; private set; }
         public static BootstrapperOptions Options { get; private set; }
-        public static BootstrapperEngine Create(BootstrapCatalog catalog, bool smokeOnly)
+        public static BootstrapperEngine Create(BootstrapCatalog catalog, bool smokeOnly, bool readOnlyStatus)
         {
             string cacheRoot = smokeOnly
                 ? Path.Combine(Path.GetTempPath(), "iluncher-smoke-" + Guid.NewGuid().ToString("N"))
@@ -327,7 +553,8 @@ namespace ILauncher.BootstrapperUi
                 PackageMirrorBase = settings.MirrorBase,
                 StartMenuRoot = smokeOnly
                     ? Path.Combine(cacheRoot, "StartMenu")
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "i-luncher")
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "i-luncher"),
+                ReadOnlyStatus = readOnlyStatus
             };
             Options = options;
             Credentials = new UserCredentialProvider(settings);
@@ -526,10 +753,11 @@ namespace ILauncher.BootstrapperUi
             _emptyState.Controls.Add(emptyText);
             _emptyState.Controls.Add(clearFilters);
             results.Controls.Add(_emptyState);
-            int cardWidth = 220;
+            int cardWidth = 280;
             foreach (BootstrapApp app in catalog.Apps)
             {
-                AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true);
+                AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true,
+                    InstallFromLaunchPrompt, ConfirmInstallFromLaunchPrompt, GetStatusForCardContext, UpdateClicked);
                 _cards.Add(app.Id, card);
                 _grid.Controls.Add(card);
             }
@@ -550,6 +778,7 @@ namespace ILauncher.BootstrapperUi
             {
                 await LoadStatusesAsync();
                 if (_smokeUi) _smokeTimer.Start();
+                else await CheckForUpdatesInBackgroundAsync();
             };
         }
 
@@ -850,11 +1079,7 @@ namespace ILauncher.BootstrapperUi
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(screenshotPath));
-                using (Bitmap screenshot = new Bitmap(Width, Height))
-                {
-                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
-                    screenshot.Save(screenshotPath, System.Drawing.Imaging.ImageFormat.Png);
-                }
+                SavePhysicalSmokeScreenshot(screenshotPath);
             }
             catch (Exception ex) { screenshotError = Program.ShortError(ex); }
             Dictionary<string, object> report = new Dictionary<string, object>
@@ -863,30 +1088,11 @@ namespace ILauncher.BootstrapperUi
                 { "bounds", new Dictionary<string, int> { { "x", bounds.X }, { "y", bounds.Y }, { "width", bounds.Width }, { "height", bounds.Height } } },
                 { "cards", _cards.Count },
                 { "appStatuses", _cards.Values.OrderBy(card => card.App.Id, StringComparer.OrdinalIgnoreCase)
-                    .Select(card => new Dictionary<string, object>
-                    {
-                        { "appId", card.App.Id },
-                        { "installed", card.IsInstalled },
-                        { "action", card.InstallActionLabel },
-                        { "actionColor", card.InstallActionColor },
-                        { "actionAccessibleName", card.InstallAccessibleName },
-                        { "actionPlacement", "above-name" },
-                        { "installBounds", RectangleToDictionary(card.InstallActionBounds) },
-                        { "portableAction", card.RunActionLabel },
-                        { "portablePlacement", card.RunActionPlacement },
-                        { "runBounds", RectangleToDictionary(card.RunActionBounds) },
-                        { "cardBounds", RectangleToDictionary(card.CardBounds) },
-                        { "status", card.StatusLabel },
-                        { "registrationAboveName", card.RegistrationAboveName },
-                        { "playCenteredWithIcon", card.PlayCenteredWithIcon },
-                        { "titleHasFullTooltip", card.TitleHasFullTooltip },
-                        { "iconSourceWidth", card.IconSourceSize.Width },
-                        { "iconSourceHeight", card.IconSourceSize.Height }
-                    }).ToArray() },
+                    .Select(CreateAppStatusSmokeReport).ToArray() },
                 { "gridColumns", _cards.Count == 0 ? 0 : _cards.Values.Select(card => card.Left).Distinct().Count() },
                 { "iconsDecoded", _cards.Values.Count(card => card.HasDecodedIcon) },
                 { "smokeInstalledAppId", _smokeInstalledAppId },
-                { "smokeInstalledAction", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].InstallActionLabel },
+                { "smokeInstalledAction", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].RunActionLabel },
                 { "smokeInstalledStatus", String.IsNullOrWhiteSpace(_smokeInstalledAppId) ? null : _cards[_smokeInstalledAppId].StatusLabel },
                 { "footerStyle", _statusBar.StyleName },
                 { "footerState", _statusBar.StateName },
@@ -932,6 +1138,37 @@ namespace ILauncher.BootstrapperUi
             Close();
         }
 
+        private Dictionary<string, object> CreateAppStatusSmokeReport(AppCard card)
+        {
+            BootstrapperAppStatus engineStatus = null;
+            string statusError = null;
+            try { engineStatus = _engine.GetStatus(card.App.Id); }
+            catch (Exception ex) { statusError = Program.ShortError(ex); }
+            return new Dictionary<string, object>
+            {
+                { "appId", card.App.Id },
+                { "installed", card.IsInstalled },
+                { "engineInstalled", engineStatus == null ? (object)null : engineStatus.IsInstalled },
+                { "installedVersion", engineStatus == null ? null : engineStatus.InstalledVersion },
+                { "availableVersion", engineStatus == null ? null : engineStatus.AvailableVersion },
+                { "updateAvailable", engineStatus == null ? (object)null : engineStatus.UpdateAvailable },
+                { "statusReadError", statusError },
+                { "contextRemoveAvailable", card.ContextRemoveAvailable },
+                { "launchAction", card.RunActionLabel },
+                { "launchAccessibleName", card.RunAccessibleName },
+                { "launchAvailable", card.CanRun },
+                { "launchBounds", RectangleToDictionary(card.RunActionBounds) },
+                { "cardBounds", RectangleToDictionary(card.CardBounds) },
+                { "description", card.DescriptionText },
+                { "busyStatus", card.IsBusy ? card.StatusLabel : null },
+                { "launchGroupGeometry", card.LaunchGroupGeometry },
+                { "registrationActionGeometry", card.RegistrationActionGeometry },
+                { "titleHasFullTooltip", card.TitleHasFullTooltip },
+                { "iconSourceWidth", card.IconSourceSize.Width },
+                { "iconSourceHeight", card.IconSourceSize.Height }
+            };
+        }
+
         private Dictionary<string, object> RunRoundedPaintSmokeChecks()
         {
             Dictionary<string, object> result = new Dictionary<string, object>();
@@ -961,6 +1198,8 @@ namespace ILauncher.BootstrapperUi
                                 .Invoke(probe, new object[] { EventArgs.Empty });
                         if (index == 2) result["enabledFixtureTakesFocus"] = probe.Focus();
                         if (index == 3) { surface.BackColor = Color.FromArgb(29, 36, 48); probe.Width += 8; }
+                        // This probe verifies each deterministic paint endpoint; animation timing is covered by the card tween checks.
+                        probe.CompleteAnimationForSmoke();
                         int before = paintCount;
                         surface.Refresh();
                         probe.Invalidate();
@@ -1065,16 +1304,65 @@ namespace ILauncher.BootstrapperUi
             Dictionary<string, object> result = new Dictionary<string, object>();
             if (_cards.Count == 0) return result;
             AppCard sample = _cards.Values.First();
+            AppCard installedStyleFixture = new AppCard(sample.App, 280, delegate { }, delegate { }, delegate { }, true);
+            AppCard uninstalledStyleFixture = new AppCard(sample.App, 280, delegate { }, delegate { }, delegate { }, true);
+            installedStyleFixture.SetSmokeInstalledStatus();
+            uninstalledStyleFixture.SetStatus(null);
+            using (Panel previewPanel = new Panel { Size = new Size(584, 120), BackColor = Color.FromArgb(11, 13, 18) })
             try
             {
+                result["installedAndUninstalledCardColorsDiffer"] =
+                    installedStyleFixture.CardSurfaceColor == Color.FromArgb(25, 39, 42) &&
+                    installedStyleFixture.CardOutlineColor == Color.FromArgb(89, 191, 174) &&
+                    installedStyleFixture.CardOutlineThickness == 2F &&
+                    uninstalledStyleFixture.CardSurfaceColor == Color.FromArgb(35, 45, 59) &&
+                    uninstalledStyleFixture.CardOutlineColor == Color.FromArgb(117, 131, 152) &&
+                    installedStyleFixture.CardSurfaceColor != uninstalledStyleFixture.CardSurfaceColor &&
+                    installedStyleFixture.CardOutlineColor != uninstalledStyleFixture.CardOutlineColor;
+                installedStyleFixture.SetBusy(true, "작업 중…");
+                result["busyRetainsInstalledCardColorsAndGeometry"] = installedStyleFixture.IsInstalled &&
+                    installedStyleFixture.CardSurfaceColor == Color.FromArgb(25, 39, 42) &&
+                    installedStyleFixture.CardOutlineColor == Color.FromArgb(89, 191, 174) &&
+                    installedStyleFixture.CardOutlineThickness == 2F &&
+                    installedStyleFixture.LaunchGroupGeometry == "matches" &&
+                    uninstalledStyleFixture.LaunchGroupGeometry == "matches" &&
+                    installedStyleFixture.FocusOutlineColor == Color.FromArgb(124, 156, 255);
+                installedStyleFixture.SetBusy(false, null);
+                installedStyleFixture.Location = new Point(8, 6);
+                uninstalledStyleFixture.Location = new Point(296, 6);
+                previewPanel.Controls.Add(installedStyleFixture);
+                previewPanel.Controls.Add(uninstalledStyleFixture);
+                previewPanel.PerformLayout();
+                Application.DoEvents();
+                using (Bitmap preview = new Bitmap(previewPanel.Width, previewPanel.Height))
+                {
+                    previewPanel.DrawToBitmap(preview, previewPanel.ClientRectangle);
+                    Color installedPixel = preview.GetPixel(88, 90);
+                    Color uninstalledPixel = preview.GetPixel(376, 90);
+                    bool renderedStates = installedPixel == installedStyleFixture.CardSurfaceColor &&
+                        uninstalledPixel == uninstalledStyleFixture.CardSurfaceColor && installedPixel != uninstalledPixel;
+                    renderedStates &= Program.CountRenderedOutlinePixels(preview, installedStyleFixture, false) >= installedStyleFixture.Width / 2 &&
+                        Program.CountRenderedOutlinePixels(preview, uninstalledStyleFixture, false) >= uninstalledStyleFixture.Width / 2 &&
+                        Program.CountRenderedOutlinePixels(preview, installedStyleFixture, true) >= installedStyleFixture.Width / 2 &&
+                        Program.CountRenderedOutlinePixels(preview, uninstalledStyleFixture, true) < uninstalledStyleFixture.Width / 2;
+                    string previewPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".card-states.png");
+                    if (renderedStates)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(previewPath));
+                        preview.Save(previewPath, ImageFormat.Png);
+                    }
+                    result["installedUninstalledCardPreviewRendered"] = renderedStates;
+                    result["installedUninstalledCardPreviewPath"] = renderedStates ? previewPath : null;
+                }
                 sample.SetBusy(true, "설치 중…");
                 result["busyShowsTransientStatus"] = sample.HasCompactBusyState;
                 sample.SetBusy(false, null);
-                result["idleRestoresMinimalCard"] = sample.HasCompactIdleState;
+                result["idleRestoresDescription"] = sample.HasCompactIdleState && sample.DescriptionText == sample.App.Description;
                 while (_grid.Controls.Count < 9)
                 {
                     BootstrapApp fixtureApp = _cards.Values.ElementAt(fixtures.Count % _cards.Count).App;
-                    AppCard fixture = new AppCard(fixtureApp, 220, delegate { }, delegate { }, delegate { }, true);
+                    AppCard fixture = new AppCard(fixtureApp, 280, delegate { }, delegate { }, delegate { }, true,
+                        delegate { }, delegate { return DialogResult.No; });
                     fixture.SetStatus(null);
                     fixtures.Add(fixture);
                     _grid.Controls.Add(fixture);
@@ -1083,27 +1371,47 @@ namespace ILauncher.BootstrapperUi
                 Application.DoEvents();
                 AppCard[] all = _grid.Controls.OfType<AppCard>().ToArray();
                 _resultCount.Text = all.Length + "개 앱";
-                result["compactCardHeight"] = all.All(card => card.Height == 104);
-                result["iconTitleAndActionsDoNotOverlap"] = all.All(card => card.ContentClearsActions);
-                result["fullTitlesFitNameArea"] = all.All(card => card.TitleFitsNameArea);
-                result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 4 &&
+                result["compactCardHeight"] = all.All(card => card.Height == 108);
+                result["launchGroupAndMetadataGeometry"] = all.All(card => card.ContentClearsActions);
+                result["titleEllipsisKeepsFullTooltip"] = all.All(card => card.TitleHasFullTooltip);
+                result["launchSurfaceAccessibleAndCoversCard"] = all.All(card =>
+                    card.RunAccessibleName == (card.IsInstalled ? "실행 " : "설치 ") + card.App.Name &&
+                    card.RunActionBounds == new Rectangle(0, 0, card.CardBounds.Width, card.CardBounds.Height) &&
+                    card.LaunchKeyboardAccessible && card.LaunchRegionContainsContent);
+                result["uninstalledShowsInstallPromptSurface"] = all.Where(card => !card.IsInstalled).All(card =>
+                    !card.CanRun && card.RunActionEnabled && card.LaunchVisualMuted &&
+                    card.RunAccessibleName == "설치 " + card.App.Name && card.RunAccessibleDescription.Contains("설치"));
+                result["primaryActionPromptBehaviors"] = RunPrimaryActionSmokeChecks();
+                result["contextMenuBehaviors"] = RunContextMenuSmokeChecks();
+                result["updateMenuBehaviors"] = RunUpdateMenuSmokeChecks();
+                result["nineCardsFitThreeRows"] = all.Length == 9 && all.Select(card => card.Left).Distinct().Count() == 3 &&
                     all.Select(card => card.Top).Distinct().Count() == 3 && !_grid.VerticalScroll.Visible && !_grid.HorizontalScroll.Visible &&
                     all.Max(card => card.Bottom) <= _grid.ClientSize.Height;
+                foreach (AppCard card in all) { card.Invalidate(true); card.Update(); }
+                _grid.Refresh();
+                Application.DoEvents();
                 string path = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".nine-cards.png");
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                using (Bitmap screenshot = new Bitmap(Width, Height))
-                {
-                    DrawToBitmap(screenshot, new Rectangle(Point.Empty, Size));
-                    screenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-                }
+                SavePhysicalSmokeScreenshot(path);
                 result["nineCardScreenshotPath"] = path;
                 AppCard busyFixture = fixtures.FirstOrDefault(card => card.App.Name.Contains(" ")) ?? fixtures.FirstOrDefault();
                 if (busyFixture != null)
                 {
                     busyFixture.SetBusy(true, "설치 중…");
+                    result["busyReplacesDescription"] = busyFixture.IsBusy && busyFixture.StatusLabel == "설치 중…" &&
+                        busyFixture.DescriptionText == "설치 중…" && busyFixture.ProgressVisible;
                     string busyPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".busy.png");
                     SavePhysicalSmokeScreenshot(busyPath);
                     result["busyFixtureScreenshotPath"] = busyPath;
+                }
+                AppCard focusFixture = all.FirstOrDefault(card => card.CanRun);
+                bool launchFocusVisible = focusFixture == null || focusFixture.FocusLaunchSurface();
+                result["launchSurfaceFocusVisible"] = launchFocusVisible;
+                if (focusFixture != null)
+                {
+                    string focusPath = Path.ChangeExtension(Path.GetFullPath(_reportPath), ".launch-focus.png");
+                    SavePhysicalSmokeScreenshot(focusPath);
+                    result["launchFocusScreenshotPath"] = focusPath;
                 }
             }
             finally
@@ -1112,6 +1420,170 @@ namespace ILauncher.BootstrapperUi
                 foreach (AppCard fixture in fixtures) { _grid.Controls.Remove(fixture); fixture.Dispose(); }
                 ApplyFilters();
             }
+            return result;
+        }
+
+        private Dictionary<string, object> RunPrimaryActionSmokeChecks()
+        {
+            int promptCalls = 0, installCalls = 0, removeCalls = 0, launchCalls = 0;
+            AppCard hover = new AppCard(_cards.Values.First().App, 280, delegate { }, delegate { }, delegate { }, true);
+            hover.SetStatus(null);
+            Color idlePixel;
+            using (Bitmap initial = new Bitmap(hover.Width, hover.Height))
+            {
+                hover.DrawToBitmap(initial, hover.ClientRectangle);
+                idlePixel = initial.GetPixel(275, 50);
+            }
+            hover.SetPointerHoverForSmoke(true);
+            bool hoverTimerStarted = hover.VisualAnimationActiveForSmoke;
+            hover.AdvanceAnimationForSmoke(80);
+            Color transitionPixel;
+            using (Bitmap transitioning = new Bitmap(hover.Width, hover.Height))
+            {
+                hover.DrawToBitmap(transitioning, hover.ClientRectangle);
+                transitionPixel = transitioning.GetPixel(275, 50);
+            }
+            bool hoverInterpolates = hoverTimerStarted && idlePixel != transitionPixel &&
+                transitionPixel != hover.HoverSurfaceColorForSmoke && hover.HoverSurfaceColorForSmoke != idlePixel;
+            hover.SetPointerHoverForSmoke(false);
+            bool returnTransitionStarted = hover.VisualAnimationActiveForSmoke;
+            hover.CompleteAnimationForSmoke();
+            Color settledPixel;
+            using (Bitmap settled = new Bitmap(hover.Width, hover.Height))
+            {
+                hover.DrawToBitmap(settled, hover.ClientRectangle);
+                settledPixel = settled.GetPixel(275, 50);
+            }
+            bool hoverReturnsAndStops = returnTransitionStarted && settledPixel == idlePixel && !hover.VisualAnimationActiveForSmoke;
+            hover.SetPointerHoverForSmoke(true);
+            hover.Dispose();
+            bool timerDisposedWithCard = hover.VisualTimerDisposedForSmoke && !hover.VisualAnimationActiveForSmoke;
+
+            AppCard canceled = new AppCard(_cards.Values.First().App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
+                delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.No; });
+            canceled.SetStatus(null);
+            canceled.PerformPrimaryActionForSmoke();
+            bool cancelDoesNothing = promptCalls == 1 && installCalls == 0 && removeCalls == 0 && launchCalls == 0;
+            canceled.Dispose();
+
+            AppCard accepted = new AppCard(_cards.Values.First().App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
+                delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; });
+            accepted.SetStatus(null);
+            accepted.PerformPrimaryActionForSmoke();
+            bool acceptInstallsOnly = promptCalls == 2 && installCalls == 1 && removeCalls == 0 && launchCalls == 0;
+            accepted.Dispose();
+
+            AppCard installed = null;
+            bool launchPulseBeforeCallback = false;
+            installed = new AppCard(_cards.Values.First().App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate
+                {
+                    launchCalls++;
+                    launchPulseBeforeCallback = installed.LaunchAnimationTriggeredForSmoke &&
+                        installed.LaunchPulseActiveForSmoke && installed.LaunchPulsePaintsWhenFocusedForSmoke;
+                }, true,
+                delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; });
+            installed.SetSmokeInstalledStatus();
+            installed.PerformPrimaryActionForSmoke();
+            bool installedLaunchesWithoutPrompt = promptCalls == 2 && installCalls == 1 && removeCalls == 0 && launchCalls == 1 && launchPulseBeforeCallback;
+            installed.SetBusy(true, "실행 중…");
+            bool busyDisablesBothActions = !installed.RunActionEnabled && !installed.InstallActionEnabled;
+            installed.PerformPrimaryActionForSmoke();
+            bool busyBlocksCallbacks = promptCalls == 2 && installCalls == 1 && removeCalls == 0 && launchCalls == 1;
+            installed.Dispose();
+
+            AppCard stateChangedCard = null;
+            int stateChangedPromptCalls = 0;
+            AppCard stateChanged = new AppCard(_cards.Values.First().App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
+                delegate { installCalls++; }, delegate { stateChangedPromptCalls++; stateChangedCard.SetSmokeInstalledStatus(); return DialogResult.Yes; });
+            stateChangedCard = stateChanged;
+            stateChanged.SetStatus(null);
+            stateChanged.PerformPrimaryActionForSmoke();
+            bool installedDuringPromptDoesNotInstall = stateChangedPromptCalls == 1 && installCalls == 1 && removeCalls == 0 && launchCalls == 1;
+            stateChanged.Dispose();
+
+            return new Dictionary<string, object>
+            {
+                { "cancelDoesNothing", cancelDoesNothing },
+                { "acceptInstallsOnly", acceptInstallsOnly },
+                { "installedClickLaunchesOnly", installedLaunchesWithoutPrompt },
+                { "busyDisablesAndBlocksActions", busyDisablesBothActions && busyBlocksCallbacks },
+                { "stateChangedDuringPromptCannotRemove", installedDuringPromptDoesNotInstall },
+                { "hoverSurfaceInterpolates", hoverInterpolates },
+                { "hoverReturnsToIdleAndStops", hoverReturnsAndStops },
+                { "animationTimerDisposedWithCard", timerDisposedWithCard },
+                { "launchPulseStartsBeforeSingleCallback", launchPulseBeforeCallback && launchCalls == 1 }
+            };
+        }
+
+        private Dictionary<string, object> RunContextMenuSmokeChecks()
+        {
+            AppCard installedSource = _cards.Values.FirstOrDefault(card => card.IsInstalled);
+            AppCard uninstalledSource = _cards.Values.FirstOrDefault(card => !card.IsInstalled);
+            int refreshCalls = 0, removeCalls = 0, installCalls = 0, promptCalls = 0, launchCalls = 0;
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            if (installedSource == null || uninstalledSource == null)
+            {
+                result["installedRemoveOnly"] = false;
+                result["uninstalledContextHasNoAction"] = false;
+                result["busyContextBlocked"] = false;
+                return result;
+            }
+            AppCard installed = new AppCard(installedSource.App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
+                delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; },
+                delegate(BootstrapApp app) { refreshCalls++; return _engine.GetStatus(app.Id); });
+            installed.SetSmokeInstalledStatus();
+            installed.RefreshContextMenuForSmoke();
+            bool removeAvailable = installed.ContextRemoveAvailable && refreshCalls == 1;
+            installed.PerformContextRemoveForSmoke();
+            result["installedRemoveOnly"] = removeAvailable && removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            installed.SetBusy(true, "작업 중…");
+            installed.RefreshContextMenuForSmoke();
+            installed.PerformContextRemoveForSmoke();
+            result["busyContextBlocked"] = !installed.ContextRemoveAvailable && removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            installed.Dispose();
+
+            AppCard uninstalled = new AppCard(uninstalledSource.App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
+                delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; },
+                delegate(BootstrapApp app) { refreshCalls++; return _engine.GetStatus(app.Id); });
+            uninstalled.SetStatus(null);
+            int priorRefreshCalls = refreshCalls;
+            uninstalled.RefreshContextMenuForSmoke();
+            uninstalled.PerformContextRemoveForSmoke();
+            result["uninstalledContextHasNoAction"] = !uninstalled.ContextRemoveAvailable && refreshCalls == priorRefreshCalls + 1 &&
+                removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            uninstalled.Dispose();
+            return result;
+        }
+
+        private Dictionary<string, object> RunUpdateMenuSmokeChecks()
+        {
+            Dictionary<string, object> result = new Dictionary<string, object>();
+            if (_cards.Count == 0) { result["explicitUpdateOnly"] = false; return result; }
+            BootstrapperAppStatus baseStatus = _engine.GetStatus(_cards.Values.First().App.Id);
+            BootstrapperAppStatus updateStatus = new BootstrapperAppStatus(baseStatus.App, true, true,
+                "C:\\fake\\installed.exe", null, "2.0.0", "1.0.0", true);
+            int updateCalls = 0, installCalls = 0, removeCalls = 0, runCalls = 0;
+            AppCard card = new AppCard(_cards.Values.First().App, 280,
+                delegate { installCalls++; }, delegate { removeCalls++; }, delegate { runCalls++; }, true,
+                delegate { installCalls++; }, delegate { return DialogResult.No; },
+                delegate { return updateStatus; }, delegate { updateCalls++; });
+            card.SetStatus(updateStatus);
+            card.RefreshContextMenuForSmoke();
+            bool shown = card.ContextUpdateAvailable;
+            card.PerformContextUpdateForSmoke();
+            bool explicitUpdate = shown && updateCalls == 1 && installCalls == 0 && removeCalls == 0 && runCalls == 0;
+            card.SetBusy(true, "업데이트 중…");
+            card.RefreshContextMenuForSmoke();
+            card.PerformContextUpdateForSmoke();
+            result["explicitUpdateOnly"] = explicitUpdate && !card.ContextUpdateAvailable &&
+                updateCalls == 1 && installCalls == 0 && removeCalls == 0 && runCalls == 0;
+            card.Dispose();
             return result;
         }
 
@@ -1181,8 +1653,7 @@ namespace ILauncher.BootstrapperUi
                 minimumSizeScrollOverflowAccessible = overflowVisible && _grid.AutoScrollPosition.Y < 0;
                 minimumSizeLastCardVisible = _cards.Count == 0 || _cards.Values.Max(card => card.Bottom) <= _grid.ClientSize.Height;
                 minimumSizeActionsInsideCards = _cards.Values.All(card =>
-                    new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.RunActionBounds) &&
-                    new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.InstallActionBounds));
+                    new Rectangle(Point.Empty, card.CardBounds.Size).Contains(card.RunActionBounds));
                 RoundedActionButton lastCategory = _filterButtons.Values.OrderBy(button => button.Top).Last();
                 ScrollableControl sidebar = (ScrollableControl)lastCategory.Parent;
                 sidebar.ScrollControlIntoView(lastCategory);
@@ -1296,6 +1767,23 @@ namespace ILauncher.BootstrapperUi
             catch (Exception ex) { SetAmbientStatusState("error"); _status.Text = "목록 확인 실패: " + Program.ShortError(ex); }
             ApplyFilters();
         }
+        private async Task CheckForUpdatesInBackgroundAsync()
+        {
+            try
+            {
+                await _engine.CheckForUpdatesAsync(CancellationToken.None);
+                if (IsDisposed || !IsHandleCreated) return;
+                foreach (BootstrapApp app in _catalog.Apps)
+                {
+                    AppCard card;
+                    if (!_cards.TryGetValue(app.Id, out card) || card.IsBusy || _inFlight.Contains(app.Id)) continue;
+                    try { card.SetStatus(_engine.GetStatus(app.Id)); }
+                    catch { }
+                }
+                ApplyFilters();
+            }
+            catch { }
+        }
         private async void InstallClicked(BootstrapApp app)
         {
             if (_smokeUi) return;
@@ -1317,6 +1805,42 @@ namespace ILauncher.BootstrapperUi
                 _status.Text = "설치 실패: " + Program.ShortError(ex);
             }
             finally { FinishOperation(app.Id); }
+        }
+        private void InstallFromLaunchPrompt(BootstrapApp app)
+        {
+            if (_smokeUi) return;
+            AppCard card;
+            if (!_cards.TryGetValue(app.Id, out card) || card.IsBusy || _inFlight.Contains(app.Id)) return;
+            try
+            {
+                BootstrapperAppStatus currentStatus = _engine.GetStatus(app.Id);
+                card.SetStatus(currentStatus);
+                if (currentStatus != null && currentStatus.IsInstalled)
+                {
+                    SetOperationResultState("ready");
+                    _status.Text = app.Name + " is already installed.";
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                SetOperationResultState("error");
+                _status.Text = "설치 상태 확인 실패: " + Program.ShortError(ex);
+                return;
+            }
+            InstallClicked(app);
+        }
+        private static DialogResult ConfirmInstallFromLaunchPrompt(Form owner, BootstrapApp app)
+        {
+            return InstallConfirmationDialog.Show(owner, app);
+        }
+        private BootstrapperAppStatus GetStatusForCardContext(BootstrapApp app)
+        {
+            BootstrapperAppStatus status = _engine.GetStatus(app.Id);
+            AppCard card;
+            if (_cards.TryGetValue(app.Id, out card)) card.SetStatus(status);
+            ApplyFilters();
+            return status;
         }
         private async void RemoveClicked(BootstrapApp app)
         {
@@ -1346,9 +1870,68 @@ namespace ILauncher.BootstrapperUi
             }
             finally { FinishOperation(app.Id); }
         }
+        private async void UpdateClicked(BootstrapApp app)
+        {
+            if (_smokeUi) return;
+            AppCard card;
+            if (!_cards.TryGetValue(app.Id, out card) || card.IsBusy || !_inFlight.Add(app.Id)) return;
+            try
+            {
+                BootstrapperAppStatus current = _engine.GetStatus(app.Id);
+                card.SetStatus(current);
+                if (current == null || !current.IsInstalled || !current.UpdateAvailable)
+                {
+                    _inFlight.Remove(app.Id);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _inFlight.Remove(app.Id);
+                SetOperationResultState("error");
+                _status.Text = "업데이트 상태 확인 실패: " + Program.ShortError(ex);
+                return;
+            }
+            SetBusy(app.Id, true, "업데이트 중…");
+            _statusBar.SetState("working");
+            _status.Text = app.Name + " 업데이트를 준비하고 있습니다…";
+            try
+            {
+                await _engine.UpdateAsync(app.Id, CancellationToken.None);
+                card.SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("success");
+                _status.Text = "업데이트 완료: " + app.Name;
+            }
+            catch (Exception ex)
+            {
+                card.SetStatus(_engine.GetStatus(app.Id));
+                SetOperationResultState("error");
+                _status.Text = "업데이트 실패: " + Program.ShortError(ex);
+            }
+            finally { FinishOperation(app.Id); }
+        }
         private async void RunClicked(BootstrapApp app)
         {
             if (_smokeUi) return;
+            AppCard card;
+            if (!_cards.TryGetValue(app.Id, out card) || !card.CanRun || _inFlight.Contains(app.Id)) return;
+            try
+            {
+                BootstrapperAppStatus currentStatus = _engine.GetStatus(app.Id);
+                card.SetStatus(currentStatus);
+                if (currentStatus == null || !currentStatus.IsInstalled)
+                {
+                    SetOperationResultState("ready");
+                    _status.Text = app.Name + " 미설치: 설치 후 실행할 수 있습니다.";
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                SetOperationResultState("error");
+                _status.Text = "실행 상태 확인 실패: " + Program.ShortError(ex);
+                return;
+            }
             if (!_inFlight.Add(app.Id)) return;
             SetBusy(app.Id, true, null);
             _statusBar.SetState("working");
@@ -1366,7 +1949,11 @@ namespace ILauncher.BootstrapperUi
                 SetOperationResultState("error");
                 _status.Text = "실행 실패: " + Program.ShortError(ex);
             }
-            finally { FinishOperation(app.Id); }
+            finally
+            {
+                card.EndLaunchAnimation();
+                FinishOperation(app.Id);
+            }
         }
         private void FinishOperation(string appId)
         {
@@ -1647,18 +2234,211 @@ namespace ILauncher.BootstrapperUi
     internal sealed class RoundedActionButton : Button
     {
         public float CornerRadius { get; set; }
+        public float ChromeClipInset { get; set; }
         private bool _hovered;
         private bool _pressed;
+        private System.Windows.Forms.Timer _visualTimer;
+        private Color _animatedFill;
+        private Color _animatedBorder;
+        private Color _transitionStartFill;
+        private Color _transitionStartBorder;
+        private Color _transitionTargetFill;
+        private Color _transitionTargetBorder;
+        private int _transitionStarted;
+        private bool _colorsInitialized;
+        private bool _launchPulse;
+        private int _launchPulseStarted;
+        private bool _launchAnimationTriggered;
+        internal event EventHandler PointerLeaveRequested;
+        internal event Action<Color> AnimatedFillChanged;
         internal event PaintEventHandler PaintGlyph;
+
+        internal bool VisualAnimationActiveForSmoke { get { return _visualTimer != null && _visualTimer.Enabled; } }
+        internal bool LaunchAnimationTriggeredForSmoke { get { return _launchAnimationTriggered; } }
+        internal bool LaunchPulseActiveForSmoke { get { return _launchPulse; } }
+        internal bool LaunchPulsePaintsWhenFocusedForSmoke { get { return ShouldPaintLaunchPulse(true); } }
+        internal bool SupportsAnimationForSmoke { get { return true; } }
+        internal Color AnimatedFillForSmoke { get { EnsureAnimatedColors(); return _animatedFill; } }
+        internal bool VisualTimerDisposedForSmoke { get { return _animationTimerDisposed; } }
+        private bool _animationTimerDisposed;
 
         public RoundedActionButton()
         {
             CornerRadius = 11;
+            DrawSurfaceChrome = true;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             FlatStyle = FlatStyle.Flat;
             UseVisualStyleBackColor = false;
             SetStyle(ControlStyles.Opaque, false);
+        }
+
+        public bool DrawSurfaceChrome { get; set; }
+
+        public void SetPointerHover(bool hovered)
+        {
+            if (_hovered == hovered) return;
+            _hovered = hovered;
+            UpdateAnimatedVisuals();
+        }
+
+        internal void RefreshAnimatedVisuals(bool animate)
+        {
+            if (animate) UpdateAnimatedVisuals();
+            else SnapAnimatedVisuals();
+        }
+
+        private void SnapAnimatedVisuals()
+        {
+            EnsureAnimatedColors();
+            Color fill, border;
+            GetVisualTargets(out fill, out border);
+            _transitionStartFill = _transitionTargetFill = _animatedFill = fill;
+            _transitionStartBorder = _transitionTargetBorder = _animatedBorder = border;
+            _transitionStarted = Environment.TickCount;
+            NotifyAnimatedFillChanged();
+            StopVisualTimerIfIdle();
+            Invalidate();
+        }
+
+        public void StartLaunchAnimation()
+        {
+            _launchAnimationTriggered = true;
+            _launchPulse = true;
+            _launchPulseStarted = Environment.TickCount;
+            EnsureVisualTimer();
+            Invalidate();
+            Update();
+        }
+
+        public void EndLaunchAnimation()
+        {
+            // The pulse has its own short fade and must remain visible even when launch completes synchronously.
+            Invalidate();
+        }
+
+        internal void AdvanceAnimationForSmoke(int elapsedMilliseconds)
+        {
+            if (_visualTimer == null || !_visualTimer.Enabled) return;
+            _transitionStarted = unchecked(Environment.TickCount - Math.Max(0, elapsedMilliseconds));
+            VisualTimer_Tick(this, EventArgs.Empty);
+        }
+
+        internal void CompleteAnimationForSmoke()
+        {
+            _animatedFill = _transitionTargetFill;
+            _animatedBorder = _transitionTargetBorder;
+            NotifyAnimatedFillChanged();
+            if (_visualTimer != null && !_launchPulse) _visualTimer.Stop();
+            Invalidate();
+        }
+
+        private void UpdateAnimatedVisuals()
+        {
+            EnsureAnimatedColors();
+            Color fill, border;
+            GetVisualTargets(out fill, out border);
+            if (fill == _transitionTargetFill && border == _transitionTargetBorder && _visualTimer != null && _visualTimer.Enabled)
+                return;
+            _transitionStartFill = _animatedFill;
+            _transitionStartBorder = _animatedBorder;
+            _transitionTargetFill = fill;
+            _transitionTargetBorder = border;
+            _transitionStarted = Environment.TickCount;
+            if (_transitionStartFill == fill && _transitionStartBorder == border)
+            {
+                _animatedFill = fill;
+                _animatedBorder = border;
+                NotifyAnimatedFillChanged();
+                StopVisualTimerIfIdle();
+            }
+            else EnsureVisualTimer();
+            Invalidate();
+        }
+
+        private void EnsureAnimatedColors()
+        {
+            if (_colorsInitialized) return;
+            _animatedFill = BackColor;
+            _animatedBorder = FlatAppearance.BorderColor;
+            _transitionTargetFill = _animatedFill;
+            _transitionTargetBorder = _animatedBorder;
+            _colorsInitialized = true;
+        }
+
+        private void GetVisualTargets(out Color fill, out Color border)
+        {
+            fill = BackColor;
+            border = FlatAppearance.BorderColor;
+            if (!Enabled) return;
+            if (_pressed)
+            {
+                fill = FlatAppearance.MouseDownBackColor.IsEmpty
+                    ? ControlPaint.Dark(BackColor, 0.10F) : FlatAppearance.MouseDownBackColor;
+                border = ControlPaint.Light(FlatAppearance.BorderColor, 0.06F);
+            }
+            else if (_hovered)
+            {
+                fill = FlatAppearance.MouseOverBackColor.IsEmpty
+                    ? ControlPaint.Light(BackColor, 0.10F) : FlatAppearance.MouseOverBackColor;
+                border = ControlPaint.Light(FlatAppearance.BorderColor, 0.16F);
+            }
+        }
+
+        private void EnsureVisualTimer()
+        {
+            if (_visualTimer == null)
+            {
+                _visualTimer = new System.Windows.Forms.Timer { Interval = 15 };
+                _visualTimer.Tick += VisualTimer_Tick;
+            }
+            if (!_visualTimer.Enabled) _visualTimer.Start();
+        }
+
+        private void StopVisualTimerIfIdle()
+        {
+            if (_visualTimer != null && !_launchPulse &&
+                _animatedFill == _transitionTargetFill && _animatedBorder == _transitionTargetBorder)
+                _visualTimer.Stop();
+        }
+
+        private void VisualTimer_Tick(object sender, EventArgs e)
+        {
+            int elapsed = unchecked(Environment.TickCount - _transitionStarted);
+            float amount = Math.Min(1F, Math.Max(0F, elapsed / 160F));
+            float eased = 1F - (1F - amount) * (1F - amount);
+            _animatedFill = Blend(_transitionStartFill, _transitionTargetFill, eased);
+            _animatedBorder = Blend(_transitionStartBorder, _transitionTargetBorder, eased);
+            NotifyAnimatedFillChanged();
+            if (_launchPulse && unchecked(Environment.TickCount - _launchPulseStarted) >= 240)
+                _launchPulse = false;
+            if (amount >= 1F)
+            {
+                _animatedFill = _transitionTargetFill;
+                _animatedBorder = _transitionTargetBorder;
+            }
+            Invalidate();
+            if (!_launchPulse && amount >= 1F) _visualTimer.Stop();
+        }
+
+        private static Color Blend(Color from, Color to, float amount)
+        {
+            return Color.FromArgb(
+                from.A + (int)((to.A - from.A) * amount),
+                from.R + (int)((to.R - from.R) * amount),
+                from.G + (int)((to.G - from.G) * amount),
+                from.B + (int)((to.B - from.B) * amount));
+        }
+
+        private void NotifyAnimatedFillChanged()
+        {
+            Action<Color> handler = AnimatedFillChanged;
+            if (handler != null) handler(_animatedFill);
+        }
+
+        private bool ShouldPaintLaunchPulse(bool focused)
+        {
+            return _launchPulse && (!focused || Enabled);
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -1670,19 +2450,37 @@ namespace ILauncher.BootstrapperUi
         {
             Graphics graphics = e.Graphics;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Color fill = BackColor;
-            if (Enabled && _pressed)
-                fill = FlatAppearance.MouseDownBackColor.IsEmpty ? ControlPaint.Dark(BackColor, 0.12F) : FlatAppearance.MouseDownBackColor;
-            else if (Enabled && _hovered)
-                fill = FlatAppearance.MouseOverBackColor.IsEmpty ? ControlPaint.Light(BackColor, 0.12F) : FlatAppearance.MouseOverBackColor;
             bool focused = Enabled && Focused;
-            float inset = focused ? 1F : 0.5F;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(inset, inset, Width - inset * 2 - 1, Height - inset * 2 - 1), CornerRadius))
-            using (SolidBrush brush = new SolidBrush(fill))
-            using (Pen border = new Pen(focused ? Color.FromArgb(124, 156, 255) : FlatAppearance.BorderColor, focused ? 2F : 1F))
+            if (DrawSurfaceChrome)
             {
-                graphics.FillPath(brush, path);
-                graphics.DrawPath(border, path);
+                EnsureAnimatedColors();
+                Color targetFill, targetBorder;
+                GetVisualTargets(out targetFill, out targetBorder);
+                Color fill = _animatedFill;
+                Color outline = focused ? Color.FromArgb(124, 156, 255) : _animatedBorder;
+                float borderThickness = focused ? 2F : Math.Max(1, FlatAppearance.BorderSize);
+                float inset = ChromeClipInset + borderThickness / 2F;
+                float pathRadius = ChromeClipInset > 0F
+                    ? Math.Max(0F, CornerRadius - borderThickness / 2F)
+                    : CornerRadius;
+                using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(inset, inset, Width - inset * 2 - 1, Height - inset * 2 - 1), pathRadius))
+                using (SolidBrush brush = new SolidBrush(fill))
+                using (Pen border = new Pen(outline, borderThickness))
+                {
+                    if (DrawSurfaceChrome) graphics.FillPath(brush, path);
+                    graphics.DrawPath(border, path);
+                    if (ShouldPaintLaunchPulse(focused))
+                    {
+                        int elapsed = Math.Max(0, unchecked(Environment.TickCount - _launchPulseStarted));
+                        int alpha = Math.Max(0, 150 - elapsed * 150 / 240);
+                        if (alpha > 0)
+                        {
+                            float pulseThickness = focused ? 1F : borderThickness + 1F;
+                            using (Pen pulse = new Pen(Color.FromArgb(alpha, 116, 225, 205), pulseThickness))
+                                graphics.DrawPath(pulse, path);
+                        }
+                    }
+                }
             }
             TextRenderer.DrawText(graphics, Text, Font, ClientRectangle,
                 Enabled ? ForeColor : Color.FromArgb(137, 146, 163),
@@ -1692,15 +2490,288 @@ namespace ILauncher.BootstrapperUi
             if (painter != null) painter(this, e);
         }
 
-        protected override void OnMouseEnter(EventArgs e) { _hovered = true; base.OnMouseEnter(e); Invalidate(); }
-        protected override void OnMouseLeave(EventArgs e) { _hovered = false; _pressed = false; base.OnMouseLeave(e); Invalidate(); }
-        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) _pressed = true; base.OnMouseDown(e); Invalidate(); }
-        protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; base.OnMouseUp(e); Invalidate(); }
-        protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) _pressed = true; base.OnKeyDown(e); Invalidate(); }
-        protected override void OnKeyUp(KeyEventArgs e) { _pressed = false; base.OnKeyUp(e); Invalidate(); }
+        protected override void OnMouseEnter(EventArgs e) { _hovered = true; base.OnMouseEnter(e); UpdateAnimatedVisuals(); }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _pressed = false;
+            base.OnMouseLeave(e);
+            EventHandler leave = PointerLeaveRequested;
+            if (leave != null) leave(this, EventArgs.Empty);
+            else { _hovered = false; UpdateAnimatedVisuals(); }
+        }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) _pressed = true; base.OnMouseDown(e); UpdateAnimatedVisuals(); }
+        protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; base.OnMouseUp(e); UpdateAnimatedVisuals(); }
+        protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) _pressed = true; base.OnKeyDown(e); UpdateAnimatedVisuals(); }
+        protected override void OnKeyUp(KeyEventArgs e) { _pressed = false; base.OnKeyUp(e); UpdateAnimatedVisuals(); }
         protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
-        protected override void OnLostFocus(EventArgs e) { _pressed = false; base.OnLostFocus(e); Invalidate(); }
-        protected override void OnEnabledChanged(EventArgs e) { _pressed = false; base.OnEnabledChanged(e); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { _pressed = false; base.OnLostFocus(e); UpdateAnimatedVisuals(); }
+        protected override void OnEnabledChanged(EventArgs e) { _pressed = false; base.OnEnabledChanged(e); SnapAnimatedVisuals(); }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _visualTimer != null)
+            {
+                _visualTimer.Stop();
+                _visualTimer.Dispose();
+                _visualTimer = null;
+                _launchPulse = false;
+                _animationTimerDisposed = true;
+            }
+            base.Dispose(disposing);
+        }
+    }
+
+    internal sealed class InstallConfirmationDialog : Form
+    {
+        private static readonly Color WindowSurface = Color.FromArgb(25, 33, 43);
+        private static readonly Color CardSurface = Color.FromArgb(35, 45, 59);
+        private static readonly Color Accent = Color.FromArgb(89, 191, 174);
+        private readonly PictureBox _icon;
+        private readonly Panel _appPanel;
+        private readonly ToolTip _toolTip;
+        private readonly Font _windowFont;
+        private readonly Font _eyebrowFont;
+        private readonly Font _appNameFont;
+        private readonly Font _bodyFont;
+        private readonly RoundedActionButton _cancelButton;
+        private readonly RoundedActionButton _installButton;
+
+        internal static Color CardSurfaceForSmoke { get { return CardSurface; } }
+        internal Button CancelActionForSmoke { get { return _cancelButton; } }
+        internal DialogResult InstallActionResultForSmoke { get { return _installButton.DialogResult; } }
+        internal string IconAccessibleNameForSmoke { get { return _icon.AccessibleName; } }
+
+        internal InstallConfirmationDialog(BootstrapApp app)
+        {
+            if (app == null) throw new ArgumentNullException("app");
+            Text = "앱 설치 확인";
+            AccessibleRole = AccessibleRole.Dialog;
+            AccessibleName = "앱 설치 확인";
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(440, 264);
+            BackColor = WindowSurface;
+            ForeColor = Color.FromArgb(241, 244, 250);
+            _windowFont = new Font("Segoe UI", 9F);
+            Font = _windowFont;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            ControlBox = false;
+            KeyPreview = true;
+            SetRoundedRegion();
+
+            _eyebrowFont = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
+            _appNameFont = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
+            _bodyFont = new Font("Segoe UI", 9F, FontStyle.Regular);
+            _toolTip = new ToolTip { ShowAlways = true };
+
+            Label heading = new Label
+            {
+                Text = "앱 설치",
+                Left = 22,
+                Top = 18,
+                Width = 396,
+                Height = 22,
+                Font = _eyebrowFont,
+                ForeColor = Accent,
+                BackColor = WindowSurface,
+                AccessibleRole = AccessibleRole.StaticText
+            };
+            Controls.Add(heading);
+
+            _appPanel = new Panel
+            {
+                Left = 20,
+                Top = 52,
+                Width = 400,
+                Height = 116,
+                BackColor = CardSurface,
+                AccessibleRole = AccessibleRole.Grouping,
+                AccessibleName = app.Name
+            };
+            _appPanel.SizeChanged += delegate { SetRoundedAppPanelRegion(); };
+            SetRoundedAppPanelRegion();
+            Controls.Add(_appPanel);
+
+            _icon = new PictureBox
+            {
+                Left = 16,
+                Top = 26,
+                Width = 64,
+                Height = 64,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = CardSurface,
+                AccessibleRole = AccessibleRole.Graphic,
+                AccessibleName = app.Name,
+                AccessibleDescription = "설치할 앱 아이콘"
+            };
+            bool iconDecoded;
+            _icon.Image = AppCard.DecodeIcon(app.IconBase64, out iconDecoded);
+            _icon.AccessibleDescription = iconDecoded
+                ? "설치할 앱 아이콘"
+                : "앱 아이콘을 사용할 수 없어 기본 아이콘을 표시합니다";
+            _appPanel.Controls.Add(_icon);
+
+            Label appName = new Label
+            {
+                Text = app.Name,
+                Left = 96,
+                Top = 22,
+                Width = 284,
+                Height = 28,
+                Font = _appNameFont,
+                ForeColor = Color.FromArgb(241, 244, 250),
+                BackColor = CardSurface,
+                AutoSize = false,
+                AutoEllipsis = true,
+                AccessibleRole = AccessibleRole.StaticText,
+                AccessibleName = "앱 이름"
+            };
+            _appPanel.Controls.Add(appName);
+            _toolTip.SetToolTip(appName, app.Name);
+
+            Label prompt = new Label
+            {
+                Text = "이 앱을 설치할까요?",
+                Left = 96,
+                Top = 54,
+                Width = 284,
+                Height = 28,
+                Font = _bodyFont,
+                ForeColor = Color.FromArgb(185, 195, 211),
+                BackColor = CardSurface,
+                AutoSize = false,
+                AccessibleRole = AccessibleRole.StaticText,
+                AccessibleName = "설치 확인 안내"
+            };
+            _appPanel.Controls.Add(prompt);
+
+            _cancelButton = new RoundedActionButton
+            {
+                Text = "취소",
+                Left = 194,
+                Top = 202,
+                Width = 100,
+                Height = 40,
+                CornerRadius = 11F,
+                BackColor = CardSurface,
+                ForeColor = Color.FromArgb(225, 231, 241),
+                AccessibleRole = AccessibleRole.PushButton,
+                AccessibleName = "설치 취소",
+                AccessibleDescription = "설치를 취소합니다",
+                TabStop = true,
+                TabIndex = 0,
+                DialogResult = DialogResult.Cancel
+            };
+            _cancelButton.FlatAppearance.BorderColor = Color.FromArgb(86, 101, 122);
+            _cancelButton.FlatAppearance.BorderSize = 1;
+            _cancelButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 61, 79);
+            _cancelButton.FlatAppearance.MouseDownBackColor = Color.FromArgb(41, 53, 69);
+            Controls.Add(_cancelButton);
+
+            _installButton = new RoundedActionButton
+            {
+                Text = "설치",
+                Left = 306,
+                Top = 202,
+                Width = 114,
+                Height = 40,
+                CornerRadius = 11F,
+                BackColor = Accent,
+                ForeColor = Color.FromArgb(17, 31, 34),
+                AccessibleRole = AccessibleRole.PushButton,
+                AccessibleName = "앱 설치 확인",
+                AccessibleDescription = "선택한 앱 설치를 시작합니다",
+                TabStop = true,
+                TabIndex = 1,
+                DialogResult = DialogResult.Yes
+            };
+            _installButton.FlatAppearance.BorderColor = Color.FromArgb(112, 213, 195);
+            _installButton.FlatAppearance.BorderSize = 1;
+            _installButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(112, 213, 195);
+            _installButton.FlatAppearance.MouseDownBackColor = Color.FromArgb(73, 165, 150);
+            Controls.Add(_installButton);
+
+            AcceptButton = _cancelButton;
+            CancelButton = _cancelButton;
+            Shown += delegate { _cancelButton.Focus(); };
+        }
+
+        internal static DialogResult Show(Form owner, BootstrapApp app)
+        {
+            using (InstallConfirmationDialog dialog = new InstallConfirmationDialog(app))
+            {
+                return owner == null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1F, Height - 1F), 18F))
+            using (Pen border = new Pen(Color.FromArgb(63, 84, 101), 1F))
+                e.Graphics.DrawPath(border, path);
+        }
+
+        protected override void OnDpiChanged(DpiChangedEventArgs e)
+        {
+            base.OnDpiChanged(e);
+            float scale = DeviceDpi / 96F;
+            if (_cancelButton != null) _cancelButton.CornerRadius = 11F * scale;
+            if (_installButton != null) _installButton.CornerRadius = 11F * scale;
+            SetRoundedAppPanelRegion();
+            SetRoundedRegion();
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            SetRoundedRegion();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_toolTip != null) _toolTip.Dispose();
+                if (_icon != null && _icon.Image != null) _icon.Image.Dispose();
+                if (_windowFont != null) _windowFont.Dispose();
+                if (_eyebrowFont != null) _eyebrowFont.Dispose();
+                if (_appNameFont != null) _appNameFont.Dispose();
+                if (_bodyFont != null) _bodyFont.Dispose();
+                if (Region != null) Region.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        private void SetRoundedRegion()
+        {
+            if (Width <= 0 || Height <= 0) return;
+            float radius = 18F * (DeviceDpi / 96F);
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0, 0, Width, Height), radius))
+            {
+                Region previous = Region;
+                Region = new Region(path);
+                if (previous != null) previous.Dispose();
+            }
+        }
+
+        private void SetRoundedAppPanelRegion()
+        {
+            if (_appPanel == null || _appPanel.Width <= 0 || _appPanel.Height <= 0) return;
+            float radius = 14F * (DeviceDpi / 96F);
+            using (GraphicsPath path = RoundedDrawing.CreatePath(
+                new RectangleF(0, 0, _appPanel.ClientSize.Width, _appPanel.ClientSize.Height), radius))
+            {
+                Region previous = _appPanel.Region;
+                _appPanel.Region = new Region(path);
+                if (previous != null) previous.Dispose();
+            }
+        }
     }
 
     internal sealed class CategoryBadge : Control
@@ -1733,209 +2804,385 @@ namespace ILauncher.BootstrapperUi
     {
         public BootstrapApp App { get; private set; }
         public bool HasDecodedIcon { get; private set; }
-        public Size IconSourceSize { get { return _icon.Image.Size; } }
+        public Size IconSourceSize { get { return _colorIconImage.Size; } }
         public bool IsInstalled { get { return _installed; } }
-        public string InstallActionLabel { get { return _installed ? "제거" : "설치"; } }
-        public string InstallActionColor { get { return ColorTranslator.ToHtml(_install.BackColor); } }
-        public string InstallAccessibleName { get { return _install.AccessibleName; } }
-        public string RunActionLabel { get { return "실행"; } }
-        public string RunActionPlacement { get { return "right-side"; } }
+        public bool IsBusy { get { return _busy; } }
+        public bool CanRun { get { return _actionsEnabled && _installed && !_busy; } }
+        public string VersionTextForSmoke { get { return _versionLabel.Text; } }
+        public float LaunchChromeInset { get { return _run.ChromeClipInset; } }
+        public float LaunchChromeCornerRadius { get { return _run.CornerRadius; } }
+        public bool CanChoosePrimaryAction { get { return _actionsEnabled && !_busy; } }
+        public bool RunActionEnabled { get { return _run.Enabled; } }
+        public bool InstallActionEnabled { get { return CanChoosePrimaryAction; } }
+        public bool ContextRemoveAvailable { get { return _contextRemoveAvailable; } }
+        public bool ContextUpdateAvailable { get { return _contextUpdateAvailable; } }
+        public bool LaunchVisualMuted { get { return !_installed && Object.ReferenceEquals(_icon.Image, _mutedIconImage) && _name.ForeColor == MutedTitleColor && _status.ForeColor == MutedDescriptionColor; } }
+        public Color CardSurfaceColor { get { return _installed ? InstalledSurfaceColor : UninstalledSurfaceColor; } }
+        internal Color HoverSurfaceColorForSmoke { get { return ControlPaint.Light(CardSurfaceColor, 0.10F); } }
+        public Color CardOutlineColor { get { return _installed ? InstalledOutlineColor : UninstalledOutlineColor; } }
+        public float CardOutlineThickness { get { return _installed ? 2F : 1F; } }
+        public Color FocusOutlineColor { get { return Color.FromArgb(124, 156, 255); } }
+        public string RunActionLabel { get { return _installed ? "실행" : "설치"; } }
+        public string RunAccessibleName { get { return _run.AccessibleName; } }
+        public string RunAccessibleDescription { get { return _run.AccessibleDescription; } }
         public Rectangle RunActionBounds { get { return _run.Bounds; } }
-        public Rectangle InstallActionBounds { get { return _install.Bounds; } }
+        public Rectangle IconBounds { get { return _icon.Bounds; } }
         public Rectangle CardBounds { get { return Bounds; } }
         public string StatusLabel { get { return _status.Text; } }
-        public bool ActionsLocked { get { return !_install.Enabled && !_run.Enabled; } }
-        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_install.Enabled && !_run.Enabled && _run.Bottom + 6 <= _status.Top && _status.Left >= _icon.Right + 10; } }
-        public bool HasCompactIdleState { get { return !_status.Visible && !_progress.Visible && _status.Text.Length == 0 && Controls.OfType<Label>().Count(label => label.Visible) == 1; } }
+        public string DescriptionText { get { return _status.Text; } }
+        public bool ProgressVisible { get { return _progress.Visible; } }
+        public bool ActionsLocked { get { return !_run.Enabled; } }
+        internal bool VisualAnimationActiveForSmoke { get { return _run.VisualAnimationActiveForSmoke; } }
+        internal bool LaunchAnimationTriggeredForSmoke { get { return _run.LaunchAnimationTriggeredForSmoke; } }
+        internal bool LaunchPulseActiveForSmoke { get { return _run.LaunchPulseActiveForSmoke; } }
+        internal bool LaunchPulsePaintsWhenFocusedForSmoke { get { return _run.LaunchPulsePaintsWhenFocusedForSmoke; } }
+        internal bool SupportsAnimationForSmoke { get { return _run.SupportsAnimationForSmoke; } }
+        internal Color AnimatedFillForSmoke { get { return _run.AnimatedFillForSmoke; } }
+        internal bool VisualTimerDisposedForSmoke { get { return _run.VisualTimerDisposedForSmoke; } }
+        public bool LaunchKeyboardAccessible { get { return _run.TabStop && _run.AccessibleRole == AccessibleRole.PushButton; } }
+        public bool FocusLaunchSurface() { return CanChoosePrimaryAction && _run.Focus(); }
+        public bool LaunchRegionContainsContent { get { return _run.Bounds.Contains(_icon.Bounds) && _run.Bounds.Contains(_name.Bounds) && _run.Bounds.Contains(_status.Bounds) && _run.Region.IsVisible(ToLaunchLocal(_icon.Bounds)) && _run.Region.IsVisible(ToLaunchLocal(_name.Bounds)) && _run.Region.IsVisible(ToLaunchLocal(_status.Bounds)); } }
+        public bool HasCompactBusyState { get { return _status.Visible && _progress.Visible && !_run.Enabled && _status.Bounds == new Rectangle(92, 34, 176, 32); } }
+        public bool HasCompactIdleState { get { return _status.Visible && !_progress.Visible && _status.Text == App.Description; } }
         private readonly PictureBox _icon;
         private readonly Label _name;
-        public bool RegistrationAboveName { get { return _install.Left == _name.Left && _install.Bottom + 4 <= _name.Top && _install.Left >= _icon.Right + 10; } }
-        public bool PlayCenteredWithIcon { get { return _run.Top + _run.Height / 2 == _icon.Top + _icon.Height / 2 && _run.Width == _run.Height; } }
-        public bool ContentClearsActions { get { return ClientRectangle.Contains(_icon.Bounds) && _icon.Right + 10 <= _name.Left && _name.Right + 6 <= _run.Left && RegistrationAboveName && PlayCenteredWithIcon && _name.Bottom <= _status.Top && _run.Bottom + 6 <= _status.Top && _status.Bottom <= _progress.Top && ClientRectangle.Contains(_run.Bounds); } }
-        public bool TitleFitsNameArea { get { Size measured = TextRenderer.MeasureText(_name.Text, _name.Font, new Size(_name.Width, Int32.MaxValue), TextFormatFlags.WordBreak); return measured.Width <= _name.Width && measured.Height <= _name.Height; } }
+        private readonly Label _versionLabel;
+        public string LaunchGroupGeometry { get { return _icon.Bounds == new Rectangle(12, 20, 64, 64) && _name.Bounds == new Rectangle(92, 10, 176, 22) && _status.Bounds == new Rectangle(92, 34, 176, 32) && _run.Bounds == new Rectangle(0, 0, 280, 108) ? "matches" : "mismatch"; } }
+        public string RegistrationActionGeometry { get { return _versionLabel.Bounds == new Rectangle(92, 72, 176, 24) && _progress.Bounds == new Rectangle(12, 103, 256, 3) ? "matches" : "mismatch"; } }
+        public bool ContentClearsActions { get { return LaunchGroupGeometry == "matches" && RegistrationActionGeometry == "matches" && LaunchRegionContainsContent && ClientRectangle.Contains(_versionLabel.Bounds) && ClientRectangle.Contains(_progress.Bounds); } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
-        private readonly RoundedActionButton _install;
+        private Rectangle ToLaunchLocal(Rectangle bounds) { return new Rectangle(bounds.Left - _run.Left, bounds.Top - _run.Top, bounds.Width, bounds.Height); }
         private readonly RoundedActionButton _run;
         private readonly Label _status;
+        private readonly Image _colorIconImage;
+        private readonly Image _mutedIconImage;
         private readonly bool _actionsEnabled;
+        private readonly Action<BootstrapApp> _installFromPrompt;
+        private readonly Action<BootstrapApp> _removeAction;
+        private readonly Action<BootstrapApp> _updateAction;
+        private readonly Action<BootstrapApp> _runAction;
+        private readonly Func<Form, BootstrapApp, DialogResult> _confirmInstall;
+        private readonly Func<BootstrapApp, BootstrapperAppStatus> _refreshStatus;
+        private readonly ContextMenuStrip _contextMenu;
+        private readonly ToolStripMenuItem _removeMenuItem;
+        private readonly ToolStripMenuItem _updateMenuItem;
         private readonly ProgressBar _progress;
         private bool _installed;
+        private bool _busy;
+        private bool _contextRemoveAvailable;
+        private bool _contextUpdateAvailable;
+        private bool _updateAvailable;
+        private bool _hoverExitCheckPending;
+        private static readonly Color MutedTitleColor = Color.FromArgb(205, 214, 228);
+        private static readonly Color MutedDescriptionColor = Color.FromArgb(155, 167, 186);
+        private static readonly Color InstalledSurfaceColor = Color.FromArgb(25, 39, 42);
+        private static readonly Color UninstalledSurfaceColor = Color.FromArgb(35, 45, 59);
+        private static readonly Color InstalledOutlineColor = Color.FromArgb(89, 191, 174);
+        private static readonly Color UninstalledOutlineColor = Color.FromArgb(117, 131, 152);
         public AppCard(BootstrapApp app, int width, Action<BootstrapApp> install,
-            Action<BootstrapApp> remove, Action<BootstrapApp> run, bool actionsEnabled)
+            Action<BootstrapApp> remove, Action<BootstrapApp> run, bool actionsEnabled,
+            Action<BootstrapApp> installFromPrompt = null,
+            Func<Form, BootstrapApp, DialogResult> confirmInstall = null,
+            Func<BootstrapApp, BootstrapperAppStatus> refreshStatus = null,
+            Action<BootstrapApp> update = null)
         {
             App = app;
             _actionsEnabled = actionsEnabled;
-            Width = width; Height = 104; Margin = new Padding(0, 0, 10, 10); Padding = new Padding(14);
-            BackColor = Color.FromArgb(27, 32, 42); BorderStyle = BorderStyle.None;
+            _installFromPrompt = installFromPrompt ?? install;
+            _removeAction = remove;
+            _updateAction = update;
+            _runAction = run;
+            _confirmInstall = confirmInstall ?? ShowInstallConfirmation;
+            _refreshStatus = refreshStatus;
+            Width = width; Height = 108; Margin = new Padding(0, 0, 16, 12); Padding = Padding.Empty;
+            BackColor = UninstalledSurfaceColor; BorderStyle = BorderStyle.None;
             DoubleBuffered = true;
-            _icon = new PictureBox { Left = 14, Top = 20, Width = 64, Height = 64, SizeMode = PictureBoxSizeMode.Zoom, AccessibleName = app.Name, AccessibleDescription = app.Category + ": " + app.Description };
+            _run = new RoundedActionButton { Text = "", Left = 0, Top = 0, Width = width, Height = 108, CornerRadius = 10, ChromeClipInset = 2F, DrawSurfaceChrome = true,
+                AccessibleRole = AccessibleRole.PushButton, TabStop = true, AccessibleName = "설치 " + app.Name,
+                AccessibleDescription = "설치를 시작하려면 선택하세요", Cursor = Cursors.Hand, BackColor = BackColor };
+            using (GraphicsPath primaryPath = RoundedDrawing.CreatePath(new RectangleF(2F, 2F, width - 4F, 104F), 10F))
+                _run.Region = new Region(primaryPath);
+            Controls.Add(_run);
+            _icon = new PictureBox { Left = 12, Top = 20, Width = 64, Height = 64, SizeMode = PictureBoxSizeMode.Zoom, AccessibleName = app.Name, AccessibleDescription = app.Category + ": " + app.Description, Cursor = Cursors.Hand, BackColor = BackColor };
+            using (GraphicsPath iconPath = RoundedDrawing.CreatePath(new RectangleF(0, 0, 64, 64), 12)) _icon.Region = new Region(iconPath);
             bool iconDecoded;
-            _icon.Image = DecodeIcon(app.IconBase64, out iconDecoded);
+            _colorIconImage = DecodeIcon(app.IconBase64, out iconDecoded);
+            _mutedIconImage = CreateMutedIcon(_colorIconImage);
+            _icon.Image = _mutedIconImage;
             HasDecodedIcon = iconDecoded;
             Controls.Add(_icon);
-            _name = new Label { Text = app.Name, Left = 88, Top = 32, Width = width - 146, Height = 40, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, AutoEllipsis = true };
+            _name = new Label { Text = app.Name, Left = 92, Top = 10, Width = 176, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, BackColor = BackColor, AutoSize = false, AutoEllipsis = true, Cursor = Cursors.Hand, AccessibleRole = AccessibleRole.StaticText };
             Controls.Add(_name);
-            _status = new Label { Text = "", Left = 88, Top = 80, Width = width - 102, Height = 16, Font = new Font("Segoe UI", 8.5F), Visible = false, ForeColor = Color.FromArgb(165, 190, 231), AutoEllipsis = true, AccessibleRole = AccessibleRole.StatusBar, AccessibleName = app.Name + " 상태" };
+            _status = new Label { Text = app.Description, Left = 92, Top = 34, Width = 176, Height = 32, Font = new Font("Segoe UI", 8.5F), Visible = true, ForeColor = Color.FromArgb(165, 174, 190), BackColor = BackColor, AutoSize = false, AutoEllipsis = true, AccessibleRole = AccessibleRole.StaticText, AccessibleName = app.Name + " 설명", Cursor = Cursors.Hand };
             Controls.Add(_status);
-            _progress = new ProgressBar { Left = 14, Top = 98, Width = width - 28, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
+            _versionLabel = new Label { Text = "", Left = 92, Top = 72, Width = 176, Height = 24, Font = new Font("Segoe UI", 8.5F), Visible = true, ForeColor = Color.FromArgb(142, 153, 175), BackColor = BackColor, AutoSize = false, AutoEllipsis = true, AccessibleRole = AccessibleRole.StaticText, AccessibleName = app.Name + " 버전" };
+            Controls.Add(_versionLabel);
+            _run.AnimatedFillChanged += ApplyAnimatedSurfaceColor;
+            _progress = new ProgressBar { Left = 12, Top = 103, Width = width - 24, Height = 3, Visible = false, Style = ProgressBarStyle.Marquee, AccessibleName = app.Name + " 진행 상황" };
             Controls.Add(_progress);
-            _install = new RoundedActionButton { Text = "", Left = 88, Top = 4, Width = 24, Height = 24, CornerRadius = 12 };
-            _run = new RoundedActionButton { Text = "", Left = width - 52, Top = 30, Width = 44, Height = 44, CornerRadius = 22 };
-            _run.PaintGlyph += DrawPlayActionIcon;
-            _run.AccessibleName = "실행 " + app.Name;
-            _run.AccessibleDescription = app.Name + "을(를) 실행합니다.";
-            _install.FlatStyle = FlatStyle.Flat;
-            _install.FlatAppearance.BorderSize = 1;
-            _install.Cursor = Cursors.Hand;
-            _install.PaintGlyph += DrawInstallActionIcon;
-            _install.EnabledChanged += delegate { ApplyInstallActionStyle(); };
             _toolTip = new ToolTip { ShowAlways = true };
             _toolTip.SetToolTip(_name, app.Name);
-            _toolTip.SetToolTip(_run, "실행 " + app.Name);
+            _toolTip.SetToolTip(_run, _run.AccessibleDescription);
             _toolTip.SetToolTip(_icon, app.Name + "\r\n" + app.Category + " · " + app.Description);
             _toolTip.SetToolTip(this, app.Category + " · " + app.Description);
             LauncherFormStyle(_run, true);
-            _install.Click += delegate { if (_installed) remove(App); else install(App); };
-            _run.Click += delegate { run(App); };
-            Controls.Add(_install); Controls.Add(_run);
-            _run.Enabled = false;
-            _install.Enabled = actionsEnabled;
-            _run.AccessibleName = "실행 " + app.Name;
-            UpdateInstallActionSemantics(null);
-            ApplyInstallActionStyle();
+            _run.Click += delegate { HandlePrimaryAction(); };
+            Click += delegate { _run.PerformClick(); };
+            _run.PointerLeaveRequested += delegate { SchedulePointerHoverReset(); };
+            _run.GotFocus += delegate { Invalidate(); };
+            _run.LostFocus += delegate { Invalidate(); };
+            _run.EnabledChanged += delegate { Invalidate(); };
+            _icon.Click += delegate { _run.PerformClick(); };
+            _name.Click += delegate { _run.PerformClick(); };
+            _status.Click += delegate { _run.PerformClick(); };
+            _icon.MouseEnter += delegate { _run.SetPointerHover(true); };
+            _icon.MouseLeave += delegate { SchedulePointerHoverReset(); };
+            _name.MouseEnter += delegate { _run.SetPointerHover(true); };
+            _name.MouseLeave += delegate { SchedulePointerHoverReset(); };
+            _status.MouseEnter += delegate { _run.SetPointerHover(true); };
+            _status.MouseLeave += delegate { SchedulePointerHoverReset(); };
+            _contextMenu = new ContextMenuStrip();
+            Controls.SetChildIndex(_run, Controls.Count - 1);
+            _updateMenuItem = new ToolStripMenuItem("업데이트") { AccessibleName = app.Name + " 업데이트", Visible = false };
+            _removeMenuItem = new ToolStripMenuItem("제거") { AccessibleName = "" + app.Name + " 제거", Visible = false };
+            _contextMenu.Items.Add(_updateMenuItem);
+            _contextMenu.Items.Add(_removeMenuItem);
+            _contextMenu.Opening += ContextMenu_Opening;
+            _updateMenuItem.Click += delegate { UpdateFromContextMenu(); };
+            _removeMenuItem.Click += delegate { RemoveFromContextMenu(); };
+            ContextMenuStrip = _contextMenu;
+            _run.ContextMenuStrip = _contextMenu;
+            _icon.ContextMenuStrip = _contextMenu;
+            _name.ContextMenuStrip = _contextMenu;
+            _status.ContextMenuStrip = _contextMenu;
+            _versionLabel.ContextMenuStrip = _contextMenu;
+            _versionLabel.Click += delegate { _run.PerformClick(); };
+            _versionLabel.MouseEnter += delegate { _run.SetPointerHover(true); };
+            _versionLabel.MouseLeave += delegate { SchedulePointerHoverReset(); };
+            ApplyLaunchState();
+            ApplyAnimatedSurfaceColor(_run.AnimatedFillForSmoke);
         }
         public void SetStatus(BootstrapperAppStatus status)
         {
             _installed = status != null && status.IsInstalled;
-            _status.Text = "";
-            UpdateInstallActionSemantics(null);
-            _run.Enabled = _actionsEnabled;
-            _install.Enabled = _actionsEnabled;
-            ApplyInstallActionStyle();
+            _updateAvailable = status != null && status.UpdateAvailable;
+            if (!_busy) _status.Text = App.Description;
+            if (!_busy)
+            {
+                string available = status == null ? null : status.AvailableVersion;
+                string installed = status == null ? null : status.InstalledVersion;
+                if (_installed && _updateAvailable)
+                {
+                    _versionLabel.Text = String.IsNullOrEmpty(installed)
+                        ? (String.IsNullOrEmpty(available) ? "버전 미확인" : "최신 v" + available)
+                        : (String.IsNullOrEmpty(available) || String.Equals(installed, available, StringComparison.OrdinalIgnoreCase)
+                            ? "v" + installed + " · 업데이트"
+                            : "v" + installed + " → v" + available);
+                    _versionLabel.ForeColor = Color.FromArgb(168, 218, 181);
+                    _toolTip.SetToolTip(_versionLabel, String.IsNullOrEmpty(installed)
+                        ? (String.IsNullOrEmpty(available)
+                            ? "설치 및 사용 가능 버전 정보를 확인할 수 없습니다. 업데이트할 수 있습니다."
+                            : "현재 설치 버전 정보는 확인할 수 없습니다. 사용 가능 버전 v" + available)
+                        : (String.IsNullOrEmpty(available)
+                            ? "설치 버전 v" + installed + " · 업데이트할 수 있습니다."
+                            : "설치 버전 v" + installed + " · 사용 가능 v" + available));
+                }
+                else if (_installed)
+                {
+                    _versionLabel.Text = String.IsNullOrEmpty(installed) ? "버전 미확인" : "v" + installed;
+                    _versionLabel.ForeColor = Color.FromArgb(142, 153, 175);
+                    _toolTip.SetToolTip(_versionLabel, String.IsNullOrEmpty(installed)
+                        ? "현재 설치 버전 정보를 확인할 수 없습니다."
+                        : "설치 버전 v" + installed);
+                }
+                else
+                {
+                    _versionLabel.Text = String.IsNullOrEmpty(available) ? "버전 미확인" : "v" + available;
+                    _versionLabel.ForeColor = Color.FromArgb(142, 153, 175);
+                    _toolTip.SetToolTip(_versionLabel, String.IsNullOrEmpty(available) ? "" : "사용 가능 버전 v" + available);
+                }
+            }
+            if (!_installed || _busy || !_actionsEnabled) _contextRemoveAvailable = false;
+            if (!_installed || !_updateAvailable || _busy || !_actionsEnabled) _contextUpdateAvailable = false;
+            ApplyLaunchState();
         }
         public void SetSmokeInstalledStatus()
         {
             _installed = true;
-            _status.Text = "";
-            UpdateInstallActionSemantics(null);
-            _install.Enabled = _actionsEnabled;
-            _run.Enabled = _actionsEnabled;
-            ApplyInstallActionStyle();
+            _updateAvailable = false;
+            _versionLabel.Text = "버전 미확인";
+            _toolTip.SetToolTip(_versionLabel, "현재 설치 버전 정보를 확인할 수 없습니다.");
+            if (!_busy) _status.Text = App.Description;
+            ApplyLaunchState();
         }
+        public void EndLaunchAnimation() { _run.EndLaunchAnimation(); }
+
         public void SetBusy(bool busy, string busyLabel)
         {
-            _install.Enabled = _actionsEnabled && !busy;
-            _run.Enabled = _actionsEnabled && !busy;
+            _busy = busy;
+            if (busy) { _contextRemoveAvailable = false; _contextUpdateAvailable = false; }
             _progress.Visible = busy;
-            _status.Visible = busy;
-            UpdateInstallActionSemantics(busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : null);
-            _run.AccessibleName = "실행 " + App.Name;
-            _status.Text = busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : "";
-            ApplyInstallActionStyle();
+            _status.Text = busy ? (String.IsNullOrEmpty(busyLabel) ? "실행 중…" : busyLabel) : App.Description;
+            ApplyLaunchState();
         }
-        private readonly ToolTip _toolTip;
-        private void UpdateInstallActionSemantics(string busyLabel)
+        public void PerformPrimaryActionForSmoke() { HandlePrimaryAction(); }
+        internal void SetPointerHoverForSmoke(bool hovered) { _run.SetPointerHover(hovered); }
+        internal void AdvanceAnimationForSmoke(int elapsedMilliseconds) { _run.AdvanceAnimationForSmoke(elapsedMilliseconds); }
+        internal void CompleteAnimationForSmoke() { _run.CompleteAnimationForSmoke(); }
+        public void RefreshContextMenuForSmoke() { ContextMenu_Opening(this, new CancelEventArgs()); }
+        public void PerformContextRemoveForSmoke() { if (ContextRemoveAvailable) RemoveFromContextMenu(); }
+        public void PerformContextUpdateForSmoke() { if (ContextUpdateAvailable) UpdateFromContextMenu(); }
+        private void HandlePrimaryAction()
         {
-            string action = busyLabel ?? (_installed ? "제거" : "설치");
-            string description = busyLabel != null ? action : (_installed
-                ? "설치 등록과 시작 메뉴 바로가기를 제거합니다. 다운로드 파일과 사용자 데이터는 유지됩니다."
-                : "개별 설치와 시작 메뉴 바로가기를 추가합니다.");
-            _install.AccessibleName = action + " " + App.Name;
-            _install.AccessibleDescription = description;
-            _toolTip.SetToolTip(_install, busyLabel != null ? action : App.Name + " " + action + ": " + description);
-            _install.Invalidate();
-        }
-        private void DrawPlayActionIcon(object sender, PaintEventArgs e)
-        {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (SolidBrush fill = new SolidBrush(_run.Enabled ? _run.ForeColor : Color.FromArgb(137, 146, 163)))
-                e.Graphics.FillPolygon(fill, new[] { new PointF(16.5F, 11.5F), new PointF(16.5F, 31.5F), new PointF(33, 21.5F) });
-        }
-        private void DrawInstallActionIcon(object sender, PaintEventArgs e)
-        {
-            Graphics graphics = e.Graphics;
-            GraphicsState saved = graphics.Save();
-            try
-            {
-            graphics.ScaleTransform(_install.Width / 30F, _install.Height / 30F);
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Color color = _install.ForeColor;
-            using (Pen pen = new Pen(color, 2.1F))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                float cx = 15F;
-                if (_installed)
-                {
-                    graphics.DrawLine(pen, cx - 7, 11, cx + 7, 11);
-                    graphics.DrawLine(pen, cx - 4, 8, cx + 4, 8);
-                    graphics.DrawLine(pen, cx - 5, 13, cx - 4, 23);
-                    graphics.DrawLine(pen, cx + 5, 13, cx + 4, 23);
-                    graphics.DrawLine(pen, cx - 4, 23, cx + 4, 23);
-                    graphics.DrawLine(pen, cx - 1, 15, cx - 1, 20);
-                    graphics.DrawLine(pen, cx + 2, 15, cx + 2, 20);
-                }
-                else
-                {
-                    graphics.DrawLine(pen, cx - 8, 20, cx - 8, 24);
-                    graphics.DrawLine(pen, cx - 8, 24, cx + 8, 24);
-                    graphics.DrawLine(pen, cx + 8, 24, cx + 8, 20);
-                    graphics.DrawLine(pen, cx, 7, cx, 19);
-                    graphics.DrawLine(pen, cx, 19, cx - 5, 14);
-                    graphics.DrawLine(pen, cx, 19, cx + 5, 14);
-                }
-            }
-            }
-            finally { graphics.Restore(saved); }
-        }
-        private void ApplyInstallActionStyle()
-        {
+            if (!CanChoosePrimaryAction) return;
             if (_installed)
             {
-                _install.BackColor = _install.Enabled ? Color.FromArgb(56, 35, 42) : Color.FromArgb(42, 33, 38);
-                _install.ForeColor = _install.Enabled ? Color.FromArgb(255, 193, 201) : Color.FromArgb(150, 125, 133);
-                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(140, 70, 85) : Color.FromArgb(83, 56, 65);
-                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(81, 43, 54) : _install.BackColor;
-                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(41, 26, 31) : _install.BackColor;
+                if (CanRun && _runAction != null)
+                {
+                    _run.StartLaunchAnimation();
+                    _runAction(App);
+                }
+                return;
             }
-            else
+            if (_confirmInstall(FindForm(), App) != DialogResult.Yes || !CanChoosePrimaryAction || _installed) return;
+            if (_installFromPrompt != null) _installFromPrompt(App);
+        }
+
+        private void SchedulePointerHoverReset()
+        {
+            if (_hoverExitCheckPending || IsDisposed) return;
+            if (!IsHandleCreated)
             {
-                _install.BackColor = _install.Enabled ? Color.FromArgb(22, 27, 36) : Color.FromArgb(27, 32, 42);
-                _install.ForeColor = _install.Enabled ? Color.White : Color.FromArgb(154, 160, 171);
-                _install.FlatAppearance.BorderColor = _install.Enabled ? Color.FromArgb(54, 63, 78) : Color.FromArgb(40, 47, 59);
-                _install.FlatAppearance.MouseOverBackColor = _install.Enabled ? Color.FromArgb(36, 44, 58) : _install.BackColor;
-                _install.FlatAppearance.MouseDownBackColor = _install.Enabled ? Color.FromArgb(17, 21, 29) : _install.BackColor;
+                _run.SetPointerHover(false);
+                return;
+            }
+            _hoverExitCheckPending = true;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    _hoverExitCheckPending = false;
+                    if (IsDisposed) return;
+                    Point cursor = PointToClient(Control.MousePosition);
+                    if (!ClientRectangle.Contains(cursor)) _run.SetPointerHover(false);
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                _hoverExitCheckPending = false;
+                if (!IsDisposed) _run.SetPointerHover(false);
             }
         }
+
+        private void ApplyAnimatedSurfaceColor(Color color)
+        {
+            BackColor = color;
+            if (_icon != null) _icon.BackColor = color;
+            if (_name != null) _name.BackColor = color;
+            if (_status != null) _status.BackColor = color;
+            if (_versionLabel != null) _versionLabel.BackColor = color;
+        }
+        private static DialogResult ShowInstallConfirmation(Form owner, BootstrapApp app)
+        {
+            return InstallConfirmationDialog.Show(owner, app);
+        }
+        private void ContextMenu_Opening(object sender, CancelEventArgs e)
+        {
+            if (!_actionsEnabled || _busy) { HideActionMenuItems(); e.Cancel = true; return; }
+            try { if (_refreshStatus != null) SetStatus(_refreshStatus(App)); }
+            catch { HideActionMenuItems(); e.Cancel = true; return; }
+            _updateMenuItem.Visible = _installed && _updateAvailable;
+            _updateMenuItem.Enabled = _installed && _updateAvailable && !_busy && _actionsEnabled;
+            _contextUpdateAvailable = _updateMenuItem.Enabled;
+            _removeMenuItem.Visible = _installed;
+            _removeMenuItem.Enabled = _installed && !_busy && _actionsEnabled;
+            _contextRemoveAvailable = _removeMenuItem.Enabled;
+            e.Cancel = !_contextRemoveAvailable && !_contextUpdateAvailable;
+        }
+        private void HideActionMenuItems()
+        {
+            _contextRemoveAvailable = false;
+            _contextUpdateAvailable = false;
+            _removeMenuItem.Visible = false;
+            _removeMenuItem.Enabled = false;
+            _updateMenuItem.Visible = false;
+            _updateMenuItem.Enabled = false;
+        }
+        private void UpdateFromContextMenu()
+        {
+            if (!_actionsEnabled || _busy || _updateAction == null) return;
+            try { if (_refreshStatus != null) SetStatus(_refreshStatus(App)); }
+            catch { return; }
+            if (_installed && _updateAvailable && !_busy) _updateAction(App);
+        }
+        private void RemoveFromContextMenu()
+        {
+            if (!_actionsEnabled || _busy || _removeAction == null) return;
+            try { if (_refreshStatus != null) SetStatus(_refreshStatus(App)); }
+            catch { return; }
+            if (_installed && !_busy) _removeAction(App);
+        }
+        private void ApplyLaunchState()
+        {
+            BackColor = CardSurfaceColor;
+            _run.BackColor = CardSurfaceColor;
+            _run.FlatAppearance.BorderColor = CardOutlineColor;
+            _run.FlatAppearance.BorderSize = (int)CardOutlineThickness;
+            _run.FlatAppearance.MouseOverBackColor = ControlPaint.Light(CardSurfaceColor, 0.10F);
+            _run.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(CardSurfaceColor, 0.10F);
+            _icon.BackColor = CardSurfaceColor;
+            _name.BackColor = CardSurfaceColor;
+            _status.BackColor = CardSurfaceColor;
+            _versionLabel.BackColor = CardSurfaceColor;
+            _run.Enabled = CanChoosePrimaryAction;
+            _run.RefreshAnimatedVisuals(false);
+            _icon.Enabled = true;
+            _icon.Image = _installed ? _colorIconImage : _mutedIconImage;
+            _name.ForeColor = _installed ? Color.White : MutedTitleColor;
+            _status.ForeColor = _installed ? Color.FromArgb(165, 174, 190) : MutedDescriptionColor;
+            _run.AccessibleName = (_installed ? "실행 " : "설치 ") + App.Name;
+            _run.AccessibleDescription = _installed ? "앱 실행" : "설치를 시작하려면 선택하세요";
+            _status.AccessibleRole = _busy ? AccessibleRole.StatusBar : AccessibleRole.StaticText;
+            _status.AccessibleName = _busy ? App.Name + " 상태" : App.Name + " 설명";
+            if (_toolTip != null)
+            {
+                _toolTip.SetToolTip(_run, _run.AccessibleDescription);
+                _toolTip.SetToolTip(_icon, _run.AccessibleDescription);
+                _toolTip.SetToolTip(_name, App.Name);
+                _toolTip.SetToolTip(_status, _busy ? _status.Text : (_installed ? App.Description : _run.AccessibleDescription));
+                _toolTip.SetToolTip(this, _run.AccessibleDescription);
+            }
+        }
+        private readonly ToolTip _toolTip;
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            e.Graphics.Clear(Parent == null ? Color.FromArgb(17, 20, 27) : Parent.BackColor);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 14))
-            using (SolidBrush fill = new SolidBrush(BackColor))
-                e.Graphics.FillPath(fill, path);
+            e.Graphics.Clear(Parent == null ? UninstalledSurfaceColor : Parent.BackColor);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), 14))
-            using (Pen border = new Pen(Color.FromArgb(47, 56, 71)))
-                e.Graphics.DrawPath(border, path);
+            using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1F, Height - 1F), 12))
+            using (SolidBrush surface = new SolidBrush(BackColor))
+            {
+                e.Graphics.FillPath(surface, path);
+            }
         }
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 _toolTip.Dispose();
+                _contextMenu.Dispose();
                 _name.Font.Dispose();
                 _status.Font.Dispose();
-                foreach (PictureBox icon in Controls.OfType<PictureBox>())
-                    if (icon.Image != null) icon.Image.Dispose();
+                _versionLabel.Font.Dispose();
+                _colorIconImage.Dispose();
+                _mutedIconImage.Dispose();
             }
             base.Dispose(disposing);
         }
-        private static Image DecodeIcon(string text, out bool decoded)
+        internal static Image DecodeIcon(string text, out bool decoded)
         {
             try
             {
@@ -1983,6 +3230,26 @@ namespace ILauncher.BootstrapperUi
                 }
             }
             catch { decoded = false; return SystemIcons.Application.ToBitmap(); }
+        }
+        private static Image CreateMutedIcon(Image source)
+        {
+            Bitmap muted = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+            using (Graphics graphics = Graphics.FromImage(muted))
+            using (ImageAttributes attributes = new ImageAttributes())
+            {
+                ColorMatrix colorPreserving = new ColorMatrix(new[]
+                {
+                    new[] { 1F, 0F, 0F, 0F, 0F },
+                    new[] { 0F, 1F, 0F, 0F, 0F },
+                    new[] { 0F, 0F, 1F, 0F, 0F },
+                    new[] { 0F, 0F, 0F, 0.85F, 0F },
+                    new[] { 0F, 0F, 0F, 0F, 1F }
+                });
+                attributes.SetColorMatrix(colorPreserving);
+                graphics.DrawImage(source, new Rectangle(0, 0, source.Width, source.Height),
+                    0, 0, source.Width, source.Height, GraphicsUnit.Pixel, attributes);
+            }
+            return muted;
         }
         private static void LauncherFormStyle(Button button, bool primary)
         {

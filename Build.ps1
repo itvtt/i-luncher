@@ -15,6 +15,9 @@ if (-not (Test-Path -LiteralPath $workspaceHelperPath -PathType Leaf)) {
 $sourceAppsHelperPath = Join-Path $PSScriptRoot 'Tools\SourceApps.ps1'
 if (-not (Test-Path -LiteralPath $sourceAppsHelperPath -PathType Leaf)) { throw "Source app helper not found: $sourceAppsHelperPath" }
 . $sourceAppsHelperPath
+$frameworkAppsHelperPath = Join-Path $PSScriptRoot 'Tools\FrameworkApps.ps1'
+if (-not (Test-Path -LiteralPath $frameworkAppsHelperPath -PathType Leaf)) { throw "Framework app helper not found: $frameworkAppsHelperPath" }
+. $frameworkAppsHelperPath
 
 if (($App -or $Project) -and $LauncherOnly) { throw 'Use either -App/-Project or -LauncherOnly.' }
 if ($Project -and -not $App) { throw '-Project requires -App so the source app identity is explicit.' }
@@ -132,6 +135,10 @@ function Publish-PayloadProject([string]$ProjectPath, [string]$OutputPath) {
 }
 
 function Publish-FrameworkDependentProject([string]$ProjectPath, [string]$OutputPath) {
+    if (Test-LegacyFrameworkProject $ProjectPath) {
+        Publish-LegacyFrameworkProject $ProjectPath $OutputPath
+        return
+    }
     Write-Host "Publishing framework-dependent source app $ProjectPath"
     & dotnet publish $ProjectPath -c Release -r win-x64 --self-contained false `
         '-p:ILuncherIntegrated=false' '-p:UseAppHost=true' '-p:PublishSingleFile=false' `

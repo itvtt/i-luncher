@@ -30,7 +30,7 @@ try {
         $path = Join-Path $_.FullName 'launcher.app.json'
         if (Test-Path -LiteralPath $path) { [pscustomobject]@{ Directory = $_.FullName; Data = (Get-Content -Raw -Encoding UTF8 -LiteralPath $path | ConvertFrom-Json) } }
     })
-    Assert-Check ($manifests.Count -eq 0) 'Built-in apps do not need external manifests or per-app executables.'
+    Assert-Check (@($manifests | Where-Object { $_.Data.id -eq 'file_shared' }).Count -eq 1) 'The file_shared standalone app is included in the distribution.'
     foreach ($module in @('FolderCompareWPF.dll', 'SwiftCopy.dll', 'SwiftCopy.Core.dll', 'DiskAtlas.dll', 'DiskAtlas.Core.dll', 'DeskCal.dll')) {
         Assert-Check (Test-Path -LiteralPath (Join-Path $bundle $module) -PathType Leaf) "Integrated module $module is bundled."
     }
@@ -46,10 +46,17 @@ try {
     foreach ($manifest in $manifests) {
         $executable = Join-Path $manifest.Directory $manifest.Data.executable
         Assert-Check (Test-Path -LiteralPath $executable -PathType Leaf) "$($manifest.Data.id) executable exists."
-        $runtimeConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath ([IO.Path]::ChangeExtension($executable, '.runtimeconfig.json')) | ConvertFrom-Json
-        Assert-Check ($runtimeConfig.runtimeOptions.tfm -eq 'net10.0' -and -not $runtimeConfig.runtimeOptions.includedFrameworks) "$($manifest.Data.id) uses the shared .NET 10 framework."
-        if ($manifest.Data.id -ne 'disk-atlas') {
-            $launches += [pscustomobject]@{ Name = $manifest.Data.id; Path = $executable; Arguments = '' }
+        $runtimeConfigPath = [IO.Path]::ChangeExtension($executable, '.runtimeconfig.json')
+        if (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf) {
+            $runtimeConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $runtimeConfigPath | ConvertFrom-Json
+            Assert-Check ($runtimeConfig.runtimeOptions.tfm -eq 'net10.0' -and -not $runtimeConfig.runtimeOptions.includedFrameworks) "$($manifest.Data.id) uses the shared .NET 10 framework."
+            if ($manifest.Data.id -ne 'disk-atlas') {
+                $launches += [pscustomobject]@{ Name = $manifest.Data.id; Path = $executable; Arguments = '' }
+            }
+        }
+        else {
+            Assert-Check (Test-Path -LiteralPath "$($executable).config" -PathType Leaf) "$($manifest.Data.id) includes its .NET Framework configuration."
+            Assert-Check (Test-Path -LiteralPath (Join-Path $manifest.Directory 'Newtonsoft.Json.dll') -PathType Leaf) "$($manifest.Data.id) includes Newtonsoft.Json."
         }
     }
     # Launch only the processes owned by this test. DiskAtlas requires UAC and is checked structurally above.
@@ -84,7 +91,7 @@ try {
                     [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button))
                 $runButtons = @($buttons | Where-Object { $_.Current.AutomationId -like 'Launch_*' })
                 $installButtons = @($buttons | Where-Object { $_.Current.AutomationId -like 'Install_*' -and -not $_.Current.IsOffscreen })
-                Assert-Check ($runButtons.Count -eq 4 -and @($runButtons | Where-Object { -not $_.Current.IsEnabled }).Count -eq 0) 'Distribution launcher exposes four ready-to-run apps.'
+                Assert-Check ($runButtons.Count -eq (4 + $manifests.Count) -and @($runButtons | Where-Object { -not $_.Current.IsEnabled }).Count -eq 0) 'Distribution launcher exposes all built-in and manifest apps.'
                 Assert-Check ($installButtons.Count -eq 0) 'Distribution hides individual installation actions.'
             }
             $results.Add([pscustomobject]@{ app = $launch.Name; windowMilliseconds = $elapsed; coreclr = $loadedRuntime[0].FileName })

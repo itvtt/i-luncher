@@ -33,17 +33,28 @@ DLL, SQLite 의존 파일, `runtime/`을 포함한 **전체 폴더를 함께 이
 
 런처는 앱 스토어 형태의 라이브러리 화면을 제공합니다. 왼쪽에서 **전체 앱**, **설치된 앱**, 앱 분류를 선택하고 상단 검색창에서 이름·분류·설명을 검색할 수 있습니다. 검색과 분류 필터는 함께 적용되며, 결과가 없으면 필터를 초기화할 수 있습니다. `Ctrl+F`는 검색창으로 이동하고 `Esc`는 검색어를 지웁니다. 새로 고침해도 검색어와 선택한 필터가 유지됩니다.
 
-각 앱 카드 오른쪽의 **실행**은 설치 등록 없이 앱을 바로 실행합니다. 필요한 파일은 처음에 다운로드하거나 빌드하고 이후에는 재사용합니다. 카드 오른쪽 위의 **설치 아이콘**은 개별 설치를 등록하고 시작 메뉴에 앱별 바로가기를 만듭니다. 설치 후에는 시작 메뉴에서 앱 이름을 찾아 해당 앱만 직접 실행할 수 있습니다. 기본 네 도구의 바로가기는 공용 실행 파일에 `--app <앱 ID>`를 전달하므로 런처 목록 창을 열지 않습니다. DiskAtlas의 관리자 권한 확인은 유지됩니다.
+설치된 앱은 카드의 아이콘·제목 영역을 클릭하면 실행합니다. 미설치 앱을 클릭하면 설치 여부를 묻고, 동의하면 필요한 파일을 준비해 개별 설치와 시작 메뉴 바로가기를 등록합니다. 설치 직후 자동 실행하지는 않습니다. 설치 후에는 카드나 시작 메뉴에서 해당 앱만 실행할 수 있습니다. DiskAtlas의 관리자 권한 확인은 유지됩니다.
 
-런처가 관리하는 앱의 설치가 완료되면 오른쪽 위 아이콘이 붉은 **제거 아이콘**으로 바뀝니다. 아이콘 위에 마우스를 올리면 설치 또는 제거 설명을 확인할 수 있습니다. 제거하면 해당 앱의 개별 설치 등록과 시작 메뉴 바로가기를 지우고 다시 **설치 아이콘**으로 돌아갑니다. 다운로드한 앱 파일, 공용 실행 환경, 사용자 데이터는 유지하므로 런처에서 바로 실행하거나 다시 설치할 수 있습니다.
+카드 안에는 별도의 설치·제거 버튼을 두지 않습니다. 설치된 카드에서 마우스 오른쪽 버튼을 누르거나 키보드 메뉴 키/`Shift+F10`을 사용하면 **제거** 메뉴가 열립니다. 제거는 해당 앱의 설치 등록과 시작 메뉴 바로가기를 지웁니다. 다운로드한 앱 파일, 공용 실행 환경, 사용자 데이터는 유지하며, 다시 실행하려면 설치를 등록해야 합니다.
 
 기본 도구의 실행 파일과 의존 파일은 같은 버전의 공용 설치본 한 벌을 공유합니다. 배포본의 추가 앱도 같은 설치 묶음과 `runtime/`을 사용합니다. 같은 버전을 다시 설치하면 검증된 설치본을 재사용하며, 처음 필요한 설치 공간과 새 앱 고유 파일의 용량은 발생합니다. 설치본은 원본 소스나 압축을 푼 배포 폴더와 별도로 보관합니다.
 
-소스 프로젝트도 먼저 실행할 필요 없이 **설치**를 누를 수 있습니다. 필요한 빌드 결과를 준비한 뒤 실행에 필요한 파일만 설치합니다. 개발 중 추가 .NET 앱은 호환되는 설치된 런타임을 사용하므로, 다른 PC에 전달할 때는 공용 런타임이 포함된 배포 ZIP을 사용하세요.
+소스 프로젝트도 카드를 클릭해 설치할 수 있습니다. 필요한 빌드 결과를 준비한 뒤 실행에 필요한 파일만 설치합니다. 개발 중 추가 .NET 앱은 호환되는 설치된 런타임을 사용하므로, 다른 PC에 전달할 때는 공용 런타임이 포함된 배포 ZIP을 사용하세요.
 
-온라인 시작 프로그램은 기존 통합 WPF 런처에서 개별 설치한 앱도 인식합니다. 기존 설치 기록, 실행 파일, 시작 메뉴 바로가기가 일치하면 오른쪽의 설치 아이콘이 **제거 아이콘**으로 바뀌고, **실행** 시에도 기존 설치본을 재사용합니다. 작은 카드는 큰 앱 아이콘과 이름을 중심으로 표시하며, 설치·제거 아이콘은 오른쪽 위에, 원형 **▶ 실행 아이콘**은 오른쪽 아래에 배치합니다. 기본 창에는 네 열로 표시됩니다. 설명과 분류는 툴팁과 검색에서 확인할 수 있고, 작업 중에만 진행 상황을 표시합니다. 제거할 때는 해당 앱의 설치 등록과 바로가기만 지우며 앱 파일과 사용자 데이터는 유지합니다.
+온라인 시작 프로그램은 기존 통합 WPF 런처에서 개별 설치한 앱도 인식합니다. 기존 설치 기록, 실행 파일, 시작 메뉴 바로가기가 일치하면 설치된 앱으로 표시하고 실행 시 기존 설치본을 재사용합니다. 각 카드는 둥근 테두리 안에 왼쪽 앱 아이콘과 오른쪽 이름·설명·버전을 배치하며, 기본 창에는 세 열로 표시됩니다. 미설치 앱은 아이콘 색상을 유지하면서 살짝 흐리게 표시하고 작업 중에는 진행 상황을 표시합니다.
 
 ## 개발 빌드
+
+기본 제공 도구와 추가 서비스 프로젝트의 소스는 `Projects/` 아래에 모여 있습니다.
+
+```text
+Projects/
+├─ DeskCal/
+├─ DiskAtlas/
+├─ FolderCompareWPF/
+├─ SwiftCopy/
+└─ TerminalNotes/
+```
 
 ```powershell
 # 통합 프로그램 게시
@@ -141,6 +152,30 @@ The release script uses `GITHUB_SERVER_URL`, `GITHUB_API_URL`, and `GITHUB_TOKEN
 
 ## Small online launcher
 
-Each tagged release also includes `i-luncher-start.exe`, a small .NET Framework 4.8 launcher that opens before any .NET 10 runtime or app package is downloaded. Downloading this starter gets only the launcher executable. On first use of an app, it downloads the shared runtime once and that app's package; later app uses reuse the cached files. The original full offline ZIP remains available for machines that need a complete package without network access.
+Each tagged release also includes `i-luncher-start.exe`, a small .NET Framework 4.8 launcher that opens before any .NET 10 runtime or app package is downloaded. Downloading this starter gets only the launcher executable. Confirming an app's first installation downloads the shared runtime once and that app's package; later installations reuse verified cached files. The original full offline ZIP remains available for machines that need a complete package without network access.
 
 The online launcher downloads immutable assets from the release tag using HTTPS. Public GitHub releases need no token. For private GitHub or GHES releases, enter a user-authorized PAT in launcher settings; if saved, it is protected for the current Windows user with DPAPI. A corporate mirror can be configured for environments that do not allow direct release downloads. The launcher verifies catalog and package SHA-256 values before extraction, and the same runtime package is reused across app installs and release versions when its content hash matches.
+
+### App versions in online catalogs
+
+The catalog `version` identifies the launcher release. Each app's `version` comes from its `launcher.app.json` when declared; otherwise the publisher evaluates that app project's MSBuild `Version` property with the same Release and `win-x64` publish settings. The catalog records `versionSource` as `manifest` or `project`, and the package is built with that same app version. SDK default versions are preserved as evaluated, so apps can share a version until their own version metadata changes. Set an explicit app version when you want app releases to advance independently from launcher releases. An update is offered only when both app versions are known and the available version is newer; package/runtime hash changes, legacy installation format, and build metadata alone do not imply an app update. Package hashes continue to verify downloaded and installed content. Older catalogs without an app version display an unknown version unless their exact app ID and package SHA-256 match a verified compatibility entry. The five v0.2.17 main DLLs report ProductVersion `1.0.0+7892841c7f27577fd4d2c773a2bed0482e07913e` and FileVersion `1.0.0.0`; their catalog-facing SemVer is therefore shown as `1.0.0` rather than inventing distinct app numbers.
+
+## 앱 버전과 업데이트
+
+설치 버전과 배포 버전을 모두 확인할 수 있고 배포 버전이 더 높을 때만 업데이트를 표시합니다. 버전이 같거나 낮은 경우, 버전을 확인할 수 없는 경우에는 업데이트로 표시하지 않습니다. 기존 설치 방식이나 패키지·공용 런타임 해시가 달라졌다는 이유만으로 표시하지 않으며, 배포할 앱을 변경했다면 그 앱의 버전도 올려야 합니다.
+
+카드의 설명 아래에 앱 버전을 표시합니다. 새 버전이 있으면 설치된 버전과 새 버전을 함께 표시하고, 카드 우클릭 메뉴에 **업데이트**를 제공합니다. 버전 정보를 기록하지 않았던 기존 설치는 검증된 설치 실행 파일이나 같은 이름의 관리 DLL에서 ProductVersion/FileVersion을 읽으며, 이를 읽을 수 없으면 알 수 없는 버전으로 표시합니다. 정확한 앱 ID와 패키지 SHA-256이 일치하는 검증된 호환성 항목만 구버전 카탈로그의 앱 버전을 보완합니다. v0.2.17의 다섯 앱 DLL은 불변 카탈로그와 해시를 확인한 뒤 ProductVersion `1.0.0+7892841c7f27577fd4d2c773a2bed0482e07913e`, FileVersion `1.0.0.0`으로 확인했으므로 카탈로그 버전은 모두 1.0.0이며, 서로 다른 번호를 임의로 만들지 않습니다. 설치 기록의 콘텐츠 해시는 화면의 버전 번호로 사용하지 않습니다.
+
+최신 릴리스 확인은 첫 화면을 표시한 뒤 백그라운드에서 진행합니다. 확인에 실패해도 기존 설치 앱을 실행할 수 있습니다. 카드를 눌러 실행하는 동작은 설치된 버전을 사용하며, 업데이트는 우클릭 메뉴에서 명시적으로 선택해야 합니다. 새 패키지와 공용 런타임을 검증한 뒤 설치 기록을 전환하고, 실패하면 기존 설치 기록과 파일을 유지합니다. 이전 패키지 캐시와 사용자 데이터는 자동 삭제하지 않습니다.
+
+GitHub Actions의 Windows self-hosted runner에서 새 `v*` 태그를 릴리스하면 앱별 패키지, 버전이 포함된 온라인 카탈로그, 시작 프로그램을 함께 게시합니다. 앱 버전은 앱 매니페스트의 `version` 또는 해당 프로젝트에서 평가한 MSBuild `Version`을 사용하고, 카탈로그의 전역 릴리스 버전과 분리합니다. 기존 카탈로그에 앱 버전이 없으면 알 수 없는 버전으로 표시합니다. 클라이언트는 설정된 저장소의 최신 정식 릴리스를 확인합니다. GHES 배포는 Actions가 전달하는 서버 URL, API URL, 저장소 이름을 사용합니다.
+
+배포 카탈로그에는 기존 앱 ID를 유지해야 합니다. 설치된 앱을 빠뜨린 카탈로그는 기존 앱의 실행을 보호하기 위해 적용하지 않고 마지막으로 검증된 카탈로그를 유지합니다.
+
+통합 WPF 배포본에는 `i-luncher-updates.json` 설정을 함께 포함하며, 인증 토큰은 포함하지 않습니다. 온라인 업데이트를 적용한 앱은 검증된 개별 앱 실행 파일과 공용 런타임을 사용합니다. 작은 시작 프로그램과 통합 WPF 런처는 같은 사용자 캐시와 설치 기록을 공유하므로 동일한 앱 패키지를 별도로 복사하지 않습니다.
+
+## file_shared 파일 공유 서비스
+
+`file_shared`는 런처에서 실행할 수 있는 HTTP 파일 공유 서비스와 업로드 UI입니다. 처음 실행하면 기존 프로그램 동작에 따라 관리자 권한을 요청해 `FileShareService` Windows 서비스를 설치하고 자동 시작으로 등록한 뒤 업로드 창을 엽니다. 서버는 TCP 5000 포트를 사용하며 업로드 파일과 서비스 실행 파일을 `C:\tem` 아래에 저장합니다.
+
+실행에는 Windows .NET Framework 4.8이 필요합니다. 개발 빌드에는 .NET Framework 4.8 타깃팅 팩이 포함된 Visual Studio Build Tools의 MSBuild와 NuGet을 사용할 수 있어야 합니다.

@@ -29,6 +29,9 @@ if (-not $TagName.Substring(1).Equals($Version, [StringComparison]::Ordinal)) {
 $sourceAppsHelper = Join-Path $PSScriptRoot 'Tools\SourceApps.ps1'
 if (-not (Test-Path -LiteralPath $sourceAppsHelper -PathType Leaf)) { throw "Source app helper is missing: $sourceAppsHelper" }
 . $sourceAppsHelper
+$frameworkAppsHelper = Join-Path $PSScriptRoot 'Tools\FrameworkApps.ps1'
+if (-not (Test-Path -LiteralPath $frameworkAppsHelper -PathType Leaf)) { throw "Framework app helper is missing: $frameworkAppsHelper" }
+. $frameworkAppsHelper
 $workspaceHelper = Join-Path $PSScriptRoot 'BuildWorkspace.ps1'
 if (-not (Test-Path -LiteralPath $workspaceHelper -PathType Leaf)) { throw "Build workspace helper is missing: $workspaceHelper" }
 . $workspaceHelper
@@ -116,6 +119,19 @@ function Get-OnlineManifestFilePath {
     $resolved = [IO.Path]::GetFullPath((Join-Path $AppDirectory $Value))
     if (-not (Test-ILauncherPathWithin $resolved $AppDirectory)) { throw "$Description escapes its app directory: $Value" }
     return $resolved
+}
+
+function Get-OnlineProjectVersion {
+    param([Parameter(Mandatory = $true)][string]$ProjectPath,
+        [Parameter(Mandatory = $true)][string]$RuntimeVersion)
+    $evaluationOutput = & $dotnetExe msbuild $ProjectPath '-property:Configuration=Release' `
+        "-property:RuntimeIdentifier=$rid" '-property:SelfContained=false' '-property:PublishSingleFile=false' `
+        '-property:DebugSymbols=false' '-property:DebugType=None' '-property:AppHostDotNetSearch=EnvironmentVariable' `
+        "-property:RuntimeFrameworkVersion=$RuntimeVersion" '-property:ILuncherIntegrated=false' '-getProperty:Version' 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Could not evaluate app version: $ProjectPath" }
+    $projectVersion = [string]($evaluationOutput -join '').Trim()
+    if ([string]::IsNullOrWhiteSpace($projectVersion)) { throw "App project has no evaluated Version property: $ProjectPath" }
+    return $projectVersion
 }
 
 function New-DeterministicOnlineZip {
@@ -233,6 +249,27 @@ function Get-OnlineIconBase64 {
     }
 }
 
+function Get-ValidatedOnlineArguments {
+    param([object]$Values, [Parameter(Mandatory = $true)][string]$AppId)
+    $validated = [Collections.Generic.List[string]]::new()
+    if ($null -eq $Values) { return $validated.ToArray() }
+    if ($Values -is [string] -or $Values -isnot [System.Collections.IEnumerable]) {
+        throw "App '$AppId' arguments must be a JSON array of strings."
+    }
+    $total = 0
+    foreach ($value in $Values) {
+        if ($value -isnot [string] -or $value.Length -gt 4096 -or $value -match '[\x00-\x1f\x7f]') {
+            throw "App '$AppId' has an invalid launch argument."
+        }
+        $total += $value.Length
+        if ($validated.Count -ge 32 -or $total -gt 8192) {
+            throw "App '$AppId' has too many launch arguments."
+        }
+        $validated.Add($value)
+    }
+    return $validated.ToArray()
+}
+
 function Publish-OnlineApp {
     param(
         [Parameter(Mandatory = $true)]$Definition,
@@ -245,28 +282,49 @@ function Publish-OnlineApp {
     if (-not (Test-ILauncherPathWithin $projectPath $rootPath) -or -not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
         throw "App project is missing or escapes the source root: $projectPath"
     }
+    $legacyFramework = Test-LegacyFrameworkProject $projectPath
+    $appVersionSource = if ([string]::IsNullOrWhiteSpace([string]$Definition.version)) { 'project' } else { 'manifest' }
+    $appVersion = if ($appVersionSource -eq 'manifest') { [string]$Definition.version } elseif (-not $legacyFramework) { Get-OnlineProjectVersion $projectPath $RuntimeVersion } else { $null }
+    if ($appVersion -and $appVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$') { throw "App version is not safe for an online catalog: $appId" }
+    $appArguments = @(Get-ValidatedOnlineArguments $Definition.arguments $appId)
     $executableName = [IO.Path]::GetFileName([string]$Definition.executable)
     if (-not $executableName.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) { throw "App executable must be an .exe: $appId" }
 
     $outputPath = Join-Path (Join-Path $WorkRoot 'app-output') $appId
     [IO.Directory]::CreateDirectory($outputPath) | Out-Null
     Write-Host "Publishing online app $appId"
-    $arguments = @(
-        'publish', $projectPath, '-c', 'Release', '-r', $rid, '--self-contained', 'false',
-        '-p:PublishSingleFile=false', '-p:DebugSymbols=false', '-p:DebugType=None',
-        '-p:AppHostDotNetSearch=EnvironmentVariable',
-        "-p:RuntimeFrameworkVersion=$RuntimeVersion", '-p:ILuncherIntegrated=false', '-o', $outputPath
-    )
-    & $dotnetExe @arguments 2>&1 | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0) { throw "Publishing app failed: $projectPath" }
     $exePath = Join-Path $outputPath $executableName
-    $baseName = [IO.Path]::GetFileNameWithoutExtension($executableName)
-    foreach ($required in @($exePath, (Join-Path $outputPath "$baseName.dll"),
-        (Join-Path $outputPath "$baseName.deps.json"), (Join-Path $outputPath "$baseName.runtimeconfig.json"))) {
-        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Published app file is missing: $required" }
+    if ($legacyFramework) {
+        Publish-LegacyFrameworkProject $projectPath $outputPath
+        foreach ($required in @($exePath, (Join-Path $outputPath "$executableName.config"),
+            (Join-Path $outputPath 'Newtonsoft.Json.dll'))) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Legacy framework app file is missing: $required" }
+        }
+        if (-not $appVersion) {
+            $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
+            $appVersion = if (-not [string]::IsNullOrWhiteSpace($fileVersion.ProductVersion)) { $fileVersion.ProductVersion } else { $fileVersion.FileVersion }
+        }
+        if (-not $appVersion -or $appVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$') {
+            throw "Legacy framework app '$appId' needs a safe version in its manifest or executable metadata."
+        }
     }
-    $runtimeConfig = Get-Content -LiteralPath (Join-Path $outputPath "$baseName.runtimeconfig.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($runtimeConfig.runtimeOptions.tfm -ne $framework) { throw "App '$appId' does not target $framework." }
+    else {
+        $arguments = @(
+            'publish', $projectPath, '-c', 'Release', '-r', $rid, '--self-contained', 'false',
+            '-p:PublishSingleFile=false', '-p:DebugSymbols=false', '-p:DebugType=None',
+            '-p:AppHostDotNetSearch=EnvironmentVariable',
+            "-p:RuntimeFrameworkVersion=$RuntimeVersion", "-p:Version=$appVersion", '-p:ILuncherIntegrated=false', '-o', $outputPath
+        )
+        & $dotnetExe @arguments 2>&1 | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) { throw "Publishing app failed: $projectPath" }
+        $baseName = [IO.Path]::GetFileNameWithoutExtension($executableName)
+        foreach ($required in @($exePath, (Join-Path $outputPath "$baseName.dll"),
+            (Join-Path $outputPath "$baseName.deps.json"), (Join-Path $outputPath "$baseName.runtimeconfig.json"))) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Published app file is missing: $required" }
+        }
+        $runtimeConfig = Get-Content -LiteralPath (Join-Path $outputPath "$baseName.runtimeconfig.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($runtimeConfig.runtimeOptions.tfm -ne $framework) { throw "App '$appId' does not target $framework." }
+    }
 
     $iconBase64 = $null
     if ($Definition.icon -and (Test-Path -LiteralPath $Definition.icon -PathType Leaf)) {
@@ -281,10 +339,13 @@ function Publish-OnlineApp {
     $appManifest = [ordered]@{
         id = $appId
         name = [string]$Definition.name
+        version = $appVersion
+        versionSource = $appVersionSource
         executable = $executableName
         category = [string]$Definition.category
     }
     if ($Definition.description) { $appManifest.description = [string]$Definition.description }
+    if ($appArguments.Count -gt 0) { $appManifest.arguments = $appArguments }
     if ($Definition.icon) { $appManifest.icon = [IO.Path]::GetFileName([string]$Definition.icon) }
     Write-OnlineJson $appManifest (Join-Path $outputPath 'launcher.app.json')
 
@@ -295,6 +356,8 @@ function Publish-OnlineApp {
     $result = [ordered]@{
         id = $appId
         name = [string]$Definition.name
+        version = $appVersion
+        versionSource = $appVersionSource
         description = [string]$Definition.description
         category = [string]$Definition.category
         executable = $executableName
@@ -302,6 +365,7 @@ function Publish-OnlineApp {
         sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToLowerInvariant()
         bytes = [long]$file.Length
     }
+    if ($appArguments.Count -gt 0) { $result.arguments = $appArguments }
     if ($iconBase64) { $result.iconBase64 = $iconBase64 }
     return $result
 }
@@ -362,6 +426,8 @@ try {
         }
         $definitions.Add([pscustomobject]@{
             id = [string]$manifest.id; name = [string]$manifest.name; description = [string]$manifest.description
+            version = [string]$manifest.version
+            arguments = @(Get-ValidatedOnlineArguments $manifest.arguments ([string]$manifest.id))
             category = [string]$manifest.category; executable = [string]$manifest.executable
             project = $project; icon = $icon; source = 'manifest'
         })
@@ -369,6 +435,8 @@ try {
     foreach ($sourceApp in Find-SourceAppProjects $rootPath) {
         $definitions.Add([pscustomobject]@{
             id = [string]$sourceApp.Id; name = [string]$sourceApp.Name; description = ''; category = 'Apps'
+            version = ''
+            arguments = @()
             executable = [string]$sourceApp.ExecutableName; project = [string]$sourceApp.ProjectPath
             icon = $null; source = 'discovered'
         })
@@ -412,6 +480,9 @@ try {
     }
     $catalogPath = Join-Path $workPath "i-luncher-online-catalog-$Version.json"
     Write-OnlineJson $catalog $catalogPath
+    $catalogBytes = [IO.File]::ReadAllBytes($catalogPath)
+    $catalogSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogPath).Hash.ToLowerInvariant()
+    $catalogJson = [Text.UTF8Encoding]::new($false, $true).GetString($catalogBytes)
     $launcherPath = Join-Path $workPath 'i-luncher-start.exe'
     $bootstrapperBuilder = Join-Path $rootPath 'Bootstrapper\Build.ps1'
     if (-not (Test-Path -LiteralPath $bootstrapperBuilder -PathType Leaf)) { throw "Bootstrapper builder is missing: $bootstrapperBuilder" }
@@ -419,6 +490,14 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'Online bootstrapper build failed.' }
     & $launcherPath --self-test
     if ($LASTEXITCODE -ne 0) { throw 'Online bootstrapper self-test failed.' }
+    $updatesSidecar = [ordered]@{
+        schemaVersion = 1
+        catalog = [ordered]@{ json = $catalogJson; sha256 = $catalogSha256 }
+        source = [ordered]@{ serverUrl = $ServerUrl.TrimEnd('/'); apiUrl = $ApiUrl.TrimEnd('/'); repository = $Repository }
+        starterExecutable = 'i-luncher-start.exe'
+        starterSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $launcherPath).Hash.ToLowerInvariant()
+    }
+    Write-OnlineJson $updatesSidecar (Join-Path $workPath 'i-luncher-updates.json')
 
     foreach ($asset in Get-ChildItem -LiteralPath $workPath -File | Where-Object Extension -in @('.exe', '.json', '.zip')) {
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset.FullName).Hash.ToLowerInvariant()

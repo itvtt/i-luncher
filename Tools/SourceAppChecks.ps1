@@ -26,6 +26,15 @@ try {
     Write-Project 'Projects\BuildTools\BuildTools.csproj' 'Exe'
     Write-Project 'Projects\TemplateTool\TemplateTool.csproj' 'Exe'
     Write-Project 'Projects\CacheViewer\CacheViewer.csproj' 'Exe'
+    Write-Project 'file_shared\One.csproj' 'Exe'
+    Write-Project 'file_shared\Two.csproj' 'WinExe'
+    Write-Project 'Projects\file_shared\FutureApp.csproj' 'Exe'
+    foreach ($integratedDirectory in @('FolderCompareWPF', 'SwiftCopy', 'DiskAtlas', 'DeskCal')) {
+        Write-Project "$integratedDirectory\$integratedDirectory.csproj" 'Exe'
+        Write-Project "Projects\$integratedDirectory\$integratedDirectory.csproj" 'Exe'
+    }
+    Write-Project 'Projects\TerminalNotes\TerminalNotes.csproj' 'Exe'
+    Write-Project 'Projects\NestedService\DeskCal\Nested.csproj' 'Exe'
 
     $unicodeRelative = "projects/$unicodeFolder"
     $algorithm = [Security.Cryptography.SHA256]::Create()
@@ -37,8 +46,15 @@ try {
 
     $discovered = @(Find-SourceAppProjects $root)
     $actualIds = (@($discovered.Id | Sort-Object) -join ',')
-    $expectedIds = (@('demo', 'mixed', $unicodeId, 'distributionsample', 'buildtools', 'templatetool', 'cacheviewer') | Sort-Object) -join ','
-    Check ($actualIds -eq $expectedIds) 'Discovery includes runnable projects, excludes libraries and test folders, and keeps similarly named app folders.'
+    $expectedIds = (@('demo', 'mixed', $unicodeId, 'distributionsample', 'buildtools', 'templatetool', 'cacheviewer', 'terminalnotes', 'nestedservice', 'file_shared') | Sort-Object) -join ','
+    Check ($actualIds -eq $expectedIds) 'Discovery excludes integrated folders and the root-only shared workspace, while keeping Projects apps and unrelated nested projects.'
+    $sharedManifest = Join-Path $root 'file_shared\launcher.app.json'
+    [IO.File]::WriteAllText($sharedManifest, '{}')
+    $sharedRootIncluded = @((Get-SourceAppDirectories $root) | Where-Object { $_ -ieq (Join-Path $root 'file_shared') }).Count -eq 1
+    Check $sharedRootIncluded 'The root file_shared directory is eligible when it has an explicit launcher manifest.'
+    Remove-Item -LiteralPath $sharedManifest -Force
+    $sharedRootExcluded = @((Get-SourceAppDirectories $root) | Where-Object { $_ -ieq (Join-Path $root 'file_shared') }).Count -eq 0
+    Check $sharedRootExcluded 'The root file_shared directory stays excluded when it has no launcher manifest.'
     Check (($discovered | Where-Object Id -eq 'mixed').ProjectPath.EndsWith('Mixed.csproj')) 'A library project beside one runnable project does not make the app ambiguous.'
 
     Write-Project 'Projects\Ambiguous\One.csproj' 'Exe'
@@ -58,6 +74,12 @@ try {
     $reservedRejected = $false
     try { Assert-SourceAppProjectPath $root 'Launcher\Launcher.csproj' | Out-Null } catch { $reservedRejected = $_.Exception.Message -like '*reserved*' }
     Check $reservedRejected 'Explicit projects inside launcher infrastructure are rejected.'
+    $movedBuiltinRejected = $false
+    try { Assert-SourceAppProjectPath $root 'Projects\DeskCal\DeskCal.csproj' | Out-Null } catch { $movedBuiltinRejected = $_.Exception.Message -like '*reserved*' }
+    Check $movedBuiltinRejected 'Explicit Projects paths cannot republish a moved integrated app as an extra source app.'
+    $nestedAppAllowed = $false
+    try { Assert-SourceAppProjectPath $root 'Projects\NestedService\DeskCal\Nested.csproj' | Out-Null; $nestedAppAllowed = $true } catch { }
+    Check $nestedAppAllowed 'A nested folder named like a built-in remains valid under an unrelated Projects app.'
     Write-Host "$checks source app checks passed."
 }
 finally {

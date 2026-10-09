@@ -1,14 +1,17 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using ILauncher.Bootstrapper;
 using ILauncher.Models;
 
 namespace ILauncher.Services;
 
 public sealed record CatalogResult(IReadOnlyList<LauncherEntry> Entries, IReadOnlyList<string> Errors);
 
-public sealed class LauncherCatalog : ILauncherCatalog
+public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
 {
     public string RootDirectory { get; }
     public bool IsDistribution { get; }
@@ -17,6 +20,10 @@ public sealed class LauncherCatalog : ILauncherCatalog
     private readonly AppInstaller _installer;
     private readonly AppBuilder _builder;
     private readonly IIntegratedAppProvider? _integratedApps;
+    private readonly BootstrapperEngine? _onlineEngine;
+    private readonly LauncherUpdateSource? _onlineSource;
+    private readonly string? _onlineSetupError;
+    private readonly Dictionary<string, LauncherEntry> _loadedEntries = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _launchLocks =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -46,6 +53,30 @@ public sealed class LauncherCatalog : ILauncherCatalog
         }
         _appsDirectory = Path.GetFullPath(perUserAppsBase);
         _sharedPayloadDirectory = Path.Combine(_appsDirectory, "_shared-payloads");
+        string updateManifest = Path.Combine(RootDirectory, "i-luncher-updates.json");
+        if (IsDistribution && File.Exists(updateManifest))
+        {
+            try
+            {
+                var updateSource = ReadUpdateSource(updateManifest, RootDirectory);
+                _onlineSource = updateSource.Source;
+                var credentials = BootstrapperCredentialProvider.Load(updateSource.Source.ApiUrl);
+                string cacheRoot = Path.GetDirectoryName(_appsDirectory)
+                    ?? throw new InvalidDataException("The per-user app cache has no parent directory.");
+                var options = new BootstrapperOptions(updateSource.CatalogJson, updateSource.CatalogSha256,
+                    cacheRoot, updateSource.StarterPath)
+                {
+                    StartMenuRoot = Path.GetFullPath(startMenuDirectory)
+                };
+                _onlineEngine = new BootstrapperEngine(options, credentials);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                               or InvalidDataException or JsonException or ArgumentException
+                                               or FormatException or CryptographicException)
+            {
+                _onlineSetupError = $"Online app updates are unavailable: {exception.Message}";
+            }
+        }
         _installer = new AppInstaller(_appsDirectory, startMenuDirectory);
         _builder = new AppBuilder(RootDirectory);
         _integratedApps = integratedApps;
@@ -74,6 +105,7 @@ public sealed class LauncherCatalog : ILauncherCatalog
             Category = entry.Category,
             IsDistribution = IsDistribution,
             IsIntegrated = true,
+            BundledVersion = entry.BundledVersion,
             ExecutablePath = Path.Combine(installSource, executableName),
             WorkingDirectory = installSource,
             IconPath = entry.IconPath,
@@ -222,7 +254,8 @@ public sealed class LauncherCatalog : ILauncherCatalog
                         InstalledSharedPayloadDirectory = installedSharedDirectory,
                         InstallShortcutArguments = installShortcutArguments,
                         InstalledExecutableRelativePath = relativeExecutable,
-                        InstalledWorkingDirectoryRelativePath = relativeWorking
+                        InstalledWorkingDirectoryRelativePath = relativeWorking,
+                        BundledVersion = LauncherEntry.ReadBundledVersion(executable)
                     };
                     if (!ids.Add(id)) throw new FormatException($"중복된 앱 id입니다: {id}");
                     entries.Add((order, entry));
@@ -257,6 +290,7 @@ public sealed class LauncherCatalog : ILauncherCatalog
                         Category = "Apps",
                         IsDistribution = false,
                         ExecutablePath = executable,
+                        BundledVersion = LauncherEntry.ReadBundledVersion(executable),
                         WorkingDirectory = workingDirectory,
                         BuildDefinition = new LauncherBuildDefinition(project.ProjectPath, null),
                         IsAutoDiscoveredSourceProject = true,
@@ -274,12 +308,202 @@ public sealed class LauncherCatalog : ILauncherCatalog
         {
             errors.Add($"앱 폴더를 읽을 수 없습니다: {ex.Message}");
         }
-        return new CatalogResult(entries.OrderBy(item => item.Order).ThenBy(item => item.Entry.Name)
-            .Select(item => item.Entry).ToArray(), errors);
+        var orderedEntries = entries.OrderBy(item => item.Order).ThenBy(item => item.Entry.Name)
+            .Select(item => item.Entry).ToArray();
+        var allEntries = orderedEntries.ToList();
+        if (_onlineSetupError is not null) errors.Add(_onlineSetupError);
+        ApplyOnlineStatuses(allEntries, errors, null);
+        _loadedEntries.Clear();
+        foreach (var entry in allEntries) _loadedEntries[entry.Id] = entry;
+        return new CatalogResult(allEntries, errors);
     }
+
+    public async Task<LauncherUpdateCheckResult> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
+    {
+        if (_onlineEngine is null || _onlineSource is null)
+            throw new InvalidOperationException("This launcher distribution has no trusted online update source.");
+        BootstrapperCatalog catalog = await _onlineEngine.CheckForUpdatesAsync(cancellationToken).ConfigureAwait(false);
+        var errors = new List<string>();
+        ApplyOnlineStatuses(_loadedEntries.Values.ToList(), errors, catalog);
+        var apps = catalog.Apps.Select(app => new LauncherAppUpdate(app.Id, app.Version, app.VersionSource, app.Asset,
+            app.Sha256, app.Bytes, app.Executable, app.Description, app.Category, app.IconBase64)).ToArray();
+        return new LauncherUpdateCheckResult(catalog.Version, catalog.Source.TagName, apps, catalog.IsFromCache);
+    }
+
+    public async Task<string> UpdateAsync(LauncherEntry entry, CancellationToken cancellationToken = default)
+    {
+        if (_onlineEngine is null || !entry.OnlineManaged)
+            throw new InvalidOperationException($"{entry.Name} is not managed by the online update catalog.");
+        if (!entry.UpdateAvailable)
+            throw new InvalidOperationException($"{entry.Name} has no newer package available.");
+        BootstrapperInstallResult result = await _onlineEngine.UpdateAsync(entry.Id, cancellationToken)
+            .ConfigureAwait(false);
+        ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null);
+        return $"{entry.Name} updated. Shortcut: {result.ShortcutPath}";
+    }
+
+    private void ApplyOnlineStatuses(List<LauncherEntry> entries, List<string> errors,
+        BootstrapperCatalog? catalog)
+    {
+        if (_onlineEngine is null) return;
+        try
+        {
+            catalog ??= _onlineEngine.LoadCatalogAsync(CancellationToken.None).GetAwaiter().GetResult();
+            if (_onlineSource is not null &&
+                (!SameConfiguredSource(catalog.Source.ServerUrl, _onlineSource.ServerUrl)
+                 || !SameConfiguredSource(catalog.Source.ApiUrl, _onlineSource.ApiUrl)
+                 || !string.Equals(catalog.Source.Repository, _onlineSource.Repository, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("The update catalog source does not match the trusted distribution source.");
+            var remoteApps = catalog.Apps.ToDictionary(app => app.Id, StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
+            {
+                if (!remoteApps.TryGetValue(entry.Id, out var app)) continue;
+                entry.OnlineManaged = true;
+                entry.AvailableVersion = app.Version;
+                var status = _onlineEngine.GetStatus(entry.Id);
+                entry.UpdateAvailable = status.UpdateAvailable;
+                entry.OnlineInstalled = status.IsInstalled;
+                entry.OnlineInstalledVersion = status.InstalledVersion;
+                entry.OnlineExecutablePath = status.IsInstalled ? status.ExecutablePath : null;
+            }
+
+            foreach (var app in catalog.Apps)
+            {
+                if (entries.Any(entry => string.Equals(entry.Id, app.Id, StringComparison.OrdinalIgnoreCase))) continue;
+                string placeholderExecutable = Path.GetFullPath(app.Executable, RootDirectory);
+                var entry = new LauncherEntry
+                {
+                    Id = app.Id, Name = app.Name, Description = app.Description, Category = app.Category,
+                    IsDistribution = true, ExecutablePath = placeholderExecutable,
+                    WorkingDirectory = Path.GetDirectoryName(placeholderExecutable)!,
+                    OnlineManaged = true, AvailableVersion = app.Version
+                };
+                var status = _onlineEngine.GetStatus(app.Id);
+                entry.UpdateAvailable = status.UpdateAvailable;
+                entry.OnlineInstalled = status.IsInstalled;
+                entry.OnlineInstalledVersion = status.InstalledVersion;
+                entry.OnlineExecutablePath = status.IsInstalled ? status.ExecutablePath : null;
+                entries.Add(entry);
+                _loadedEntries[entry.Id] = entry;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
+                                   or InvalidDataException or FormatException or ArgumentException)
+        {
+            errors.Add($"Online app status could not be loaded: {ex.Message}");
+        }
+    }
+
+    private static bool SameConfiguredSource(string actual, string expected)
+    {
+        var left = new Uri(actual, UriKind.Absolute);
+        var right = new Uri(expected, UriKind.Absolute);
+        return left.Scheme.Equals(right.Scheme, StringComparison.OrdinalIgnoreCase)
+            && left.Host.Equals(right.Host, StringComparison.OrdinalIgnoreCase)
+            && left.Port == right.Port
+            && left.AbsolutePath.TrimEnd('/').Equals(right.AbsolutePath.TrimEnd('/'), StringComparison.Ordinal);
+    }
+
+    private static OnlineUpdateManifest ReadUpdateSource(string path, string distributionRoot)
+    {
+        var info = new FileInfo(path);
+        if (info.Length is <= 0 or > 4 * 1024 * 1024)
+            throw new InvalidDataException("The online update sidecar is outside the allowed size range.");
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path), new JsonDocumentOptions { MaxDepth = 8 });
+        var root = document.RootElement;
+        if (!root.TryGetProperty("schemaVersion", out var schema) || schema.GetInt32() != 1
+            || !root.TryGetProperty("catalog", out var catalog)
+            || !root.TryGetProperty("source", out var source))
+            throw new InvalidDataException("The online update sidecar has an unsupported schema.");
+        string catalogJson = catalog.GetProperty("json").GetString()
+            ?? throw new InvalidDataException("The sidecar catalog JSON is missing.");
+        string catalogSha256 = catalog.GetProperty("sha256").GetString() ?? string.Empty;
+        byte[] catalogBytes = new UTF8Encoding(false, true).GetBytes(catalogJson);
+        if (catalogBytes.Length is <= 0 or > 2 * 1024 * 1024 || catalogSha256.Length != 64
+            || catalogSha256.Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidDataException("The sidecar catalog is outside its allowed size or hash format.");
+        string actualHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(catalogBytes)).ToLowerInvariant();
+        if (!actualHash.Equals(catalogSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The sidecar catalog failed its SHA-256 integrity check.");
+        string serverUrl = source.GetProperty("serverUrl").GetString() ?? string.Empty;
+        string apiUrl = source.GetProperty("apiUrl").GetString() ?? string.Empty;
+        string repository = source.GetProperty("repository").GetString() ?? string.Empty;
+        string starterExecutable = root.GetProperty("starterExecutable").GetString() ?? string.Empty;
+        string starterSha256 = root.GetProperty("starterSha256").GetString() ?? string.Empty;
+        ValidateUpdateSourceUri(serverUrl, "serverUrl");
+        ValidateUpdateSourceUri(apiUrl, "apiUrl");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(repository,
+                "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            throw new InvalidDataException("The update source repository is invalid.");
+        using (var catalogDocument = JsonDocument.Parse(catalogJson, new JsonDocumentOptions { MaxDepth = 16 }))
+        {
+            var catalogSource = catalogDocument.RootElement.GetProperty("source");
+            string catalogServer = catalogSource.GetProperty("serverUrl").GetString() ?? string.Empty;
+            string catalogApi = catalogSource.GetProperty("apiUrl").GetString() ?? string.Empty;
+            string catalogRepository = catalogSource.GetProperty("repository").GetString() ?? string.Empty;
+            ValidateUpdateSourceUri(catalogServer, "catalog.serverUrl");
+            ValidateUpdateSourceUri(catalogApi, "catalog.apiUrl");
+            if (!SameConfiguredSource(catalogServer, serverUrl) || !SameConfiguredSource(catalogApi, apiUrl)
+                || !string.Equals(catalogRepository, repository, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The embedded catalog source does not match the distribution trust source.");
+        }
+        if (starterSha256.Length != 64 || starterSha256.Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidDataException("The online starter hash is invalid.");
+        if (Path.IsPathRooted(starterExecutable))
+            throw new InvalidDataException("The online starter path must be relative to the distribution root.");
+        string starterPath = Path.GetFullPath(starterExecutable, distributionRoot);
+        string relativeStarter = Path.GetRelativePath(distributionRoot, starterPath);
+        if (relativeStarter == ".." || relativeStarter.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.IsPathRooted(relativeStarter))
+            throw new InvalidDataException("The online starter path escapes the distribution root.");
+        var starterInfo = new FileInfo(starterPath);
+        if (!starterInfo.Exists || starterInfo.Length is <= 0 or > 64 * 1024 * 1024 || HasReparsePoint(distributionRoot, starterPath))
+            throw new InvalidDataException("The online starter is missing, oversized, or redirected through a reparse point.");
+        string actualStarterHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(starterPath))).ToLowerInvariant();
+        if (!actualStarterHash.Equals(starterSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The online starter failed its SHA-256 integrity check.");
+        return new OnlineUpdateManifest(catalogJson, catalogSha256,
+            new LauncherUpdateSource(serverUrl.TrimEnd('/'), apiUrl.TrimEnd('/'), repository), starterPath);
+    }
+
+    private static bool HasReparsePoint(string root, string path)
+    {
+        string canonicalRoot = Path.GetFullPath(root);
+        string canonicalPath = Path.GetFullPath(path);
+        for (DirectoryInfo? directory = new DirectoryInfo(canonicalRoot); directory is not null; directory = directory.Parent)
+            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) return true;
+        string current = canonicalRoot;
+        foreach (string segment in Path.GetRelativePath(canonicalRoot, canonicalPath)
+                     .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (segment is "" or ".") continue;
+            current = Path.Combine(current, segment);
+            if (!File.Exists(current) && !Directory.Exists(current)) return false;
+            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return true;
+        }
+        return false;
+    }
+
+    private static void ValidateUpdateSourceUri(string value, string name)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query)
+            || !string.IsNullOrEmpty(uri.Fragment))
+            throw new InvalidDataException($"The update source {name} must be a trusted HTTPS base URI.");
+    }
+
+    private sealed record OnlineUpdateManifest(string CatalogJson, string CatalogSha256,
+        LauncherUpdateSource Source, string StarterPath);
 
     public async Task<string> InstallAsync(LauncherEntry entry)
     {
+        if (entry.OnlineManaged && _onlineEngine is not null)
+        {
+            BootstrapperInstallResult onlineInstall = await _onlineEngine.InstallAsync(entry.Id, CancellationToken.None)
+                .ConfigureAwait(false);
+            ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null);
+            return $"{entry.Name} installed. Shortcut: {onlineInstall.ShortcutPath}";
+        }
         var installLock = _launchLocks.GetOrAdd(entry.Id, static _ => new SemaphoreSlim(1, 1));
         await installLock.WaitAsync().ConfigureAwait(false);
         try
@@ -309,6 +533,13 @@ public sealed class LauncherCatalog : ILauncherCatalog
 
     public async Task<string> UninstallAsync(LauncherEntry entry)
     {
+        if (entry.OnlineManaged && _onlineEngine is not null)
+        {
+            BootstrapperUninstallResult result = await _onlineEngine.UninstallAsync(entry.Id, CancellationToken.None)
+                .ConfigureAwait(false);
+            ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null);
+            return result.Removed ? $"{entry.Name} removed." : $"{entry.Name} is already removed.";
+        }
         var installLock = _launchLocks.GetOrAdd(entry.Id, static _ => new SemaphoreSlim(1, 1));
         await installLock.WaitAsync().ConfigureAwait(false);
         try
@@ -325,10 +556,20 @@ public sealed class LauncherCatalog : ILauncherCatalog
 
     public async Task LaunchAsync(LauncherEntry entry)
     {
+        if (entry.OnlineManaged && _onlineEngine is not null)
+        {
+            if (!_onlineEngine.GetStatus(entry.Id).IsInstalled)
+                throw new InvalidOperationException("설치 후 실행할 수 있습니다.");
+            await _onlineEngine.LaunchAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
         var launchLock = _launchLocks.GetOrAdd(entry.Id, static _ => new SemaphoreSlim(1, 1));
         await launchLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (entry.TryGetInstalledExecutablePath() is null)
+                throw new InvalidOperationException("설치 후 실행할 수 있습니다.");
+
             if (entry.IsIntegrated)
             {
                 if (_integratedApps is null || !_integratedApps.Entries.Any(item =>

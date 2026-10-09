@@ -108,6 +108,8 @@ if (-not $?) { throw 'Online distribution publishing failed.' }
 if (-not (Test-Path -LiteralPath $onlineDirectory -PathType Container)) {
     throw "The online distribution publisher did not create its output directory: $onlineDirectory"
 }
+& (Join-Path $PSScriptRoot 'Include-OnlineStarterInDistribution.ps1') -PackageDirectory $packageDirectory -Version $Version
+if (-not $?) { throw 'Could not add the online starter and update catalog to the offline distribution.' }
 $onlineLauncherPath = Join-Path $onlineDirectory 'i-luncher-start.exe'
 if (-not (Test-Path -LiteralPath $onlineLauncherPath -PathType Leaf)) {
     throw "The online publisher did not create the small start launcher: $onlineLauncherPath"

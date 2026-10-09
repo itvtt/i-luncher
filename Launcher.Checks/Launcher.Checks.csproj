@@ -9,8 +9,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Bootstrapper\Core\*.cs"
+             Exclude="..\Bootstrapper\Core\FrameworkCompatibility.cs"
+             Link="Production\Bootstrapper\Core\%(Filename)%(Extension)" />
     <Compile Include="..\Launcher\Models\LauncherEntry.cs" Link="Production\LauncherEntry.cs" />
+    <Compile Include="..\Launcher\Models\Notice.cs" Link="Production\Notice.cs" />
+    <Compile Include="..\Launcher\Services\INoticeService.cs" Link="Production\INoticeService.cs" />
+    <Compile Include="..\Launcher\Services\NoticeService.cs" Link="Production\NoticeService.cs" />
     <Compile Include="..\Launcher\Services\ILauncherCatalog.cs" Link="Production\ILauncherCatalog.cs" />
+    <Compile Include="..\Launcher\Services\ILauncherUpdateCatalog.cs" Link="Production\ILauncherUpdateCatalog.cs" />
+    <Compile Include="..\Launcher\Services\BootstrapperCredentialProvider.cs" Link="Production\BootstrapperCredentialProvider.cs" />
     <Compile Include="..\Launcher\Services\AppInstaller.cs" Link="Production\AppInstaller.cs" />
     <Compile Include="..\Launcher\Services\AppBuilder.cs" Link="Production\AppBuilder.cs" />
     <Compile Include="..\Launcher\Services\LauncherCatalog.cs" Link="Production\LauncherCatalog.cs" />

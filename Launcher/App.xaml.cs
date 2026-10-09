@@ -1,5 +1,6 @@
 using System.Windows;
 using System.ComponentModel;
+using ILauncher.Models;
 using ILauncher.Services;
 
 namespace ILauncher;
@@ -14,7 +15,10 @@ public partial class App : Application
 
         if (e.Args.Length == 0)
         {
-            var launcher = new MainWindow(new LauncherCatalog(_integratedApps));
+            var noticeDirectory = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher", "notices");
+            var launcher = new MainWindow(new LauncherCatalog(_integratedApps),
+                noticeService: new NoticeService(NoticeService.DefaultFeedUri, noticeDirectory));
             MainWindow = launcher;
             launcher.Show();
             return;
@@ -25,6 +29,14 @@ public partial class App : Application
             string appId = e.Args[1];
             if (_integratedApps.Contains(appId))
             {
+                LauncherEntry? installedEntry = new LauncherCatalog(_integratedApps).Load().Entries
+                    .FirstOrDefault(entry => string.Equals(entry.Id, appId, StringComparison.OrdinalIgnoreCase));
+                if (installedEntry?.TryGetInstalledExecutablePath() is null)
+                {
+                    FailStartup("설치 후 실행할 수 있습니다.");
+                    return;
+                }
+
                 if (string.Equals(appId, IntegratedAppProvider.DiskAtlasId, StringComparison.OrdinalIgnoreCase) &&
                     !IntegratedAppProcessLauncher.IsCurrentProcessElevated())
                 {

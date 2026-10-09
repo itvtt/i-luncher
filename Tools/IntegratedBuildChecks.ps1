@@ -12,6 +12,7 @@ try {
     $sourceTools = Join-Path $fixture 'Tools'
     [IO.Directory]::CreateDirectory($sourceTools) | Out-Null
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SourceApps.ps1') -Destination $sourceTools
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'FrameworkApps.ps1') -Destination $sourceTools
     # Exercise the real staging/promotion code with a deterministic publisher.
     $helper = @'
 function Assert-ILauncherInternalWorkspace { param([string]$WorkspacePath) }

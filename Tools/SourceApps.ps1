@@ -41,6 +41,11 @@ function Test-SourceAppSkippedDirectory {
         $Name.EndsWith('.checks', [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Test-SourceAppIntegratedDirectoryName {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    return $Name -in @('FolderCompareWPF', 'SwiftCopy', 'DiskAtlas', 'DeskCal')
+}
+
 function Assert-SourceAppProjectPath {
     param(
         [Parameter(Mandatory = $true)][string]$RootPath,
@@ -64,7 +69,9 @@ function Assert-SourceAppProjectPath {
         throw "Source projects must be in an immediate app folder or Projects/<app folder>: $ProjectPath"
     }
     if ($parts.Count -gt 7) { throw "Source project is nested too deeply: $ProjectPath" }
-    if ($parts[0] -ine 'Projects' -and $parts[0] -in @('Launcher', 'FolderCompareWPF', 'SwiftCopy', 'DiskAtlas', 'DeskCal', 'Distribution', 'Tools')) {
+    $appDirectoryName = if ($parts[0] -ieq 'Projects') { $parts[1] } else { $parts[0] }
+    if ((Test-SourceAppIntegratedDirectoryName $appDirectoryName) -or
+        ($parts[0] -ine 'Projects' -and $parts[0] -in @('Launcher', 'Distribution', 'Tools'))) {
         throw "Project is inside a reserved launcher or tooling directory: $ProjectPath"
     }
     foreach ($part in $parts[0..($parts.Count - 2)]) {
@@ -111,17 +118,20 @@ function Get-SourceAppDirectories {
     $root = [IO.Path]::GetFullPath($RootPath)
     $roots = [Collections.Generic.List[string]]::new()
     foreach ($directory in Get-ChildItem -LiteralPath $root -Directory -Force | Sort-Object Name) {
+        if ($directory.Name -ieq 'file_shared' -and
+            -not (Test-Path -LiteralPath (Join-Path $directory.FullName 'launcher.app.json') -PathType Leaf)) { continue }
         if ($directory.Name -ieq 'Projects' -and
             ($directory.Attributes -band [IO.FileAttributes]::Hidden) -eq 0 -and
             ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
             foreach ($projectDirectory in Get-ChildItem -LiteralPath $directory.FullName -Directory -Force | Sort-Object Name) {
                 if (-not (Test-SourceAppSkippedDirectory $projectDirectory.Name) -and
+                    -not (Test-SourceAppIntegratedDirectoryName $projectDirectory.Name) -and
                     ($projectDirectory.Attributes -band [IO.FileAttributes]::Hidden) -eq 0 -and
                     ($projectDirectory.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) { $roots.Add($projectDirectory.FullName) }
             }
         }
         elseif (-not (Test-SourceAppSkippedDirectory $directory.Name) -and
-            $directory.Name -notin @('FolderCompareWPF', 'SwiftCopy', 'DiskAtlas', 'DeskCal') -and
+            -not (Test-SourceAppIntegratedDirectoryName $directory.Name) -and
             ($directory.Attributes -band [IO.FileAttributes]::Hidden) -eq 0 -and
             ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) { $roots.Add($directory.FullName) }
     }

@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore:
+      - 'Notices/**'
+      - 'Tools/CI/Publish-Notices.py'
+      - 'Tools/CI/Check-Notices.py'
+      - '.github/workflows/publish-notices.yml'
   workflow_dispatch:
     inputs:
       publish_release:

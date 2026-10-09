@@ -1,0 +1,16 @@
+{
+  "id": "file_shared",
+  "name": "File Shared",
+  "description": "파일을 링크로 만들어 공유합니다.",
+  "category": "네트워크",
+  "icon": "Assets/FileShared.ico",
+  "executable": "dist/win-x64/file_shared.exe",
+  "arguments": [],
+  "order": 50,
+  "build": {
+    "project": "file_shared.csproj"
+  },
+  "install": {
+    "type": "portable"
+  }
+}
