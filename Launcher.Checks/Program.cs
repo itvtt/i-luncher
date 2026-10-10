@@ -914,6 +914,109 @@ try
         }
     });
 
+    await Check("bundled apps install offline when their IDs also appear in the online catalog", async () =>
+    {
+        string root = CreateRoot("bundled online overlap");
+        File.WriteAllText(Path.Combine(root, "i-luncher.json"),
+            """{"schemaVersion":1,"distribution":{"version":"1.0.0"}}""");
+        string appDirectory = Path.Combine(root, "terminalnotes");
+        Directory.CreateDirectory(appDirectory);
+        CopyCheckHost(appDirectory);
+        WriteManifest(appDirectory, new
+        {
+            id = "terminalnotes", name = "Terminal Notes", executable = "Launcher.Checks.exe",
+            install = new { type = "portable" }
+        });
+        string starterPath = Path.Combine(root, "i-luncher-start.exe");
+        File.WriteAllBytes(starterPath, [0x4d, 0x5a, 0x00, 0x01]);
+        string CatalogJson(string appVersion) => JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1, version = "1.0.0",
+            source = new
+            {
+                serverUrl = "https://github.com", apiUrl = "https://api.github.com",
+                repository = "example/iluncher", tagName = "v1.0.0"
+            },
+            runtime = new
+            {
+                version = "10.0.1", asset = "runtime.zip", sha256 = new string('a', 64), bytes = 1
+            },
+            apps = new[] { "terminalnotes", "online-only" }.Select(id => new
+            {
+                id, name = id == "terminalnotes" ? "Terminal Notes" : "Online Only",
+                description = "Fixture", category = "Tools", version = appVersion, versionSource = "manifest",
+                executable = "Launcher.Checks.exe", asset = id + ".zip", sha256 = new string('b', 64), bytes = 1
+            }).ToArray()
+        });
+        WriteOnlineUpdateSidecar(root, starterPath, CatalogJson("1.0.0"));
+        string appsBase = CreateDirectory(Path.Combine("bundled online overlap store", "Apps"));
+        string startMenu = CreateDirectory("bundled online overlap menu");
+        var transport = new MissingReleaseTransport();
+        LauncherCatalog CreateOfflineCatalog()
+        {
+            var catalog = new LauncherCatalog(root, appsBase, startMenu);
+            FieldInfo engineField = typeof(LauncherCatalog).GetField("_onlineEngine",
+                BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var original = (BootstrapperEngine)engineField.GetValue(catalog)!;
+            var options = (BootstrapperOptions)typeof(BootstrapperEngine).GetField("_options",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(original)!;
+            var offlineEngine = new BootstrapperEngine(options, NullBootstrapperCredentialProvider.Instance,
+                () => transport, () => transport);
+            engineField.SetValue(catalog, offlineEngine);
+            original.Dispose();
+            return catalog;
+        }
+        var catalog = CreateOfflineCatalog();
+        var entries = catalog.Load().Entries;
+        var entry = entries.Single(item => item.Id == "terminalnotes");
+        Assert(entry.OnlineManaged && !entry.OnlineInstalled, "The fixture did not reproduce a cold online-managed bundled app.");
+        await catalog.InstallAsync(entry);
+        Assert(transport.Requests == 0, "Installing a packaged app requested remote release metadata or assets.");
+        Assert(entry.OnlineInstalled && entry.CanUninstall && entry.TryGetInstalledExecutablePath() is not null,
+            "The bundled install was not recognized by the online receipt/launch path.");
+        string receipt = Path.Combine(appsBase, entry.Id, "current.version");
+        string installedHash = File.ReadAllText(receipt);
+        var reloadedCatalog = CreateOfflineCatalog();
+        var reloaded = reloadedCatalog.Load().Entries.Single(item => item.Id == entry.Id);
+        Assert(reloaded.OnlineInstalled && reloaded.TryGetInstalledExecutablePath() == entry.TryGetInstalledExecutablePath(),
+            "Reload lost the bundled installation after online status reconciliation.");
+        foreach (var onlineEntry in new[] { reloaded, entries.Single(item => item.Id == "online-only") })
+        {
+            int previousRequests = transport.Requests;
+            try
+            {
+                await (onlineEntry == reloaded ? reloadedCatalog : catalog).InstallAsync(onlineEntry);
+                throw new Exception("The existing online install path unexpectedly bypassed the unavailable remote release.");
+            }
+            catch (Exception exception) when (exception.Message.Contains("Release metadata request failed with HTTP status 404", StringComparison.Ordinal))
+            {
+                Assert(transport.Requests == previousRequests + 1, "The online install did not use its existing release path.");
+            }
+        }
+        Assert(File.ReadAllText(receipt) == installedHash, "A failed online reinstall changed the bundled install receipt.");
+        WriteOnlineUpdateSidecar(root, starterPath, CatalogJson("999.0.0"));
+        var newerCatalog = CreateOfflineCatalog();
+        var newerEntry = newerCatalog.Load().Entries.Single(item => item.Id == entry.Id);
+        Assert(newerEntry.OnlineInstalled && newerEntry.UpdateAvailable,
+            "A newer online app version was not offered after installing the bundled version.");
+        int requestsBeforeUninstall = transport.Requests;
+        await newerCatalog.UninstallAsync(newerEntry);
+        Assert(!newerEntry.OnlineInstalled && newerEntry.TryGetInstalledExecutablePath() is null
+            && !File.Exists(receipt) && transport.Requests == requestsBeforeUninstall,
+            "Uninstalling the bundled app required network access or left its owned receipt installed.");
+        File.Delete(Path.Combine(appDirectory, "Launcher.Checks.exe"));
+        try
+        {
+            await newerCatalog.InstallAsync(newerEntry);
+            throw new Exception("An app with no packaged executable bypassed the online install path.");
+        }
+        catch (Exception exception) when (exception.Message.Contains("Release metadata request failed with HTTP status 404", StringComparison.Ordinal))
+        {
+            Assert(transport.Requests == requestsBeforeUninstall + 1,
+                "A missing packaged executable did not preserve the online install path.");
+        }
+    });
+
     await Check("same-name distribution apps keep separate installed shortcuts", async () =>
     {
         var root = CreateRoot("duplicate shortcut bundle");
@@ -1920,4 +2023,19 @@ internal sealed class FakeIntegratedAppProvider(params LauncherEntry[] entries) 
         Launches.Add(appId);
         return Task.CompletedTask;
     }
+}
+
+internal sealed class MissingReleaseTransport : IBootstrapperHttpTransport
+{
+    public int Requests { get; private set; }
+
+    public Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Requests++;
+        return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
+
+    public void Dispose() { }
 }

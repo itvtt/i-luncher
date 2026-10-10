@@ -497,7 +497,12 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
 
     public async Task<string> InstallAsync(LauncherEntry entry)
     {
-        if (entry.OnlineManaged && _onlineEngine is not null)
+        bool hasBundledPayload = entry.InstallDefinition?.Type == LauncherInstallType.SharedPayload
+            && entry.InstallSourceDirectory is { } sourceDirectory
+            && entry.InstalledExecutableRelativePath is { } relativeExecutable
+            && File.Exists(Path.GetFullPath(relativeExecutable, sourceDirectory));
+        if (entry.OnlineManaged && _onlineEngine is not null
+            && (entry.OnlineInstalled || !hasBundledPayload))
         {
             BootstrapperInstallResult onlineInstall = await _onlineEngine.InstallAsync(entry.Id, CancellationToken.None)
                 .ConfigureAwait(false);
@@ -509,7 +514,12 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
         try
         {
             if (entry.InstallDefinition?.Type is LauncherInstallType.Command or LauncherInstallType.SharedPayload)
-                return await _installer.InstallAsync(entry).ConfigureAwait(false);
+            {
+                string result = await _installer.InstallAsync(entry).ConfigureAwait(false);
+                if (entry.OnlineManaged)
+                    ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null);
+                return result;
+            }
 
             AppBuildOutput? output = null;
             if (entry.BuildDefinition is not null)
