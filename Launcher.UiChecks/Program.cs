@@ -197,8 +197,9 @@ internal static class Program
                     BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(cancelInstallWindow,
                     [cancelInstallPrimary, null]);
                 Check(!cancelInstallCard.CanUpdate
-                      && cancelInstallPrimary.ContextMenu!.Items.OfType<MenuItem>().First().Visibility == Visibility.Collapsed,
-                    "Update action stays hidden for uninstalled apps");
+                      && cancelInstallPrimary.ContextMenu!.Items.OfType<MenuItem>()
+                          .All(item => item.Visibility == Visibility.Collapsed && !item.IsEnabled),
+                    "Update and both removal actions stay hidden for uninstalled apps");
                 cancelInstallPrimary.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Idle(cancelInstallWindow);
                 Check(installPromptCount == 1 && activationProbe.InstallCalls == 0 && activationProbe.LaunchCalls == 0
@@ -396,7 +397,13 @@ internal static class Program
                 bool confirmRemoval = false;
                 int confirmationCount = 0;
                 var launchProbe = new ActivationProbeCatalog(uninstallCatalog);
-                var installedLaunchWindow = new MainWindow(launchProbe)
+                bool confirmFullDelete = false;
+                string fullDeletePrompt = "";
+                var installedLaunchWindow = new MainWindow(launchProbe, (_, prompt) =>
+                {
+                    fullDeletePrompt = prompt;
+                    return confirmFullDelete;
+                })
                 { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 };
                 installedLaunchWindow.Show();
                 await Idle(installedLaunchWindow);
@@ -406,6 +413,34 @@ internal static class Program
                 await Task.Delay(25);
                 Check(launchProbe.LaunchCalls == 1 && launchProbe.InstallCalls == 0,
                     "Installed primary surface launches through the existing launch path");
+                typeof(MainWindow).GetMethod("LauncherCard_ContextMenuOpening",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(installedLaunchWindow,
+                    [installedPrimary, null]);
+                MenuItem fullDeleteItem = installedPrimary.ContextMenu!.Items.OfType<MenuItem>()
+                    .Single(item => AutomationProperties.GetName(item) == "앱 완전 삭제");
+                Check(fullDeleteItem.Visibility == Visibility.Visible && fullDeleteItem.IsEnabled,
+                    "Installed managed app offers full deletion separately from normal removal");
+                fullDeleteItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, fullDeleteItem));
+                Check(launchProbe.DeleteFilesCalls == 0 && fullDeletePrompt.Contains(uninstallEntry.Name)
+                      && fullDeletePrompt.Contains("설치 파일과 캐시")
+                      && fullDeletePrompt.Contains("문서 및 설정은 유지"),
+                    "Declining full deletion preserves the installation and explains its boundaries");
+                confirmFullDelete = true;
+                fullDeleteItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, fullDeleteItem));
+                await Idle(installedLaunchWindow);
+                Check(launchProbe.DeleteFilesCalls == 1 && launchProbe.UninstallCalls == 0,
+                    "Accepting full deletion routes only to the explicit file deletion overload");
+                MainWindow.LauncherCard fullDeleteCard = installedLaunchWindow.LauncherCards
+                    .Single(card => card.Entry.Id == "deskcal");
+                fullDeleteCard.IsBusy = true;
+                typeof(MainWindow).GetMethod("LauncherCard_ContextMenuOpening",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(installedLaunchWindow,
+                    [installedPrimary, null]);
+                fullDeleteItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, fullDeleteItem));
+                Check(fullDeleteItem.Visibility == Visibility.Collapsed && !fullDeleteItem.IsEnabled
+                      && launchProbe.DeleteFilesCalls == 1,
+                    "Busy cards hide and block full deletion");
+                fullDeleteCard.IsBusy = false;
                 installedLaunchWindow.Close();
 
                 var uninstallWindow = new MainWindow(uninstallCatalog, (_, prompt) =>
@@ -741,7 +776,7 @@ internal static class Program
                             && outline.BorderThickness.Left == 2 && outline.CornerRadius.TopLeft == 12
                             && BoundsInWindow(outline, window) == cardBounds)
                         && expectedAppearance && run.Content is Grid
-                        && run.ContextMenu?.Items.OfType<MenuItem>().Count() == 2
+                        && run.ContextMenu?.Items.OfType<MenuItem>().Count() == 3
                         && Descendants<TextBlock>(window).Any(text => ReferenceEquals(text.DataContext, card)
                             && text.Margin.Left == 92 && text.Margin.Top == 72 && text.Width == 176
                             && text.Height == 24 && text.FontSize == 11 && text.Text == card.VersionText
@@ -1264,17 +1299,30 @@ internal static class Program
     {
         private int _installCalls;
         private int _launchCalls;
+        private int _uninstallCalls;
+        private int _deleteFilesCalls;
         public string RootDirectory => inner.RootDirectory;
         public int InstallCalls => Volatile.Read(ref _installCalls);
         public int LaunchCalls => Volatile.Read(ref _launchCalls);
+        public int UninstallCalls => Volatile.Read(ref _uninstallCalls);
+        public int DeleteFilesCalls => Volatile.Read(ref _deleteFilesCalls);
         public ILauncher.Services.CatalogResult Load() => inner.Load();
         public Task<string> InstallAsync(ILauncher.Models.LauncherEntry entry)
         {
             Interlocked.Increment(ref _installCalls);
             return Task.FromResult("fixture install");
         }
-        public Task<string> UninstallAsync(ILauncher.Models.LauncherEntry entry) =>
-            throw new NotSupportedException();
+        public Task<string> UninstallAsync(ILauncher.Models.LauncherEntry entry)
+        {
+            Interlocked.Increment(ref _uninstallCalls);
+            return Task.FromResult("fixture removal");
+        }
+        public Task<string> UninstallAsync(ILauncher.Models.LauncherEntry entry, bool deleteFiles)
+        {
+            if (!deleteFiles) return UninstallAsync(entry);
+            Interlocked.Increment(ref _deleteFilesCalls);
+            return Task.FromResult("fixture full deletion");
+        }
         public void Launch(ILauncher.Models.LauncherEntry entry) =>
             Interlocked.Increment(ref _launchCalls);
         public Task LaunchAsync(ILauncher.Models.LauncherEntry entry)

@@ -816,6 +816,46 @@ internal static class Program
         Check(File.ReadAllText(readyMarker) == "tampered\n", "invalid cache remains untouched for inspection");
         File.WriteAllBytes(readyMarker, oldMarker);
 
+        // Full removal uses only isolated fixture caches, never real installations.
+        File.WriteAllBytes(runtimeZip, runtimeBytes);
+        File.WriteAllBytes(appOneZip, oneBytes);
+        File.WriteAllBytes(appTwoZip, twoBytes);
+        await engine.InstallAsync("module-one", CancellationToken.None);
+        await engine.InstallAsync("module-two", CancellationToken.None);
+        string ownedData = Path.Combine(Path.GetDirectoryName(one.ExecutablePath), "owned-data.txt");
+        File.WriteAllText(ownedData, "managed fixture data");
+        using (File.Open(ownedData, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            await ExpectAsync<IOException>(async delegate { await engine.UninstallAsync("module-one", true, CancellationToken.None); },
+                "full removal refuses locked payload before registration changes");
+        Check(engine.GetStatus("module-one").IsInstalled && File.Exists(ownedData), "locked full removal preserves installed state");
+        string linkedPayload = Path.Combine(Path.GetDirectoryName(one.ExecutablePath), "foreign-link");
+        CreateJunction(linkedPayload, mirror);
+        try
+        {
+            await ExpectAsync<InvalidDataException>(async delegate { await engine.UninstallAsync("module-one", true, CancellationToken.None); },
+                "full removal refuses nested reparse points");
+            Check(engine.GetStatus("module-one").IsInstalled, "reparse refusal preserves registration");
+        }
+        finally { Directory.Delete(linkedPayload, false); }
+        string fullReceipt = Path.Combine(cache, "installed", "module-one", "current.receipt");
+        using (File.Open(fullReceipt, FileMode.Open, FileAccess.Read, FileShare.Read))
+            await ExpectAsync<IOException>(async delegate { await engine.UninstallAsync("module-one", true, CancellationToken.None); },
+                "full removal restores staged payload when registration deletion fails");
+        Check(engine.GetStatus("module-one").IsInstalled && File.Exists(ownedData), "full removal rollback restores payload and receipt");
+        await engine.UninstallAsync("module-two", true, CancellationToken.None);
+        Check(!Directory.Exists(Path.GetDirectoryName(two.ExecutablePath)) && Directory.Exists(one.RuntimeDirectory) &&
+            engine.GetStatus("module-one").IsInstalled, "full removal retains another native app and its shared runtime");
+        string uncertainLegacy = Path.Combine(cache, "Apps", "unknown-legacy", "current.version");
+        Directory.CreateDirectory(Path.GetDirectoryName(uncertainLegacy));
+        File.WriteAllText(uncertainLegacy, "uncertain");
+        await engine.UninstallAsync("module-one", true, CancellationToken.None);
+        Check(!File.Exists(ownedData) && Directory.Exists(one.RuntimeDirectory), "uncertain legacy reference retains native runtime");
+        File.Delete(uncertainLegacy);
+        await engine.InstallAsync("module-one", CancellationToken.None);
+        await engine.UninstallAsync("module-one", true, CancellationToken.None);
+        Check(!Directory.Exists(one.RuntimeDirectory) && File.Exists(installedOne.InstalledBootstrapperPath),
+            "last proven app reference removes runtime but retains launcher distribution");
+
         string stableDirectory = Path.GetDirectoryName(installedOne.InstalledBootstrapperPath);
         string externalDirectory = Path.Combine(fixture, "junction-target");
         Directory.CreateDirectory(externalDirectory);

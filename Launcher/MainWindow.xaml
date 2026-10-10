@@ -314,6 +314,7 @@
                                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}" AutomationProperties.Name="앱 작업 메뉴">
                                                         <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateContextMenuItem_Click" AutomationProperties.Name="앱 업데이트" Visibility="Collapsed" />
                                                         <MenuItem Header="제거" Tag="{Binding}" Click="RemoveContextMenuItem_Click" AutomationProperties.Name="앱 제거" />
+                                                        <MenuItem Header="완전 삭제" Tag="{Binding}" Click="DeleteFilesContextMenuItem_Click" AutomationProperties.Name="앱 완전 삭제" />
                                                     </ContextMenu>
                                                 </Button.ContextMenu>
                                                 <Button.Template>

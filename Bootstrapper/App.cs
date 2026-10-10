@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -757,7 +757,8 @@ namespace ILauncher.BootstrapperUi
             foreach (BootstrapApp app in catalog.Apps)
             {
                 AppCard card = new AppCard(app, cardWidth, InstallClicked, RemoveClicked, RunClicked, true,
-                    InstallFromLaunchPrompt, ConfirmInstallFromLaunchPrompt, GetStatusForCardContext, UpdateClicked);
+                    InstallFromLaunchPrompt, ConfirmInstallFromLaunchPrompt, GetStatusForCardContext, UpdateClicked,
+                    FullDeleteClicked);
                 _cards.Add(app.Id, card);
                 _grid.Controls.Add(card);
             }
@@ -1523,11 +1524,12 @@ namespace ILauncher.BootstrapperUi
         {
             AppCard installedSource = _cards.Values.FirstOrDefault(card => card.IsInstalled);
             AppCard uninstalledSource = _cards.Values.FirstOrDefault(card => !card.IsInstalled);
-            int refreshCalls = 0, removeCalls = 0, installCalls = 0, promptCalls = 0, launchCalls = 0;
+            int refreshCalls = 0, removeCalls = 0, fullDeleteCalls = 0, installCalls = 0, promptCalls = 0, launchCalls = 0;
             Dictionary<string, object> result = new Dictionary<string, object>();
             if (installedSource == null || uninstalledSource == null)
             {
                 result["installedRemoveOnly"] = false;
+                result["installedFullDeleteDistinct"] = false;
                 result["uninstalledContextHasNoAction"] = false;
                 result["busyContextBlocked"] = false;
                 return result;
@@ -1535,28 +1537,38 @@ namespace ILauncher.BootstrapperUi
             AppCard installed = new AppCard(installedSource.App, 280,
                 delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
                 delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; },
-                delegate(BootstrapApp app) { refreshCalls++; return _engine.GetStatus(app.Id); });
+                delegate(BootstrapApp app) { refreshCalls++; BootstrapperAppStatus status = _engine.GetStatus(app.Id); return new BootstrapperAppStatus(status.App, status.IsReady, true, status.ExecutablePath, status.Error, status.AvailableVersion, status.InstalledVersion, false); },
+                null, delegate { fullDeleteCalls++; });
             installed.SetSmokeInstalledStatus();
             installed.RefreshContextMenuForSmoke();
             bool removeAvailable = installed.ContextRemoveAvailable && refreshCalls == 1;
             installed.PerformContextRemoveForSmoke();
             result["installedRemoveOnly"] = removeAvailable && removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            bool fullDeleteAvailable = installed.ContextFullDeleteAvailable;
+            installed.PerformContextFullDeleteForSmoke();
+            result["installedFullDeleteDistinct"] = fullDeleteAvailable && fullDeleteCalls == 1 && removeCalls == 1 &&
+                installCalls == 0 && promptCalls == 0 && launchCalls == 0;
             installed.SetBusy(true, "작업 중…");
             installed.RefreshContextMenuForSmoke();
             installed.PerformContextRemoveForSmoke();
-            result["busyContextBlocked"] = !installed.ContextRemoveAvailable && removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            installed.PerformContextFullDeleteForSmoke();
+            result["busyContextBlocked"] = !installed.ContextRemoveAvailable && !installed.ContextFullDeleteAvailable &&
+                removeCalls == 1 && fullDeleteCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
             installed.Dispose();
 
             AppCard uninstalled = new AppCard(uninstalledSource.App, 280,
                 delegate { installCalls++; }, delegate { removeCalls++; }, delegate { launchCalls++; }, true,
                 delegate { installCalls++; }, delegate { promptCalls++; return DialogResult.Yes; },
-                delegate(BootstrapApp app) { refreshCalls++; return _engine.GetStatus(app.Id); });
+                delegate(BootstrapApp app) { refreshCalls++; return _engine.GetStatus(app.Id); },
+                null, delegate { fullDeleteCalls++; });
             uninstalled.SetStatus(null);
             int priorRefreshCalls = refreshCalls;
             uninstalled.RefreshContextMenuForSmoke();
             uninstalled.PerformContextRemoveForSmoke();
-            result["uninstalledContextHasNoAction"] = !uninstalled.ContextRemoveAvailable && refreshCalls == priorRefreshCalls + 1 &&
-                removeCalls == 1 && installCalls == 0 && promptCalls == 0 && launchCalls == 0;
+            uninstalled.PerformContextFullDeleteForSmoke();
+            result["uninstalledContextHasNoAction"] = !uninstalled.ContextRemoveAvailable && !uninstalled.ContextFullDeleteAvailable &&
+                refreshCalls == priorRefreshCalls + 1 && removeCalls == 1 && fullDeleteCalls == 1 &&
+                installCalls == 0 && promptCalls == 0 && launchCalls == 0;
             uninstalled.Dispose();
             return result;
         }
@@ -1844,29 +1856,47 @@ namespace ILauncher.BootstrapperUi
         }
         private async void RemoveClicked(BootstrapApp app)
         {
+            await RemoveAppAsync(app, false);
+        }
+        private async void FullDeleteClicked(BootstrapApp app)
+        {
+            await RemoveAppAsync(app, true);
+        }
+        private async Task RemoveAppAsync(BootstrapApp app, bool deleteFiles)
+        {
             if (_smokeUi) return;
-            string confirmation = "\"" + app.Name + "\" 앱을 제거할까요?\r\n\r\n" +
+            AppCard card;
+            if (!_cards.TryGetValue(app.Id, out card) || !card.IsInstalled || card.IsBusy) return;
+            string operation = deleteFiles ? "완전 삭제" : "제거";
+            string confirmation = deleteFiles
+                ? "\"" + app.Name + "\" 앱을 완전히 삭제할까요?\r\n\r\n" +
+                  "설치 등록과 시작 메뉴 바로가기뿐 아니라 런처가 관리하는 이 앱의 설치 폴더와 다운로드 캐시도 삭제합니다. 설치 폴더 안에 직접 저장한 파일도 함께 삭제됩니다. " +
+                  "다른 앱에 필요한 공용 파일과 실행 환경, 설치 폴더 밖의 사용자 데이터는 유지됩니다.\r\n\r\n" +
+                  "삭제한 파일은 되돌릴 수 없습니다. 다시 사용하려면 설치해야 합니다."
+                : "\"" + app.Name + "\" 앱을 제거할까요?\r\n\r\n" +
                 "이 앱의 개별 설치 등록과 시작 메뉴 바로가기만 제거합니다. " +
                 "다운로드한 파일, 공용 실행 환경, 사용자 데이터는 유지됩니다.";
-            if (MessageBox.Show(this, confirmation, "앱 제거", MessageBoxButtons.YesNo,
+            if (MessageBox.Show(this, confirmation, "앱 " + operation, MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                 return;
-            if (!_inFlight.Add(app.Id)) return;
-            SetBusy(app.Id, true, "제거 중…");
+            if (!card.IsInstalled || card.IsBusy || !_inFlight.Add(app.Id)) return;
+            SetBusy(app.Id, true, operation + " 중…");
             _statusBar.SetState("working");
-            _status.Text = app.Name + " 제거 중…";
+            _status.Text = app.Name + " " + operation + " 중…";
             try
             {
-                BootstrapperUninstallResult result = await _engine.UninstallAsync(app.Id, CancellationToken.None);
+                BootstrapperUninstallResult result = deleteFiles
+                    ? await _engine.UninstallAsync(app.Id, true, CancellationToken.None)
+                    : await _engine.UninstallAsync(app.Id, CancellationToken.None);
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
                 SetOperationResultState(result.Removed ? "success" : "ready");
-                _status.Text = result.Removed ? "제거 완료: " + app.Name : "제거하지 않았습니다: " + app.Name;
+                _status.Text = result.Removed ? operation + " 완료: " + app.Name : operation + "하지 않았습니다: " + app.Name;
             }
             catch (Exception ex)
             {
                 _cards[app.Id].SetStatus(_engine.GetStatus(app.Id));
                 SetOperationResultState("error");
-                _status.Text = "제거 실패: " + Program.ShortError(ex);
+                _status.Text = operation + " 실패: " + Program.ShortError(ex);
             }
             finally { FinishOperation(app.Id); }
         }
@@ -2815,6 +2845,7 @@ namespace ILauncher.BootstrapperUi
         public bool RunActionEnabled { get { return _run.Enabled; } }
         public bool InstallActionEnabled { get { return CanChoosePrimaryAction; } }
         public bool ContextRemoveAvailable { get { return _contextRemoveAvailable; } }
+        public bool ContextFullDeleteAvailable { get { return _actionsEnabled && _installed && !_busy && _fullDeleteAction != null && _fullDeleteMenuItem.Enabled; } }
         public bool ContextUpdateAvailable { get { return _contextUpdateAvailable; } }
         public bool LaunchVisualMuted { get { return !_installed && Object.ReferenceEquals(_icon.Image, _mutedIconImage) && _name.ForeColor == MutedTitleColor && _status.ForeColor == MutedDescriptionColor; } }
         public Color CardSurfaceColor { get { return _installed ? InstalledSurfaceColor : UninstalledSurfaceColor; } }
@@ -2860,12 +2891,14 @@ namespace ILauncher.BootstrapperUi
         private readonly bool _actionsEnabled;
         private readonly Action<BootstrapApp> _installFromPrompt;
         private readonly Action<BootstrapApp> _removeAction;
+        private readonly Action<BootstrapApp> _fullDeleteAction;
         private readonly Action<BootstrapApp> _updateAction;
         private readonly Action<BootstrapApp> _runAction;
         private readonly Func<Form, BootstrapApp, DialogResult> _confirmInstall;
         private readonly Func<BootstrapApp, BootstrapperAppStatus> _refreshStatus;
         private readonly ContextMenuStrip _contextMenu;
         private readonly ToolStripMenuItem _removeMenuItem;
+        private readonly ToolStripMenuItem _fullDeleteMenuItem;
         private readonly ToolStripMenuItem _updateMenuItem;
         private readonly ProgressBar _progress;
         private bool _installed;
@@ -2885,12 +2918,14 @@ namespace ILauncher.BootstrapperUi
             Action<BootstrapApp> installFromPrompt = null,
             Func<Form, BootstrapApp, DialogResult> confirmInstall = null,
             Func<BootstrapApp, BootstrapperAppStatus> refreshStatus = null,
-            Action<BootstrapApp> update = null)
+            Action<BootstrapApp> update = null,
+            Action<BootstrapApp> fullDelete = null)
         {
             App = app;
             _actionsEnabled = actionsEnabled;
             _installFromPrompt = installFromPrompt ?? install;
             _removeAction = remove;
+            _fullDeleteAction = fullDelete;
             _updateAction = update;
             _runAction = run;
             _confirmInstall = confirmInstall ?? ShowInstallConfirmation;
@@ -2952,11 +2987,14 @@ namespace ILauncher.BootstrapperUi
             Controls.SetChildIndex(_run, Controls.Count - 1);
             _updateMenuItem = new ToolStripMenuItem("업데이트") { AccessibleName = app.Name + " 업데이트", Visible = false };
             _removeMenuItem = new ToolStripMenuItem("제거") { AccessibleName = "" + app.Name + " 제거", Visible = false };
+            _fullDeleteMenuItem = new ToolStripMenuItem("완전 삭제") { AccessibleName = app.Name + " 완전 삭제", Visible = false, Enabled = false };
             _contextMenu.Items.Add(_updateMenuItem);
             _contextMenu.Items.Add(_removeMenuItem);
+            _contextMenu.Items.Add(_fullDeleteMenuItem);
             _contextMenu.Opening += ContextMenu_Opening;
             _updateMenuItem.Click += delegate { UpdateFromContextMenu(); };
             _removeMenuItem.Click += delegate { RemoveFromContextMenu(); };
+            _fullDeleteMenuItem.Click += delegate { FullDeleteFromContextMenu(); };
             ContextMenuStrip = _contextMenu;
             _run.ContextMenuStrip = _contextMenu;
             _icon.ContextMenuStrip = _contextMenu;
@@ -3039,6 +3077,7 @@ namespace ILauncher.BootstrapperUi
         internal void CompleteAnimationForSmoke() { _run.CompleteAnimationForSmoke(); }
         public void RefreshContextMenuForSmoke() { ContextMenu_Opening(this, new CancelEventArgs()); }
         public void PerformContextRemoveForSmoke() { if (ContextRemoveAvailable) RemoveFromContextMenu(); }
+        public void PerformContextFullDeleteForSmoke() { if (ContextFullDeleteAvailable) FullDeleteFromContextMenu(); }
         public void PerformContextUpdateForSmoke() { if (ContextUpdateAvailable) UpdateFromContextMenu(); }
         private void HandlePrimaryAction()
         {
@@ -3106,6 +3145,8 @@ namespace ILauncher.BootstrapperUi
             _removeMenuItem.Visible = _installed;
             _removeMenuItem.Enabled = _installed && !_busy && _actionsEnabled;
             _contextRemoveAvailable = _removeMenuItem.Enabled;
+            _fullDeleteMenuItem.Visible = _installed && _fullDeleteAction != null;
+            _fullDeleteMenuItem.Enabled = _installed && !_busy && _actionsEnabled && _fullDeleteAction != null;
             e.Cancel = !_contextRemoveAvailable && !_contextUpdateAvailable;
         }
         private void HideActionMenuItems()
@@ -3114,6 +3155,8 @@ namespace ILauncher.BootstrapperUi
             _contextUpdateAvailable = false;
             _removeMenuItem.Visible = false;
             _removeMenuItem.Enabled = false;
+            _fullDeleteMenuItem.Visible = false;
+            _fullDeleteMenuItem.Enabled = false;
             _updateMenuItem.Visible = false;
             _updateMenuItem.Enabled = false;
         }
@@ -3130,6 +3173,13 @@ namespace ILauncher.BootstrapperUi
             try { if (_refreshStatus != null) SetStatus(_refreshStatus(App)); }
             catch { return; }
             if (_installed && !_busy) _removeAction(App);
+        }
+        private void FullDeleteFromContextMenu()
+        {
+            if (!_actionsEnabled || _busy || _fullDeleteAction == null) return;
+            try { if (_refreshStatus != null) SetStatus(_refreshStatus(App)); }
+            catch { return; }
+            if (_installed && !_busy) _fullDeleteAction(App);
         }
         private void ApplyLaunchState()
         {

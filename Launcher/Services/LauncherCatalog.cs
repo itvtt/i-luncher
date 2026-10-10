@@ -531,20 +531,25 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
         }
     }
 
-    public async Task<string> UninstallAsync(LauncherEntry entry)
+    public Task<string> UninstallAsync(LauncherEntry entry) => UninstallAsync(entry, false);
+
+    public async Task<string> UninstallAsync(LauncherEntry entry, bool deleteFiles)
     {
         if (entry.OnlineManaged && _onlineEngine is not null)
         {
-            BootstrapperUninstallResult result = await _onlineEngine.UninstallAsync(entry.Id, CancellationToken.None)
-                .ConfigureAwait(false);
-            ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null);
-            return result.Removed ? $"{entry.Name} removed." : $"{entry.Name} is already removed.";
+            try
+            {
+                BootstrapperUninstallResult result = await _onlineEngine.UninstallAsync(entry.Id, deleteFiles, CancellationToken.None)
+                    .ConfigureAwait(false);
+                return result.Removed ? $"{entry.Name} removed." : $"{entry.Name} is already removed.";
+            }
+            finally { ApplyOnlineStatuses(_loadedEntries.Values.ToList(), [], null); }
         }
         var installLock = _launchLocks.GetOrAdd(entry.Id, static _ => new SemaphoreSlim(1, 1));
         await installLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            return await _installer.UninstallAsync(entry).ConfigureAwait(false);
+            return await _installer.UninstallAsync(entry, deleteFiles).ConfigureAwait(false);
         }
         finally
         {
@@ -575,7 +580,7 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
                 if (_integratedApps is null || !_integratedApps.Entries.Any(item =>
                         string.Equals(item.Id, entry.Id, StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidOperationException($"통합 앱 실행 공급자를 찾을 수 없습니다: {entry.Id}");
-                await _integratedApps.LaunchAsync(entry.Id).ConfigureAwait(false);
+                await LaunchWithStoreLockAsync(entry, () => _integratedApps.LaunchAsync(entry.Id)).ConfigureAwait(false);
                 return;
             }
 
@@ -584,14 +589,14 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
                 : null;
             if (cachedSourceOutput is not null)
             {
-                Start(entry, cachedSourceOutput.ExecutablePath, cachedSourceOutput.WorkingDirectory, false);
+                await StartWithStoreLockAsync(entry, cachedSourceOutput.ExecutablePath, cachedSourceOutput.WorkingDirectory, false).ConfigureAwait(false);
                 return;
             }
 
             if (TryResolveLaunch(entry, out var executable, out var workingDirectory, out var isInstalled,
                     skipAutoSourceOutput: entry.IsAutoDiscoveredSourceProject))
             {
-                Start(entry, executable, workingDirectory, isInstalled);
+                await StartWithStoreLockAsync(entry, executable, workingDirectory, isInstalled).ConfigureAwait(false);
                 return;
             }
 
@@ -604,13 +609,38 @@ public sealed class LauncherCatalog : ILauncherCatalog, ILauncherUpdateCatalog
             executable = output.ExecutablePath;
             workingDirectory = output.WorkingDirectory;
             isInstalled = false;
-            Start(entry, executable, workingDirectory, isInstalled);
+            await StartWithStoreLockAsync(entry, executable, workingDirectory, isInstalled).ConfigureAwait(false);
         }
         finally
         {
             launchLock.Release();
         }
     }
+
+    private async Task LaunchWithStoreLockAsync(LauncherEntry entry, Func<Task> handoff)
+    {
+        await ManagedPayloadRemoval.Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            using (await ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsDirectory)!, CancellationToken.None).ConfigureAwait(false))
+            {
+                if (entry.TryGetInstalledExecutablePath() is null)
+                    throw new InvalidOperationException("The app was removed. Install it before launching.");
+                await handoff().ConfigureAwait(false);
+            }
+        }
+        finally { ManagedPayloadRemoval.Gate.Release(); }
+    }
+
+    private Task StartWithStoreLockAsync(LauncherEntry entry, string executable, string workingDirectory, bool isInstalled) =>
+        LaunchWithStoreLockAsync(entry, () =>
+        {
+            if (isInstalled && !Path.GetFullPath(executable).Equals(
+                    Path.GetFullPath(entry.TryGetInstalledExecutablePath()!), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The installed version changed. Retry launching the app.");
+            Start(entry, executable, workingDirectory, isInstalled);
+            return Task.CompletedTask;
+        });
 
     private bool TryResolveLaunch(LauncherEntry entry, out string executable, out string workingDirectory,
         out bool isInstalled, bool skipAutoSourceOutput = false)

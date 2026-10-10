@@ -167,6 +167,18 @@ namespace ILauncher.Bootstrapper
         public async Task<BootstrapperReadyApp> EnsureReadyAsync(BootstrapperCatalog catalog, string appId,
             CancellationToken cancellationToken)
         {
+            await ManagedPayloadRemoval.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using (await ManagedPayloadRemoval.AcquireStoreLockAsync(_options.CacheRoot, cancellationToken).ConfigureAwait(false))
+                    return await EnsureReadyCoreAsync(catalog, appId, cancellationToken).ConfigureAwait(false);
+            }
+            finally { ManagedPayloadRemoval.Gate.Release(); }
+        }
+
+        private async Task<BootstrapperReadyApp> EnsureReadyCoreAsync(BootstrapperCatalog catalog, string appId,
+            CancellationToken cancellationToken)
+        {
             if (catalog == null) throw new ArgumentNullException("catalog");
             EnsureCatalogSourcePinned(catalog);
             BootstrapperApp app = FindApp(catalog, appId);
@@ -182,7 +194,18 @@ namespace ILauncher.Bootstrapper
             return new BootstrapperReadyApp(app, executable, Path.GetDirectoryName(executable), runtime);
         }
 
-        public Task<BootstrapperLaunchResult> LaunchAsync(string appId, CancellationToken cancellationToken)
+        public async Task<BootstrapperLaunchResult> LaunchAsync(string appId, CancellationToken cancellationToken)
+        {
+            await ManagedPayloadRemoval.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using (await ManagedPayloadRemoval.AcquireStoreLockAsync(_options.CacheRoot, cancellationToken).ConfigureAwait(false))
+                    return await LaunchCoreAsync(appId, cancellationToken).ConfigureAwait(false);
+            }
+            finally { ManagedPayloadRemoval.Gate.Release(); }
+        }
+
+        private Task<BootstrapperLaunchResult> LaunchCoreAsync(string appId, CancellationToken cancellationToken)
         {
             BootstrapperCatalog catalog = GetCatalog();
             BootstrapperApp app = catalog.FindApp(appId) ?? FindInstalledAppFromReceipt(appId);
@@ -292,9 +315,21 @@ namespace ILauncher.Bootstrapper
         private async Task<BootstrapperInstallResult> InstallForCatalogAsync(BootstrapperCatalog catalog,
             string appId, CancellationToken cancellationToken)
         {
+            await ManagedPayloadRemoval.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using (await ManagedPayloadRemoval.AcquireStoreLockAsync(_options.CacheRoot, cancellationToken).ConfigureAwait(false))
+                    return await InstallForCatalogCoreAsync(catalog, appId, cancellationToken).ConfigureAwait(false);
+            }
+            finally { ManagedPayloadRemoval.Gate.Release(); }
+        }
+
+        private async Task<BootstrapperInstallResult> InstallForCatalogCoreAsync(BootstrapperCatalog catalog,
+            string appId, CancellationToken cancellationToken)
+        {
             EnsureCatalogSourcePinned(catalog);
             BootstrapperApp app = FindApp(catalog, appId);
-            await EnsureReadyAsync(catalog, app.Id, cancellationToken).ConfigureAwait(false);
+            await EnsureReadyCoreAsync(catalog, app.Id, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             string stableBootstrapper = StableBootstrapperPath(catalog);
             string receipt = ReceiptPath(app);
@@ -367,7 +402,23 @@ namespace ILauncher.Bootstrapper
             finally { gate.Release(); }
         }
 
-        public async Task<BootstrapperUninstallResult> UninstallAsync(string appId, CancellationToken cancellationToken)
+        public Task<BootstrapperUninstallResult> UninstallAsync(string appId, CancellationToken cancellationToken)
+        {
+            return UninstallAsync(appId, false, cancellationToken);
+        }
+
+        public async Task<BootstrapperUninstallResult> UninstallAsync(string appId, bool deleteFiles, CancellationToken cancellationToken)
+        {
+            await ManagedPayloadRemoval.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using (await ManagedPayloadRemoval.AcquireStoreLockAsync(_options.CacheRoot, cancellationToken).ConfigureAwait(false))
+                    return await UninstallCoreAsync(appId, deleteFiles, cancellationToken).ConfigureAwait(false);
+            }
+            finally { ManagedPayloadRemoval.Gate.Release(); }
+        }
+
+        private async Task<BootstrapperUninstallResult> UninstallCoreAsync(string appId, bool deleteFiles, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             BootstrapperCatalog catalog = GetCatalog();
@@ -425,6 +476,24 @@ namespace ILauncher.Bootstrapper
                 foreach (string candidateShortcut in FindOwnedShortcuts(app.Id))
                     if (!registrationFiles.ContainsKey(Path.GetFullPath(candidateShortcut)))
                         throw new InvalidDataException("An app shortcut without a matching managed receipt was preserved.");
+                ManagedPayloadRemoval removal = null;
+                if (deleteFiles)
+                {
+                    removal = new ManagedPayloadRemoval();
+                    string appStore = SafeFiles.CombineContained(_options.CacheRoot, Path.Combine("apps", app.Id), "Managed app store");
+                    ManagedPayloadRemoval.AddVersions(removal, appStore, app.Id, true, _options.BootstrapperExecutablePath);
+                    if (!ManagedPayloadRemoval.HasOtherRegistrations(_options.CacheRoot, app.Id))
+                    {
+                        ManagedPayloadRemoval.AddRuntimes(removal, _options.CacheRoot, _options.BootstrapperExecutablePath);
+                        if (legacy != null)
+                        {
+                            string shared = Path.Combine(_options.CacheRoot, "Apps", "_shared-payloads");
+                            if (SafeFiles.IsWithinOrEqual(shared, legacy.ExecutablePath))
+                                ManagedPayloadRemoval.AddVersions(removal, shared, app.Id, false, _options.BootstrapperExecutablePath);
+                        }
+                    }
+                    removal.Stage();
+                }
                 try
                 {
                     foreach (string path in registrationFiles.Keys)
@@ -433,6 +502,8 @@ namespace ILauncher.Bootstrapper
                 catch (Exception uninstallError)
                 {
                     var rollbackErrors = new List<Exception>();
+                    try { if (removal != null) removal.Rollback(); }
+                    catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
                     foreach (KeyValuePair<string, byte[]> snapshot in registrationFiles)
                     {
                         try
@@ -456,6 +527,7 @@ namespace ILauncher.Bootstrapper
                     }
                     throw;
                 }
+                if (removal != null) removal.Purge();
                 return new BootstrapperUninstallResult(app.Id, true);
             }
             finally { gate.Release(); }

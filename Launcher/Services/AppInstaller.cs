@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using ILauncher.Models;
+using ILauncher.Bootstrapper;
 
 namespace ILauncher.Services;
 
@@ -25,6 +26,19 @@ internal sealed class AppInstaller
 
     internal async Task<string> InstallAsync(LauncherEntry entry, string? executablePath = null)
     {
+        if (entry.InstallDefinition?.Type == LauncherInstallType.Command)
+            return await InstallCoreAsync(entry, executablePath).ConfigureAwait(false);
+        await ManagedPayloadRemoval.Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            using (await ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None).ConfigureAwait(false))
+                return await InstallCoreAsync(entry, executablePath).ConfigureAwait(false);
+        }
+        finally { ManagedPayloadRemoval.Gate.Release(); }
+    }
+
+    private async Task<string> InstallCoreAsync(LauncherEntry entry, string? executablePath)
+    {
         var definition = entry.InstallDefinition
             ?? throw new InvalidOperationException($"{entry.Name}에는 설치 방법이 구성되어 있지 않습니다.");
 
@@ -39,9 +53,20 @@ internal sealed class AppInstaller
     }
 
     internal Task<string> UninstallAsync(LauncherEntry entry) =>
-        Task.Run(() => UninstallManagedInstall(entry), CancellationToken.None);
+        UninstallAsync(entry, false);
 
-    private string UninstallManagedInstall(LauncherEntry entry)
+    internal async Task<string> UninstallAsync(LauncherEntry entry, bool deleteFiles)
+    {
+        await ManagedPayloadRemoval.Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            using (await ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None).ConfigureAwait(false))
+                return await Task.Run(() => UninstallManagedInstall(entry, deleteFiles), CancellationToken.None).ConfigureAwait(false);
+        }
+        finally { ManagedPayloadRemoval.Gate.Release(); }
+    }
+
+    private string UninstallManagedInstall(LauncherEntry entry, bool deleteFiles = false)
     {
         var installType = entry.InstallDefinition?.Type;
         if (installType is not (LauncherInstallType.Portable or LauncherInstallType.SharedPayload))
@@ -124,6 +149,27 @@ internal sealed class AppInstaller
             receiptBackups[iconPath] = File.ReadAllBytes(iconPath);
         }
 
+        ManagedPayloadRemoval? removal = null;
+        if (deleteFiles)
+        {
+            string expectedAppDirectory = Path.GetFullPath(Path.Combine(_appsBaseDirectory, entry.Id));
+            if (!appDirectory.Equals(expectedAppDirectory, StringComparison.OrdinalIgnoreCase) ||
+                entry.Id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || entry.Id is "." or "..")
+                throw new InvalidDataException("Full removal requires the selected app's exact managed directory.");
+            removal = new ManagedPayloadRemoval();
+            string? protectedSource = entry.InstallSourceDirectory ?? entry.ExecutablePath;
+            ManagedPayloadRemoval.AddVersions(removal, appDirectory, entry.Id, native: false, protectedSource);
+            if (installType == LauncherInstallType.SharedPayload)
+            {
+                string expectedShared = Path.Combine(_appsBaseDirectory, "_shared-payloads");
+                if (!Path.GetFullPath(payloadDirectory).Equals(expectedShared, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Full removal refused a foreign shared payload store.");
+                if (!ManagedPayloadRemoval.HasOtherRegistrations(Path.GetDirectoryName(_appsBaseDirectory)!, entry.Id, false))
+                    ManagedPayloadRemoval.AddVersions(removal, expectedShared, entry.Id, native: false, protectedSource);
+            }
+            removal.Stage();
+        }
+
         try
         {
             if (shortcutBytes is not null) File.Delete(shortcutPath);
@@ -135,6 +181,8 @@ internal sealed class AppInstaller
         catch (Exception uninstallError)
         {
             var rollbackErrors = new List<Exception>();
+            try { removal?.Rollback(); }
+            catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
             foreach ((string path, byte[] contents) in receiptBackups)
             {
                 try
@@ -167,6 +215,7 @@ internal sealed class AppInstaller
             throw;
         }
 
+        removal?.Purge();
         try
         {
             if (!Directory.EnumerateFileSystemEntries(appDirectory).Any())
@@ -177,7 +226,9 @@ internal sealed class AppInstaller
             // An empty receipt directory is optional; payloads and unknown files remain untouched.
         }
 
-        return $"{entry.Name} was removed from the Start Menu. Installed files and user data were preserved.";
+        return deleteFiles
+            ? $"{entry.Name} was fully removed. Shared files still used by other apps and source distributions were preserved."
+            : $"{entry.Name} was removed from the Start Menu. Installed files and user data were preserved.";
     }
 
     private static void VerifyOwnedShortcut(string shortcutPath, string expectedExecutable,
@@ -438,6 +489,18 @@ internal sealed class AppInstaller
     }
 
     internal string RefreshInstalledShortcut(LauncherEntry entry)
+    {
+        ManagedPayloadRemoval.Gate.Wait();
+        try
+        {
+            using (ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None)
+                       .GetAwaiter().GetResult())
+                return RefreshInstalledShortcutCore(entry);
+        }
+        finally { ManagedPayloadRemoval.Gate.Release(); }
+    }
+
+    private string RefreshInstalledShortcutCore(LauncherEntry entry)
     {
         string executable = entry.TryGetInstalledExecutablePath()
             ?? throw new InvalidOperationException($"{entry.Name} has no complete installed version.");

@@ -482,9 +482,8 @@ public partial class MainWindow : Window
             updateItem.Visibility = card.CanUpdate ? Visibility.Visible : Visibility.Collapsed;
             updateItem.IsEnabled = card.CanUpdate;
         }
-        if (actions.Length > 1)
+        foreach (MenuItem removeItem in actions.Skip(1))
         {
-            MenuItem removeItem = actions[1];
             removeItem.Tag = card;
             removeItem.Visibility = card.CanRemove ? Visibility.Visible : Visibility.Collapsed;
             removeItem.IsEnabled = card.CanRemove;
@@ -500,18 +499,26 @@ public partial class MainWindow : Window
         await UpdateCardAsync(card);
     }
 
-    private async void RemoveContextMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void RemoveContextMenuItem_Click(object sender, RoutedEventArgs e) =>
+        await ConfirmAndUninstallCardAsync(sender, deleteFiles: false);
+
+    private async void DeleteFilesContextMenuItem_Click(object sender, RoutedEventArgs e) =>
+        await ConfirmAndUninstallCardAsync(sender, deleteFiles: true);
+
+    private async Task ConfirmAndUninstallCardAsync(object sender, bool deleteFiles)
     {
         if (sender is not MenuItem { Tag: LauncherCard card }) return;
         card.RefreshInstalledState();
         if (!card.CanRemove) return;
-        string confirmation = BuildUninstallConfirmationMessage(card.Entry);
+        string confirmation = deleteFiles
+            ? BuildDeleteFilesConfirmationMessage(card.Entry)
+            : BuildUninstallConfirmationMessage(card.Entry);
         if (!_confirmUninstall(card.Entry, confirmation)) return;
 
         // Re-read after confirmation so a changed state can never toggle into another action.
         card.RefreshInstalledState();
         if (!card.CanRemove) return;
-        await UninstallCardAsync(card);
+        await UninstallCardAsync(card, deleteFiles);
     }
 
     private async Task InstallCardAsync(LauncherCard card)
@@ -547,7 +554,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task UninstallCardAsync(LauncherCard card)
+    private async Task UninstallCardAsync(LauncherCard card, bool deleteFiles = false)
     {
         card.RefreshInstalledState();
         if (!card.CanRemove) return;
@@ -557,7 +564,8 @@ public partial class MainWindow : Window
         BeginOperation();
         try
         {
-            await _catalog.UninstallAsync(card.Entry);
+            if (deleteFiles) await _catalog.UninstallAsync(card.Entry, deleteFiles: true);
+            else await _catalog.UninstallAsync(card.Entry);
             card.RefreshInstalledState();
             card.StatusMessage = string.Empty;
         }
@@ -675,6 +683,13 @@ public partial class MainWindow : Window
         $"\"{entry.Name}\" \uC571\uC744 \uC81C\uAC70\uD560\uAE4C\uC694?\n\n" +
         "\uC774 \uC571\uC758 \uAC1C\uBCC4 \uC124\uCE58 \uB4F1\uB85D\uACFC \uC2DC\uC791 \uBA54\uB274 \uBC14\uB85C\uAC00\uAE30\uB9CC \uC81C\uAC70\uD569\uB2C8\uB2E4. " +
         "\uB2E4\uC6B4\uB85C\uB4DC\uD55C \uD30C\uC77C, \uACF5\uC6A9 \uC2E4\uD589 \uD658\uACBD, \uC0AC\uC6A9\uC790 \uB370\uC774\uD130\uB294 \uC720\uC9C0\uB429\uB2C8\uB2E4.";
+
+    private static string BuildDeleteFilesConfirmationMessage(LauncherEntry entry) =>
+        $"\"{entry.Name}\" 앱을 완전 삭제할까요?\n\n" +
+        "선택한 앱의 설치 등록, 시작 메뉴 바로가기, 런처가 관리하는 설치 파일과 캐시를 삭제합니다. " +
+        "설치 폴더 안에 직접 저장한 파일도 삭제되며, 삭제한 파일은 복구할 수 없습니다.\n\n" +
+        "다른 앱이 사용하는 공용 파일과 설치 폴더 밖에 저장된 문서 및 설정은 유지됩니다. " +
+        "실행 중인 앱은 종료한 뒤 다시 시도해 주세요.";
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
     {

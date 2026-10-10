@@ -178,12 +178,19 @@ async Task Check(string name, Func<Task> action)
 
 try
 {
+    if (args.Contains("--full-removal-checks", StringComparer.Ordinal))
+    {
+        await Check("full removal ownership, sharing, and rollback", FullRemovalChecks.RunAsync);
+        Environment.ExitCode = failed == 0 ? 0 : 1;
+        return;
+    }
     await Check("notice feed, cache, revisions, and transport checks", NoticeChecks.RunAsync);
     if (args.Contains("--notice-checks", StringComparer.Ordinal))
     {
         Environment.ExitCode = failed == 0 ? 0 : 1;
         return;
     }
+    await Check("full removal ownership, sharing, and rollback", FullRemovalChecks.RunAsync);
     await Check("online install receipts keep legacy metadata valid and unknown versions nullable", () =>
     {
         var legacyReceipt = new Dictionary<string, string>
