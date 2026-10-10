@@ -217,6 +217,109 @@ class TextNoticeChecks(unittest.TestCase):
         self.assertEqual(original_json, self.source.read_bytes())
         self.assertEqual(original_text, self.text.read_bytes())
 
+    def managed(self):
+        return {notice["title"]: notice for notice in publisher.build_feed(self.source, self.text)["notices"][1:]}
+
+    def test_multiple_parsing_and_duplicates(self):
+        self.text.write_text("\n First \nbody one\n---\n\nSecond\nbody two\n---\nThird\nbody three", encoding="utf-8")
+        self.assertEqual([("First", "body one"), ("Second", "body two"), ("Third", "body three")],
+                         publisher.read_notice_sections(self.text))
+        for text in ("---\nTitle\nbody", "Title\nbody\n---", "Title\nbody\n---\n---\nOther\nbody",
+                     "Title\nbody\n---\nMissing body", "Same  Title\nbody\n---\nsame title\nother",
+                     "A\nbody\n---\n\uff21\nother"):
+            with self.subTest(text=text):
+                self.text.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    publisher.read_notice_sections(self.text)
+
+    def test_transition_preserves_single_and_other_sections(self):
+        self.commit_text("First\noriginal", "2026-10-09T00:00:00Z")
+        legacy = self.managed()["First"]
+        self.commit_text("First\noriginal\n---\nSecond\nsecond body", "2026-10-10T00:00:00Z")
+        two = self.managed()
+        self.assertEqual(legacy, two["First"])
+        self.assertEqual(2, two["Second"]["revision"])
+        self.commit_text("Third\nthird body\n---\nSecond\nsecond body\n---\nFirst\noriginal", "2026-10-11T00:00:00Z")
+        three = self.managed()
+        self.assertEqual(two["First"], three["First"])
+        self.assertEqual(two["Second"], three["Second"])
+        self.assertEqual(3, three["Third"]["revision"])
+        self.commit_text("Second\nedited\n---\nFirst\noriginal\n---\nThird\nthird body", "2026-10-12T00:00:00Z")
+        edited = self.managed()
+        self.assertEqual(three["First"], edited["First"])
+        self.assertEqual(three["Third"], edited["Third"])
+        self.assertEqual(three["Second"]["id"], edited["Second"]["id"])
+        self.assertEqual((4, "2026-10-12T00:00:00Z"),
+                         (edited["Second"]["revision"], edited["Second"]["publishedAt"]))
+        self.assertEqual(edited, self.managed())
+
+    def test_rename_remove_reintroduce_and_empty(self):
+        self.commit_text("One\nbody\n---\nTwo\nbody", "2026-10-09T00:00:00Z")
+        first = self.managed()
+        self.commit_text("Renamed\nbody\n---\nTwo\nbody", "2026-10-10T00:00:00Z")
+        renamed = self.managed()
+        self.assertNotEqual(first["One"]["id"], renamed["Renamed"]["id"])
+        self.assertEqual(first["Two"], renamed["Two"])
+        self.commit_text("Two\nbody", "2026-10-11T00:00:00Z")
+        self.assertEqual({"Two": first["Two"]}, self.managed())
+        self.commit_text("One\nbody\n---\nTwo\nbody", "2026-10-12T00:00:00Z")
+        reintroduced = self.managed()
+        self.assertEqual(first["One"]["id"], reintroduced["One"]["id"])
+        self.assertEqual(4, reintroduced["One"]["revision"])
+        self.assertEqual(first["Two"], reintroduced["Two"])
+        self.commit_text("", "2026-10-13T00:00:00Z")
+        self.assertEqual([NOTICE], publisher.build_feed(self.source, self.text)["notices"])
+        self.commit_text("Two\nbody", "2026-10-14T00:00:00Z")
+        self.assertEqual(first["Two"]["id"], self.managed()["Two"]["id"])
+        self.assertEqual(6, self.managed()["Two"]["revision"])
+
+    def test_invalid_history_correction_and_uncommitted_refusal(self):
+        self.commit_text("One\nbody\n---\nTwo\nbody", "2026-10-09T00:00:00Z")
+        valid = self.managed()
+        self.commit_text("One\nbody\n---", "2026-10-10T00:00:00Z")
+        self.text.write_text("One\nbody\n---\nTwo\nbody", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "commit the TXT first"):
+            self.managed()
+        self.commit_text("One\nbody\n---\nTwo\ncorrected", "2026-10-11T00:00:00Z")
+        corrected = self.managed()
+        self.assertEqual(valid["One"], corrected["One"])
+        self.assertEqual((3, "2026-10-11T00:00:00Z"),
+                         (corrected["Two"]["revision"], corrected["Two"]["publishedAt"]))
+        self.text.write_text("One\nuncommitted\n---\nTwo\ncorrected", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "commit the TXT first"):
+            self.managed()
+
+    def test_multiple_first_parent_merge_and_manual_collision(self):
+        self.commit_text("One\nbody\n---\nTwo\nbody", "2026-10-09T00:00:00Z")
+        original = self.managed()
+        branch = self.git("branch", "--show-current")
+        self.git("checkout", "--quiet", "-b", "multi-edit")
+        self.commit_text("One\nchanged\n---\nTwo\nbody", "2026-10-10T01:00:00Z")
+        self.git("checkout", "--quiet", branch)
+        self.git("merge", "--quiet", "--no-ff", "multi-edit", "-m", "Merge multi notice",
+                 timestamp="2026-10-10T02:00:00Z")
+        merged = self.managed()
+        self.assertEqual(original["Two"], merged["Two"])
+        self.assertEqual((2, "2026-10-10T02:00:00Z"),
+                         (merged["One"]["revision"], merged["One"]["publishedAt"]))
+        self.source.write_text(json.dumps({"schemaVersion": 1, "notices": [
+            dict(NOTICE, id=merged["One"]["id"])]}), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "reserved"):
+            publisher.build_feed(self.source, self.text)
+
+    def test_uncommitted_clear_refused_and_committed_clear_preserves_manual(self):
+        self.commit_text("One\nbody\n---\nTwo\nbody")
+        for blank in ("", " \n\t\n"):
+            self.text.write_text(blank, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "commit the TXT first"):
+                publisher.build_feed(self.source, self.text)
+        self.commit_text("", "2026-10-10T00:00:00Z")
+        self.assertEqual([NOTICE], publisher.build_feed(self.source, self.text)["notices"])
+        self.commit_text("Single\nbody", "2026-10-11T00:00:00Z")
+        self.text.write_text("", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "commit the TXT first"):
+            publisher.build_feed(self.source, self.text)
+
 
 if __name__ == "__main__":
     unittest.main()
