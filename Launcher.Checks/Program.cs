@@ -463,7 +463,7 @@ try
         var result = catalog.Load();
         var entry = result.Entries.SingleOrDefault(candidate => candidate.Id == "file_shared");
         Assert(entry is not null, "The real file_shared manifest is missing from the source catalog: " + string.Join(" | ", result.Errors));
-        Assert(entry!.Name == "File Shared" && entry.Category == "네트워크"
+        Assert(entry!.Name == "File Shared" && entry.Category == "파일 공유"
                && entry.Arguments.Count == 0 && entry.CanBuild && entry.CanInstall,
             "The file_shared catalog entry has unexpected metadata or is not buildable/installable.");
         Assert(entry.BuildDefinition?.ProjectPath == Path.Combine(productionRoot, "file_shared", "file_shared.csproj"),

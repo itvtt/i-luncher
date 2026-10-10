@@ -24,7 +24,7 @@ internal sealed class IntegratedAppProvider : IIntegratedAppProvider
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/SwiftCopy-128.png"),
         CreateEntry(DiskAtlasId, "DiskAtlas", "저장 공간을 분석하고 파일을 관리합니다.", "디스크 분석",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/DiskAtlas.png"),
-        CreateEntry(DeskCalId, "DeskCal", "캘린더, 일정과 메모", "일정",
+        CreateEntry(DeskCalId, "DeskCal", "캘린더, 일정과 메모", "캘린더",
             "pack://application:,,,/i-luncher;component/Assets/BuiltIns/DeskCal.ico")
     ];
 

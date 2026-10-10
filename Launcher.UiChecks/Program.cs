@@ -678,7 +678,7 @@ internal static class Program
                 ((Button)window.FindName("ClearFiltersButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Check(window.LauncherCards.Count > 0 && search.Text.Length == 0,
                     "Clear filters resets search and category selection");
-                search.Text = "일정";
+                search.Text = "캘린더";
                 Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "deskcal",
                     "DeskCal is searchable by its Korean category");
                 MainWindow.LauncherCard hiddenBusyCard = window.LauncherCards[0];
@@ -688,14 +688,14 @@ internal static class Program
                 Check(window.LauncherCards.Count == 1 && window.LauncherCards[0].Entry.Id == "swift-copy"
                       && hiddenBusyCard.IsBusy && hiddenBusyCard.StatusMessage == "필터 밖 작업 진행 중",
                     "Filtering an active card preserves its operation state off-screen");
-                search.Text = "일정";
+                search.Text = "캘린더";
                 Check(ReferenceEquals(window.LauncherCards.Single(), hiddenBusyCard)
                       && hiddenBusyCard.IsBusy && hiddenBusyCard.StatusMessage == "필터 밖 작업 진행 중",
                     "Restoring the filter reveals the same active card and progress state");
                 hiddenBusyCard.IsBusy = false;
                 hiddenBusyCard.StatusMessage = string.Empty;
                 ((Button)window.FindName("RefreshButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Check(search.Text == "일정" && window.LauncherCards.Count == 1
+                Check(search.Text == "캘린더" && window.LauncherCards.Count == 1
                       && ((TextBlock)window.FindName("CountText")).Text == "1개 앱", "Refresh preserves search and updates result count");
                 search.Clear();
                 window.UpdateLayout();
