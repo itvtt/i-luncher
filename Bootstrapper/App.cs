@@ -2795,7 +2795,7 @@ namespace ILauncher.BootstrapperUi
             using (GraphicsPath path = RoundedDrawing.CreatePath(new RectangleF(0.5F, 0.5F, Width - 1, Height - 1), Height / 2F))
             using (SolidBrush fill = new SolidBrush(Color.FromArgb(34, 43, 58)))
                 e.Graphics.FillPath(fill, path);
-            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(9, 0, Width - 18, Height), ForeColor,
+            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(4, 0, Width - 8, Height), ForeColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
         }
     }
@@ -2846,8 +2846,9 @@ namespace ILauncher.BootstrapperUi
         public bool HasCompactIdleState { get { return _status.Visible && !_progress.Visible && _status.Text == App.Description; } }
         private readonly PictureBox _icon;
         private readonly Label _name;
+        private readonly CategoryBadge _categoryBadge;
         private readonly Label _versionLabel;
-        public string LaunchGroupGeometry { get { return _icon.Bounds == new Rectangle(12, 20, 64, 64) && _name.Bounds == new Rectangle(92, 10, 176, 22) && _status.Bounds == new Rectangle(92, 34, 176, 32) && _run.Bounds == new Rectangle(0, 0, 280, 108) ? "matches" : "mismatch"; } }
+        public string LaunchGroupGeometry { get { return _icon.Bounds == new Rectangle(12, 20, 64, 64) && _name.Bounds == new Rectangle(92, 10, 100, 22) && _categoryBadge.Bounds == new Rectangle(204, 10, 64, 20) && _status.Bounds == new Rectangle(92, 34, 176, 32) && _run.Bounds == new Rectangle(0, 0, 280, 108) ? "matches" : "mismatch"; } }
         public string RegistrationActionGeometry { get { return _versionLabel.Bounds == new Rectangle(92, 72, 176, 24) && _progress.Bounds == new Rectangle(12, 103, 256, 3) ? "matches" : "mismatch"; } }
         public bool ContentClearsActions { get { return LaunchGroupGeometry == "matches" && RegistrationActionGeometry == "matches" && LaunchRegionContainsContent && ClientRectangle.Contains(_versionLabel.Bounds) && ClientRectangle.Contains(_progress.Bounds); } }
         public bool TitleHasFullTooltip { get { return _name.AutoEllipsis && _toolTip.GetToolTip(_name) == App.Name; } }
@@ -2911,8 +2912,11 @@ namespace ILauncher.BootstrapperUi
             _icon.Image = _mutedIconImage;
             HasDecodedIcon = iconDecoded;
             Controls.Add(_icon);
-            _name = new Label { Text = app.Name, Left = 92, Top = 10, Width = 176, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, BackColor = BackColor, AutoSize = false, AutoEllipsis = true, Cursor = Cursors.Hand, AccessibleRole = AccessibleRole.StaticText };
+            _name = new Label { Text = app.Name, Left = 92, Top = 10, Width = 100, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10.5F), ForeColor = Color.White, BackColor = BackColor, AutoSize = false, AutoEllipsis = true, Cursor = Cursors.Hand, AccessibleRole = AccessibleRole.StaticText };
             Controls.Add(_name);
+            _categoryBadge = new CategoryBadge { Text = app.Category, Left = width - 76, Top = 10, Width = 64, Height = 20, Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Font = new Font("Segoe UI", 7.5F), ForeColor = Color.FromArgb(198, 211, 255), BackColor = BackColor, Cursor = Cursors.Hand, AccessibleName = app.Category };
+            Controls.Add(_categoryBadge);
             _status = new Label { Text = app.Description, Left = 92, Top = 34, Width = 176, Height = 32, Font = new Font("Segoe UI", 8.5F), Visible = true, ForeColor = Color.FromArgb(165, 174, 190), BackColor = BackColor, AutoSize = false, AutoEllipsis = true, AccessibleRole = AccessibleRole.StaticText, AccessibleName = app.Name + " 설명", Cursor = Cursors.Hand };
             Controls.Add(_status);
             _versionLabel = new Label { Text = "", Left = 92, Top = 72, Width = 176, Height = 24, Font = new Font("Segoe UI", 8.5F), Visible = true, ForeColor = Color.FromArgb(142, 153, 175), BackColor = BackColor, AutoSize = false, AutoEllipsis = true, AccessibleRole = AccessibleRole.StaticText, AccessibleName = app.Name + " 버전" };
@@ -2934,11 +2938,14 @@ namespace ILauncher.BootstrapperUi
             _run.EnabledChanged += delegate { Invalidate(); };
             _icon.Click += delegate { _run.PerformClick(); };
             _name.Click += delegate { _run.PerformClick(); };
+            _categoryBadge.Click += delegate { _run.PerformClick(); };
             _status.Click += delegate { _run.PerformClick(); };
             _icon.MouseEnter += delegate { _run.SetPointerHover(true); };
             _icon.MouseLeave += delegate { SchedulePointerHoverReset(); };
             _name.MouseEnter += delegate { _run.SetPointerHover(true); };
             _name.MouseLeave += delegate { SchedulePointerHoverReset(); };
+            _categoryBadge.MouseEnter += delegate { _run.SetPointerHover(true); };
+            _categoryBadge.MouseLeave += delegate { SchedulePointerHoverReset(); };
             _status.MouseEnter += delegate { _run.SetPointerHover(true); };
             _status.MouseLeave += delegate { SchedulePointerHoverReset(); };
             _contextMenu = new ContextMenuStrip();
@@ -2954,6 +2961,7 @@ namespace ILauncher.BootstrapperUi
             _run.ContextMenuStrip = _contextMenu;
             _icon.ContextMenuStrip = _contextMenu;
             _name.ContextMenuStrip = _contextMenu;
+            _categoryBadge.ContextMenuStrip = _contextMenu;
             _status.ContextMenuStrip = _contextMenu;
             _versionLabel.ContextMenuStrip = _contextMenu;
             _versionLabel.Click += delegate { _run.PerformClick(); };
@@ -3079,6 +3087,7 @@ namespace ILauncher.BootstrapperUi
             BackColor = color;
             if (_icon != null) _icon.BackColor = color;
             if (_name != null) _name.BackColor = color;
+            if (_categoryBadge != null) _categoryBadge.BackColor = color;
             if (_status != null) _status.BackColor = color;
             if (_versionLabel != null) _versionLabel.BackColor = color;
         }
@@ -3132,6 +3141,7 @@ namespace ILauncher.BootstrapperUi
             _run.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(CardSurfaceColor, 0.10F);
             _icon.BackColor = CardSurfaceColor;
             _name.BackColor = CardSurfaceColor;
+            _categoryBadge.BackColor = CardSurfaceColor;
             _status.BackColor = CardSurfaceColor;
             _versionLabel.BackColor = CardSurfaceColor;
             _run.Enabled = CanChoosePrimaryAction;
@@ -3175,6 +3185,7 @@ namespace ILauncher.BootstrapperUi
                 _toolTip.Dispose();
                 _contextMenu.Dispose();
                 _name.Font.Dispose();
+                _categoryBadge.Font.Dispose();
                 _status.Font.Dispose();
                 _versionLabel.Font.Dispose();
                 _colorIconImage.Dispose();

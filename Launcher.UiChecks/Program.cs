@@ -683,10 +683,9 @@ internal static class Program
                           ReferenceEquals(image.DataContext, card)
                           && ((Border)((FrameworkElement)image.Parent).Parent).ToolTip?.ToString()?.Contains(card.Entry.Category, StringComparison.CurrentCultureIgnoreCase) == true
                           && ((Border)((FrameworkElement)image.Parent).Parent).ToolTip?.ToString()?.Contains(card.Entry.Description, StringComparison.CurrentCultureIgnoreCase) == true))
-                      && !Descendants<TextBlock>(window).Any(text => text.IsVisible
-                          && window.LauncherCards.Any(card => ReferenceEquals(text.DataContext, card)
-                              && text.Text == card.Entry.Category)),
-                    "Cards keep category and description in icon tooltips without persistent category labels");
+                      && window.LauncherCards.All(card => Descendants<TextBlock>(window).Any(text => text.IsVisible
+                          && ReferenceEquals(text.DataContext, card) && text.Text == card.Entry.Category)),
+                    "Cards show category badges and keep category and description in icon tooltips");
                 Check(expectedSupportedAppIds.All(id =>
                 {
                     Button run = launchButtons.Single(button => AutomationProperties.GetAutomationId(button) == $"Launch_{id}");
@@ -725,7 +724,7 @@ internal static class Program
                         && Math.Abs(iconBounds.Top - (cardBounds.Top + 20)) < 2
                         && Math.Abs(titleBounds.Left - (cardBounds.Left + 92)) < 2
                         && Math.Abs(titleBounds.Top - (cardBounds.Top + 10)) < 2
-                        && title.ActualWidth == 176 && title.ActualHeight == 22
+                        && title.ActualWidth == 100 && title.ActualHeight == 22
                         && title.TextTrimming == TextTrimming.CharacterEllipsis
                         && Math.Abs(descriptionBounds.Left - (cardBounds.Left + 92)) < 2
                         && Math.Abs(descriptionBounds.Top - (cardBounds.Top + 34)) < 2
