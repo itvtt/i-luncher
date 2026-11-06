@@ -1,955 +1,711 @@
-using System.ComponentModel;
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
+using System.IO.Compression;
+using System.Text.Json;
 using ILauncher.Models;
-using ILauncher.Bootstrapper;
+using Microsoft.Win32;
 
 namespace ILauncher.Services;
 
-internal sealed class AppInstaller
+/// <summary>이 PC 에 설치된 앱</summary>
+public sealed record InstalledApp(
+    string InstallName,
+    string Directory,
+    string? ExecutablePath,
+    ReleaseVersion? Version,
+    string? VersionSource,
+    string? ExecutableVersion,
+    bool ManagedByLauncher,
+    string? UninstallCommand,
+    string? QuietUninstallCommand);
+
+public sealed class AppRunningException(string name)
+    : InvalidOperationException($"{name}이(가) 실행 중이라 파일을 바꿀 수 없습니다. {name}을(를) 종료한 뒤 다시 시도하세요.");
+
+public sealed class RuntimeMissingException(string framework, string version)
+    : InvalidOperationException($"이 앱을 실행하려면 {FriendlyName(framework)} {version} 이상이 필요한데 이 PC에 없습니다.")
 {
-    private const string CompletionMarker = ".install-complete";
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> SharedPayloadLocks =
-        new(StringComparer.OrdinalIgnoreCase);
-    private readonly string _appsBaseDirectory;
-    private readonly string _startMenuDirectory;
+    public string Framework { get; } = framework;
+    public string RequiredVersion { get; } = version;
+    public string DownloadUrl => $"https://dotnet.microsoft.com/download/dotnet/{RequiredVersion.Split('.')[0]}.0";
 
-    internal AppInstaller(string appsBaseDirectory, string startMenuDirectory)
+    private static string FriendlyName(string framework) => framework switch
     {
-        _appsBaseDirectory = Path.GetFullPath(appsBaseDirectory);
-        _startMenuDirectory = Path.GetFullPath(startMenuDirectory);
+        "Microsoft.WindowsDesktop.App" => ".NET Desktop Runtime",
+        "Microsoft.AspNetCore.App" => "ASP.NET Core Runtime",
+        _ => ".NET Runtime"
+    };
+}
+
+/// <summary>
+/// 앱을 사용자 폴더에 설치·업데이트·제거. 앱들의 자체 설치 프로그램(DeskCal-Setup.exe 등)과 같은 규칙을 씀:
+///   설치 폴더   %LOCALAPPDATA%\Programs\&lt;InstallName&gt;
+///   "앱" 목록   HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\&lt;InstallName&gt; (InstallLocation, DisplayVersion)
+///   바로 가기   시작 메뉴\프로그램\&lt;이름&gt;.lnk
+/// 그래서 런처로 설치한 앱을 따로 실행해도 앱의 자체 업데이터가 "설치된 사본"으로 알아보고 스스로 업데이트함.
+/// 관리자 권한은 필요 없음.
+/// </summary>
+public sealed class AppInstaller
+{
+    public const string ManifestFileName = ".i-luncher.json";
+    public const string DefaultUninstallRoot = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+
+    private readonly string _programsRoot;
+    private readonly string _uninstallRoot;
+    private readonly string? _shortcutDirectory;
+    private readonly string _launcherCommand;
+    private readonly string? _launcherRuntime;
+    private readonly bool _useGlobalRuntimes;
+
+    public AppInstaller(string? programsRoot = null, string? uninstallRoot = null, string? shortcutDirectory = null,
+        string? launcherCommand = null, string? launcherRuntime = null, bool useGlobalRuntimes = true, bool createShortcuts = true)
+    {
+        _programsRoot = programsRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs");
+        _uninstallRoot = uninstallRoot ?? DefaultUninstallRoot;
+        _shortcutDirectory = createShortcuts ? shortcutDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs) : null;
+        _launcherCommand = launcherCommand ?? Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "i-luncher.exe");
+        _launcherRuntime = launcherRuntime ?? Path.Combine(AppContext.BaseDirectory, "dotnet");
+        _useGlobalRuntimes = useGlobalRuntimes;
     }
 
-    internal async Task<string> InstallAsync(LauncherEntry entry, string? executablePath = null)
+    public string ProgramsRoot => _programsRoot;
+    public string GetInstallDirectory(AppDefinition app) => Path.Combine(_programsRoot, app.EffectiveInstallName);
+    private string KeyPath(string installName) => _uninstallRoot + "\\" + installName;
+
+    // ───────────────────────── 확인 ─────────────────────────
+
+    public InstalledApp? Detect(AppDefinition app)
     {
-        if (entry.InstallDefinition?.Type == LauncherInstallType.Command)
-            return await InstallCoreAsync(entry, executablePath).ConfigureAwait(false);
-        await ManagedPayloadRemoval.Gate.WaitAsync().ConfigureAwait(false);
+        string installName = app.EffectiveInstallName;
+        string? directory = null, displayVersion = null, uninstall = null, quietUninstall = null;
         try
         {
-            using (await ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None).ConfigureAwait(false))
-                return await InstallCoreAsync(entry, executablePath).ConfigureAwait(false);
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(KeyPath(installName));
+            if (key?.GetValue("InstallLocation") is string location && location.Trim().Length > 0)
+                directory = Path.GetFullPath(location.Trim().Trim('"'));
+            displayVersion = key?.GetValue("DisplayVersion") as string;
+            uninstall = key?.GetValue("UninstallString") as string;
+            quietUninstall = key?.GetValue("QuietUninstallString") as string;
         }
-        finally { ManagedPayloadRemoval.Gate.Release(); }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException or ArgumentException) { }
+
+        // "앱" 목록 기록이 지워졌어도 런처가 관리하는 폴더면 설치된 것으로 봄
+        string defaultDirectory = GetInstallDirectory(app);
+        if ((directory is null || !Directory.Exists(directory)) && File.Exists(Path.Combine(defaultDirectory, ManifestFileName)))
+            directory = defaultDirectory;
+        if (directory is null || !Directory.Exists(directory)) return null;
+
+        InstallManifest? manifest = ReadManifest(directory);
+        string? executable = ResolveExecutable(app, directory, manifest?.Executable);
+        string? executableVersion = ReadFileVersion(executable);
+
+        // 버전: 런처가 설치한 그대로의 실행 파일이면 설치한 릴리스 버전 (실행 파일에 버전이 잘못 찍혀도 업데이트가 반복되지 않게).
+        // 앱이 스스로 업데이트해 실행 파일이 바뀌었으면 실행 파일의 버전, 그것도 없으면 "앱" 목록의 DisplayVersion
+        ReleaseVersion? version = null;
+        string? source = null;
+        if (manifest is not null && executable is not null && manifest.MatchesExecutable(directory, executable) &&
+            ReleaseVersion.Parse(manifest.Version) is { } recorded)
+        {
+            version = recorded;
+            source = "설치한 릴리스";
+        }
+        else if (ReleaseVersion.Parse(executableVersion) is { } fileVersion)
+        {
+            version = fileVersion;
+            source = "실행 파일";
+        }
+        else if (ReleaseVersion.Parse(displayVersion) is { } registered)
+        {
+            version = registered;
+            source = "Windows 앱 목록";
+        }
+        bool managed = manifest is not null || (uninstall?.Contains("--uninstall", StringComparison.OrdinalIgnoreCase) ?? false);
+        return new InstalledApp(installName, directory, executable, version, source, executableVersion, managed, uninstall, quietUninstall);
     }
 
-    private async Task<string> InstallCoreAsync(LauncherEntry entry, string? executablePath)
+    /// <summary>실행 파일 찾기: 지정한 경로 → 설치 기록 → 앱 이름과 같은 exe → 하나뿐인 exe. Velopack 처럼 current\ 아래에 있는 것도 찾음</summary>
+    public static string? ResolveExecutable(AppDefinition app, string directory, string? recorded = null)
     {
-        var definition = entry.InstallDefinition
-            ?? throw new InvalidOperationException($"{entry.Name}에는 설치 방법이 구성되어 있지 않습니다.");
-
-        if (definition.Type == LauncherInstallType.Command)
-            return await InstallCommandAsync(entry, definition).ConfigureAwait(false);
-
-        if (definition.Type == LauncherInstallType.SharedPayload)
-            return await Task.Run(() => InstallSharedPayload(entry), CancellationToken.None).ConfigureAwait(false);
-
-        return await Task.Run(() => InstallPortable(entry, executablePath ?? entry.ExecutablePath),
-            CancellationToken.None).ConfigureAwait(false);
-    }
-
-    internal Task<string> UninstallAsync(LauncherEntry entry) =>
-        UninstallAsync(entry, false);
-
-    internal async Task<string> UninstallAsync(LauncherEntry entry, bool deleteFiles)
-    {
-        await ManagedPayloadRemoval.Gate.WaitAsync().ConfigureAwait(false);
-        try
+        foreach (string? relative in new[] { app.Executable, recorded })
         {
-            using (await ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None).ConfigureAwait(false))
-                return await Task.Run(() => UninstallManagedInstall(entry, deleteFiles), CancellationToken.None).ConfigureAwait(false);
-        }
-        finally { ManagedPayloadRemoval.Gate.Release(); }
-    }
-
-    private string UninstallManagedInstall(LauncherEntry entry, bool deleteFiles = false)
-    {
-        var installType = entry.InstallDefinition?.Type;
-        if (installType is not (LauncherInstallType.Portable or LauncherInstallType.SharedPayload))
-            throw new InvalidOperationException("This installer does not own an uninstallable app receipt.");
-        if (entry.InstalledAppDirectory is null || entry.InstalledExecutableRelativePath is null)
-            throw new InvalidOperationException("The app's managed install paths are incomplete.");
-
-        string appDirectory = Path.GetFullPath(entry.InstalledAppDirectory);
-        EnsureContained(_appsBaseDirectory, appDirectory, "app install receipt directory");
-        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
-        if (!Directory.Exists(appDirectory))
-            return $"{entry.Name} is already removed.";
-        EnsureNoReparsePoints(_appsBaseDirectory, appDirectory);
-
-        string versionReceipt = Path.Combine(appDirectory, "current.version");
-        EnsureContained(appDirectory, versionReceipt, "install version receipt");
-        EnsureNoReparsePoints(appDirectory, versionReceipt);
-        if (!File.Exists(versionReceipt))
-            return $"{entry.Name} is already removed.";
-
-        byte[] versionReceiptBytes = File.ReadAllBytes(versionReceipt);
-        string version = new UTF8Encoding(false, true).GetString(versionReceiptBytes).Trim();
-        if (version.Length != 64 || version.Any(character => !Uri.IsHexDigit(character)))
-            throw new InvalidDataException("The app install receipt contains an invalid version hash.");
-
-        string payloadDirectory = installType == LauncherInstallType.SharedPayload
-            ? entry.InstalledSharedPayloadDirectory ?? throw new InvalidDataException("The shared payload directory is missing.")
-            : appDirectory;
-        string versionDirectory = Path.Combine(payloadDirectory, version);
-        EnsureContained(payloadDirectory, versionDirectory, "installed app version");
-        string completionMarker = Path.Combine(versionDirectory, CompletionMarker);
-        EnsureContained(versionDirectory, completionMarker, "installed completion marker");
-        EnsureNoReparsePoints(payloadDirectory, completionMarker);
-        if (!File.Exists(completionMarker) ||
-            !string.Equals(File.ReadAllText(completionMarker), "complete", StringComparison.Ordinal))
-            throw new InvalidDataException("The installed app version is incomplete; its receipt was preserved.");
-
-        string installedExecutable = entry.TryGetInstalledExecutablePath()
-            ?? throw new InvalidDataException("The install receipt does not resolve to an executable; it was preserved.");
-        string expectedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, versionDirectory);
-        if (!Path.GetFullPath(installedExecutable).Equals(expectedExecutable, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The install receipt resolves to an unexpected executable.");
-        EnsureNoReparsePoints(payloadDirectory, installedExecutable);
-        string workingDirectory = ResolveInstalledWorkingDirectory(entry, versionDirectory);
-        IReadOnlyList<string> arguments = installType == LauncherInstallType.SharedPayload
-            ? entry.InstallShortcutArguments : entry.Arguments;
-        string expectedArguments = arguments.Count == 0 ? "" : BuildWindowsCommandLine(arguments);
-
-        string shortcutNameReceipt = Path.Combine(appDirectory, "shortcut.name");
-        EnsureContained(appDirectory, shortcutNameReceipt, "shortcut name receipt");
-        EnsureNoReparsePoints(appDirectory, shortcutNameReceipt);
-        string shortcutFileName = File.Exists(shortcutNameReceipt)
-            ? File.ReadAllText(shortcutNameReceipt).Trim()
-            : SafeShortcutName(entry.Name, entry.Id) + " (" + SafeShortcutName(entry.Id, entry.Id) + ").lnk";
-        if (!shortcutFileName.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(Path.GetFileName(shortcutFileName), shortcutFileName, StringComparison.Ordinal))
-            throw new InvalidDataException("The shortcut receipt contains an unsafe file name.");
-
-        EnsureExistingAncestorsAreNotReparsePoints(_startMenuDirectory);
-        string shortcutPath = Path.Combine(_startMenuDirectory, shortcutFileName);
-        EnsureContained(_startMenuDirectory, shortcutPath, "Start Menu shortcut");
-        EnsureNoReparsePoints(_startMenuDirectory, shortcutPath);
-        byte[]? shortcutBytes = null;
-        if (File.Exists(shortcutPath))
-        {
-            VerifyOwnedShortcut(shortcutPath, installedExecutable, workingDirectory, expectedArguments);
-            shortcutBytes = File.ReadAllBytes(shortcutPath);
-        }
-
-        var receiptBackups = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
-        {
-            [versionReceipt] = versionReceiptBytes
-        };
-        if (File.Exists(shortcutNameReceipt))
-            receiptBackups[shortcutNameReceipt] = File.ReadAllBytes(shortcutNameReceipt);
-        foreach (string iconPath in Directory.EnumerateFiles(appDirectory, "shortcut-icon.*", SearchOption.TopDirectoryOnly))
-        {
-            EnsureContained(appDirectory, iconPath, "shortcut icon receipt");
-            EnsureNoReparsePoints(appDirectory, iconPath);
-            receiptBackups[iconPath] = File.ReadAllBytes(iconPath);
-        }
-
-        ManagedPayloadRemoval? removal = null;
-        if (deleteFiles)
-        {
-            string expectedAppDirectory = Path.GetFullPath(Path.Combine(_appsBaseDirectory, entry.Id));
-            if (!appDirectory.Equals(expectedAppDirectory, StringComparison.OrdinalIgnoreCase) ||
-                entry.Id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || entry.Id is "." or "..")
-                throw new InvalidDataException("Full removal requires the selected app's exact managed directory.");
-            removal = new ManagedPayloadRemoval();
-            string? protectedSource = entry.InstallSourceDirectory ?? entry.ExecutablePath;
-            ManagedPayloadRemoval.AddVersions(removal, appDirectory, entry.Id, native: false, protectedSource);
-            if (installType == LauncherInstallType.SharedPayload)
+            if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative)) continue;
+            foreach (string folder in new[] { directory, Path.Combine(directory, "current") })
             {
-                string expectedShared = Path.Combine(_appsBaseDirectory, "_shared-payloads");
-                if (!Path.GetFullPath(payloadDirectory).Equals(expectedShared, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("Full removal refused a foreign shared payload store.");
-                if (!ManagedPayloadRemoval.HasOtherRegistrations(Path.GetDirectoryName(_appsBaseDirectory)!, entry.Id, false))
-                    ManagedPayloadRemoval.AddVersions(removal, expectedShared, entry.Id, native: false, protectedSource);
+                string candidate = Path.GetFullPath(Path.Combine(folder, relative!));
+                if (IsInside(candidate, directory) && File.Exists(candidate)) return candidate;
             }
-            removal.Stage();
         }
+        foreach (string folder in new[] { directory, Path.Combine(directory, "current") })
+        {
+            if (!Directory.Exists(folder)) continue;
+            string[] executables = Directory.GetFiles(folder, "*.exe").Where(path => !IsHelperExecutable(path)).ToArray();
+            string[] names = new[] { app.EffectiveInstallName, app.Name, app.Name.Replace(" ", ""), Repositoryname(app) }
+                .Where(name => name.Length > 0).ToArray();
+            string? named = executables.FirstOrDefault(path => names.Any(name =>
+                string.Equals(Path.GetFileNameWithoutExtension(path), name, StringComparison.OrdinalIgnoreCase)));
+            if (named is not null) return named;
+            if (executables.Length == 1) return executables[0];
+        }
+        return null;
+    }
 
+    private static string Repositoryname(AppDefinition app) => app.Repository.TrimEnd('/').Split('/').LastOrDefault()?.Replace(".git", "") ?? "";
+
+    private static bool IsHelperExecutable(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        return name.Equals("createdump", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("uninstall", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Update", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Squirrel", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Setup", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("crashpad", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string? ReadFileVersion(string? executable)
+    {
+        if (executable is null || !File.Exists(executable)) return null;
         try
         {
-            if (shortcutBytes is not null) File.Delete(shortcutPath);
-            foreach (string receiptPath in receiptBackups.Keys
-                         .Where(path => !path.Equals(versionReceipt, StringComparison.OrdinalIgnoreCase)))
-                File.Delete(receiptPath);
-            File.Delete(versionReceipt);
+            var info = FileVersionInfo.GetVersionInfo(executable);
+            string? product = info.ProductVersion?.Trim();
+            if (ReleaseVersion.Parse(product) is not null) return product;
+            string? file = info.FileVersion?.Trim();
+            return ReleaseVersion.Parse(file) is not null ? file : null;
         }
-        catch (Exception uninstallError)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FileNotFoundException)
         {
-            var rollbackErrors = new List<Exception>();
-            try { removal?.Rollback(); }
-            catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
-            foreach ((string path, byte[] contents) in receiptBackups)
+            return null;
+        }
+    }
+
+    // ───────────────────────── 설치 (zip) ─────────────────────────
+
+    /// <summary>
+    /// 릴리스 zip 을 설치 폴더에 풀어 설치하거나 업데이트. 바뀌는 파일은 먼저 옆으로 옮겨 두었다가
+    /// 실패하면 되돌리므로 중간에 멈춰도 이전 버전이 남음. 이전 버전에만 있던 파일은 지우고,
+    /// 런처가 설치하지 않은 파일(사용자 데이터, dotnet\ 실행 환경)은 그대로 둠.
+    /// </summary>
+    public async Task<InstalledApp> InstallZipAsync(AppDefinition app, string zipPath, GitHubRelease? release, IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        string target = GetInstallDirectory(app);
+        Directory.CreateDirectory(_programsRoot);
+        // 같은 드라이브의 임시 폴더: 옮기기가 빠르고, 설치 폴더 이름과 겹치지 않음
+        string staging = Path.Combine(_programsRoot, $".{app.EffectiveInstallName}.new-{Guid.NewGuid():N}");
+        string backup = Path.Combine(_programsRoot, $".{app.EffectiveInstallName}.old-{Guid.NewGuid():N}");
+        try
+        {
+            progress?.Report("압축 푸는 중…");
+            await Task.Run(() => ExtractSafely(zipPath, staging), cancellationToken).ConfigureAwait(false);
+            string content = UnwrapSingleFolder(staging);
+            string? executable = ResolveExecutable(app, content)
+                ?? throw new InvalidDataException("패키지에서 실행 파일을 찾지 못했습니다. 앱 편집에서 실행 파일 이름을 지정하세요.");
+            string executableRelative = Path.GetRelativePath(content, executable);
+
+            var requirement = ReadRuntimeRequirement(executable);
+            bool copyLauncherRuntime = false;
+            if (requirement is { } needed && !IsRuntimeAvailable(needed, Path.Combine(target, "dotnet")))
             {
+                if (_launcherRuntime is not null && IsRuntimeRoot(_launcherRuntime, needed)) copyLauncherRuntime = true;
+                else throw new RuntimeMissingException(needed.Name, needed.Version);
+            }
+
+            if (Directory.Exists(target) && IsRunning(target))
+                throw new AppRunningException(app.Name);
+
+            progress?.Report(Directory.Exists(target) ? "파일 바꾸는 중…" : "파일 복사 중…");
+            InstallManifest? previous = ReadManifest(target);
+            var newFiles = Directory.EnumerateFiles(content, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(content, path)).ToList();
+            await Task.Run(() => ApplyFiles(content, target, backup, newFiles, previous?.Files ?? []), cancellationToken).ConfigureAwait(false);
+
+            if (copyLauncherRuntime)
+            {
+                progress?.Report(".NET 실행 환경 복사 중…");
+                await Task.Run(() => CopyDirectory(_launcherRuntime!, Path.Combine(target, "dotnet")), cancellationToken).ConfigureAwait(false);
+            }
+
+            string installedExecutable = Path.Combine(target, executableRelative);
+            var file = new FileInfo(installedExecutable);
+            string versionText = release?.Version?.ToString() ?? ReadFileVersion(installedExecutable) ?? "";
+            var manifest = new InstallManifest
+            {
+                AppId = app.Id,
+                Repository = app.Repository,
+                Tag = release?.Tag ?? "",
+                Version = versionText,
+                Executable = executableRelative,
+                ExecutableSize = file.Length,
+                ExecutableWriteTimeUtc = file.LastWriteTimeUtc,
+                InstalledAt = DateTimeOffset.Now,
+                Files = newFiles
+            };
+            WriteManifest(target, manifest);
+
+            progress?.Report("시작 메뉴에 등록 중…");
+            Register(app, target, installedExecutable, versionText);
+            TryCreateShortcut(app, installedExecutable, target);
+            return Detect(app) ?? throw new IOException("설치한 앱을 확인하지 못했습니다: " + target);
+        }
+        finally
+        {
+            TryDeleteDirectory(staging);
+            TryDeleteDirectory(backup);
+        }
+    }
+
+    private static void ExtractSafely(string zipPath, string destination)
+    {
+        string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+        Directory.CreateDirectory(root);
+        using ZipArchive archive = ZipFile.OpenRead(zipPath);
+        if (archive.Entries.Count == 0) throw new InvalidDataException("패키지가 비어 있습니다.");
+        foreach (ZipArchiveEntry entry in archive.Entries)
+        {
+            string path = Path.GetFullPath(Path.Combine(root, entry.FullName.Replace('/', Path.DirectorySeparatorChar)));
+            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("패키지에 설치 폴더 밖을 가리키는 파일이 있습니다: " + entry.FullName);
+            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
+            {
+                Directory.CreateDirectory(path);
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            entry.ExtractToFile(path, overwrite: true);
+        }
+    }
+
+    // zip 안에 폴더 하나만 있으면 (MyApp-1.2.3\...) 그 안이 설치 내용
+    private static string UnwrapSingleFolder(string staging)
+    {
+        string current = staging;
+        for (int depth = 0; depth < 2; depth++)
+        {
+            if (Directory.EnumerateFiles(current).Any()) break;
+            string[] folders = Directory.GetDirectories(current);
+            if (folders.Length != 1) break;
+            current = folders[0];
+        }
+        return current;
+    }
+
+    private static void ApplyFiles(string source, string target, string backup, IReadOnlyList<string> newFiles, IReadOnlyList<string> previousFiles)
+    {
+        var moved = new List<string>();      // 옆으로 옮긴 기존 파일 (되돌릴 때 다시 넣음)
+        var created = new List<string>();    // 새로 쓴 파일 (되돌릴 때 지움)
+        try
+        {
+            Directory.CreateDirectory(target);
+            var newSet = new HashSet<string>(newFiles, StringComparer.OrdinalIgnoreCase);
+            // 이전 버전에만 있던 파일 (런처가 설치한 것만)
+            var obsolete = previousFiles.Where(file => !newSet.Contains(file) && IsSafeRelative(file)).ToList();
+            foreach (string relative in newFiles.Concat(obsolete))
+            {
+                string destination = Path.Combine(target, relative);
+                if (!File.Exists(destination)) continue;
+                string saved = Path.Combine(backup, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
+                MoveWithRetry(destination, saved);
+                moved.Add(relative);
+            }
+            foreach (string relative in newFiles)
+            {
+                string destination = Path.Combine(target, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(Path.Combine(source, relative), destination, overwrite: true);
+                created.Add(relative);
+            }
+            foreach (string relative in obsolete) RemoveEmptyParents(Path.Combine(target, relative), target);
+        }
+        catch
+        {
+            foreach (string relative in created)
+                try { File.Delete(Path.Combine(target, relative)); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            foreach (string relative in moved)
                 try
                 {
-                    if (!File.Exists(path))
-                    {
-                        EnsureContained(appDirectory, path, "install receipt rollback path");
-                        EnsureNoReparsePoints(_appsBaseDirectory, appDirectory);
-                        WriteBytesAtomically(path, contents);
-                    }
-                }
-                catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
-            }
-            if (shortcutBytes is not null)
-            {
-                try
-                {
-                    if (!File.Exists(shortcutPath))
-                    {
-                        EnsureContained(_startMenuDirectory, shortcutPath, "shortcut rollback path");
-                        EnsureNoReparsePoints(_startMenuDirectory, shortcutPath);
-                        WriteBytesAtomically(shortcutPath, shortcutBytes);
-                    }
-                }
-                catch (Exception rollbackError) { rollbackErrors.Add(rollbackError); }
-            }
-            if (rollbackErrors.Count > 0)
-                throw new AggregateException("Uninstall failed and its receipt or shortcut could not be fully restored.",
-                    [uninstallError, .. rollbackErrors]);
-            throw;
-        }
-
-        removal?.Purge();
-        try
-        {
-            if (!Directory.EnumerateFileSystemEntries(appDirectory).Any())
-                Directory.Delete(appDirectory, recursive: false);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // An empty receipt directory is optional; payloads and unknown files remain untouched.
-        }
-
-        return deleteFiles
-            ? $"{entry.Name} was fully removed. Shared files still used by other apps and source distributions were preserved."
-            : $"{entry.Name} was removed from the Start Menu. Installed files and user data were preserved.";
-    }
-
-    private static void VerifyOwnedShortcut(string shortcutPath, string expectedExecutable,
-        string expectedWorkingDirectory, string expectedArguments)
-    {
-        object? shell = null;
-        object? shortcut = null;
-        try
-        {
-            var shellType = Type.GetTypeFromProgID("WScript.Shell", throwOnError: true)
-                ?? throw new PlatformNotSupportedException("Windows Script Host is unavailable.");
-            shell = Activator.CreateInstance(shellType)
-                ?? throw new InvalidOperationException("Could not create Windows Script Host.");
-            shortcut = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod,
-                null, shell, [shortcutPath]);
-            var shortcutType = shortcut?.GetType() ?? throw new InvalidDataException("The recorded shortcut is invalid.");
-            string target = (string?)shortcutType.InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty,
-                null, shortcut, null) ?? "";
-            string working = (string?)shortcutType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.GetProperty,
-                null, shortcut, null) ?? "";
-            string arguments = (string?)shortcutType.InvokeMember("Arguments", System.Reflection.BindingFlags.GetProperty,
-                null, shortcut, null) ?? "";
-            if (!Path.IsPathRooted(target) || !Path.IsPathRooted(working) ||
-                !Path.GetFullPath(target).Equals(Path.GetFullPath(expectedExecutable), StringComparison.OrdinalIgnoreCase) ||
-                !Path.GetFullPath(working).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    .Equals(Path.GetFullPath(expectedWorkingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                        StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(arguments, expectedArguments, StringComparison.Ordinal))
-                throw new InvalidDataException("The recorded Start Menu shortcut does not match this app; it was preserved.");
-        }
-        finally
-        {
-            if (shortcut is not null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
-            if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
-        }
-    }
-
-    private async Task<string> InstallCommandAsync(LauncherEntry entry, LauncherInstallDefinition definition)
-    {
-        var executablePath = definition.ExecutablePath
-            ?? throw new InvalidOperationException("명령 설치 실행 파일이 지정되지 않았습니다.");
-        ValidateExecutable(executablePath, Path.GetDirectoryName(executablePath)!);
-
-        var startInfo = new ProcessStartInfo(executablePath)
-        {
-            WorkingDirectory = Path.GetDirectoryName(executablePath)!,
-            UseShellExecute = true
-        };
-        foreach (var argument in definition.Arguments)
-            startInfo.ArgumentList.Add(argument);
-
-        Process process;
-        try
-        {
-            process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("설치 프로세스를 시작하지 못했습니다.");
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            throw new OperationCanceledException("설치가 취소되었습니다.", ex);
-        }
-
-        using (process)
-        {
-            await process.WaitForExitAsync().ConfigureAwait(false);
-            if (process.ExitCode == 1223)
-                throw new OperationCanceledException("설치가 취소되었습니다.");
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException($"{entry.Name} 설치가 종료 코드 {process.ExitCode}(으)로 실패했습니다.");
-        }
-
-        return $"{entry.Name} 설치가 완료되었습니다.";
-    }
-
-    private string InstallPortable(LauncherEntry entry, string sourceExecutable)
-    {
-        if (entry.InstalledAppDirectory is null || entry.InstalledExecutableRelativePath is null)
-            throw new InvalidOperationException("portable 설치 경로가 준비되지 않았습니다.");
-
-        var sourceDirectory = Path.GetDirectoryName(sourceExecutable)
-            ?? throw new InvalidOperationException("게시 폴더를 확인할 수 없습니다.");
-        ValidateExecutable(sourceExecutable, sourceDirectory);
-        EnsureNoReparsePoints(sourceDirectory, sourceExecutable);
-        if (PathsOverlap(sourceDirectory, entry.InstalledAppDirectory))
-            throw new InvalidDataException("설치 대상 폴더와 게시 원본 폴더가 겹칩니다.");
-
-        string version = ComputeDirectoryHash(sourceDirectory, excludeInstallState: true);
-        string versionDirectory = Path.Combine(entry.InstalledAppDirectory, version);
-        EnsureContained(entry.InstalledAppDirectory, versionDirectory, "버전 설치 폴더");
-
-        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
-        Directory.CreateDirectory(_appsBaseDirectory);
-        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
-        Directory.CreateDirectory(entry.InstalledAppDirectory);
-        EnsureContained(_appsBaseDirectory, entry.InstalledAppDirectory, "앱 설치 폴더");
-        EnsureNoReparsePoints(_appsBaseDirectory, entry.InstalledAppDirectory);
-
-        bool promoted = false;
-        string? stagingDirectory = null;
-        try
-        {
-            if (Directory.Exists(versionDirectory))
-            {
-                EnsureNoReparsePoints(entry.InstalledAppDirectory, versionDirectory);
-                string completionMarker = Path.Combine(versionDirectory, CompletionMarker);
-                if (!File.Exists(completionMarker)
-                    || !string.Equals(version, ComputeDirectoryHash(versionDirectory), StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"기존 설치 버전의 내용이 손상되었습니다: {versionDirectory}");
-            }
-            else
-            {
-                stagingDirectory = Path.Combine(entry.InstalledAppDirectory, ".staging-" + Guid.NewGuid().ToString("N"));
-                EnsureContained(entry.InstalledAppDirectory, stagingDirectory, "임시 설치 폴더");
-                Directory.CreateDirectory(stagingDirectory);
-                CopyPublishDirectory(sourceDirectory, stagingDirectory);
-                var stagedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, stagingDirectory);
-                EnsureContained(stagingDirectory, stagedExecutable, "설치 실행 파일");
-                if (!File.Exists(stagedExecutable))
-                    throw new FileNotFoundException("복사된 설치 실행 파일이 없습니다.", stagedExecutable);
-                if (!string.Equals(version, ComputeDirectoryHash(stagingDirectory), StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("The source publish output changed while it was being installed.");
-                using (var marker = new FileStream(Path.Combine(stagingDirectory, CompletionMarker),
-                           FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    marker.Write("complete"u8);
-                Directory.Move(stagingDirectory, versionDirectory);
-                promoted = true;
-            }
-
-            var installedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, versionDirectory);
-            EnsureContained(versionDirectory, installedExecutable, "설치 실행 파일");
-            var installedWorkingDirectory = ResolveInstalledWorkingDirectory(entry, versionDirectory);
-            CommitInstalledShortcut(entry, installedExecutable, installedWorkingDirectory, entry.Arguments,
-                entry.InstalledAppDirectory, version);
-            return $"{entry.Name} 설치가 완료되었습니다.";
-        }
-        finally
-        {
-            if (!promoted && stagingDirectory is not null && Directory.Exists(stagingDirectory))
-            {
-                EnsureContained(entry.InstalledAppDirectory, stagingDirectory, "임시 설치 폴더");
-                EnsureTreeHasNoReparsePoints(stagingDirectory);
-                Directory.Delete(stagingDirectory, recursive: true);
-            }
-        }
-    }
-
-    private string InstallSharedPayload(LauncherEntry entry)
-    {
-        if (entry.InstallSourceDirectory is null || entry.InstalledSharedPayloadDirectory is null
-            || entry.InstalledAppDirectory is null || entry.InstalledExecutableRelativePath is null)
-            throw new InvalidOperationException("Shared payload install paths are incomplete.");
-
-        string sourceDirectory = Path.GetFullPath(entry.InstallSourceDirectory);
-        string sharedDirectory = Path.GetFullPath(entry.InstalledSharedPayloadDirectory);
-        string appDirectory = Path.GetFullPath(entry.InstalledAppDirectory);
-        string sourceExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, sourceDirectory);
-        ValidateExecutable(sourceExecutable, sourceDirectory);
-        EnsureNoReparsePoints(sourceDirectory, sourceExecutable);
-        string expectedHash = ComputeDirectoryHash(sourceDirectory, excludeInstallState: true);
-        string expectedVersionDirectory = Path.Combine(sharedDirectory, expectedHash);
-        var sharedLock = SharedPayloadLocks.GetOrAdd(expectedVersionDirectory, static _ => new SemaphoreSlim(1, 1));
-        sharedLock.Wait();
-        try
-        {
-        string? reusableSourceVersion = null;
-        if (IsPathWithin(sharedDirectory, sourceDirectory))
-        {
-            string? sourceParent = Path.GetDirectoryName(sourceDirectory);
-            if (sourceParent is null || !sourceParent.Equals(sharedDirectory, StringComparison.OrdinalIgnoreCase)
-                || !Path.GetFileName(sourceDirectory).Equals(expectedHash, StringComparison.OrdinalIgnoreCase)
-                || !IsCompleteSharedPayload(sourceDirectory, expectedHash))
-                throw new InvalidDataException("The source overlaps the shared install store but is not a complete shared payload.");
-            reusableSourceVersion = sourceDirectory;
-        }
-        else if (PathsOverlap(sourceDirectory, sharedDirectory))
-        {
-            throw new InvalidDataException("The shared install destination overlaps its source payload.");
-        }
-
-        string versionDirectory = reusableSourceVersion ?? Path.Combine(sharedDirectory, expectedHash);
-        EnsureContained(sharedDirectory, versionDirectory, "shared payload version");
-
-        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
-        Directory.CreateDirectory(_appsBaseDirectory);
-        EnsureExistingAncestorsAreNotReparsePoints(_appsBaseDirectory);
-        Directory.CreateDirectory(sharedDirectory);
-        EnsureContained(_appsBaseDirectory, sharedDirectory, "shared payload directory");
-        EnsureNoReparsePoints(_appsBaseDirectory, sharedDirectory);
-
-        if (reusableSourceVersion is null && !IsCompleteSharedPayload(versionDirectory, expectedHash))
-        {
-            string stagingDirectory = Path.Combine(sharedDirectory, ".staging-" + Guid.NewGuid().ToString("N"));
-            EnsureContained(sharedDirectory, stagingDirectory, "shared payload staging directory");
-            Directory.CreateDirectory(stagingDirectory);
-            bool promoted = false;
-            try
-            {
-                CopyPublishDirectory(sourceDirectory, stagingDirectory);
-                string stagedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, stagingDirectory);
-                EnsureContained(stagingDirectory, stagedExecutable, "shared payload executable");
-                if (!File.Exists(stagedExecutable))
-                    throw new FileNotFoundException("The copied shared executable is missing.", stagedExecutable);
-                string copiedHash = ComputeDirectoryHash(stagingDirectory);
-                if (!string.Equals(expectedHash, copiedHash, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("The source payload changed while it was being installed.");
-                if (Directory.Exists(versionDirectory))
-                {
-                    EnsureNoReparsePoints(sharedDirectory, versionDirectory);
-                    if (!IsCompleteSharedPayload(versionDirectory, expectedHash))
-                        throw new InvalidDataException($"An incomplete shared payload already occupies {versionDirectory}");
-                }
-                else
-                {
-                    using (var marker = new FileStream(Path.Combine(stagingDirectory, CompletionMarker),
-                               FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                        marker.Write("complete"u8);
-                    try
-                    {
-                        Directory.Move(stagingDirectory, versionDirectory);
-                        promoted = true;
-                    }
-                    catch (IOException) when (Directory.Exists(versionDirectory)
-                        && IsCompleteSharedPayload(versionDirectory, expectedHash))
-                    {
-                        // Another launcher instance atomically published the same immutable version.
-                    }
-                }
-            }
-            finally
-            {
-                if (!promoted && Directory.Exists(stagingDirectory))
-                {
-                    EnsureContained(sharedDirectory, stagingDirectory, "shared payload staging directory");
-                    EnsureTreeHasNoReparsePoints(stagingDirectory);
-                    Directory.Delete(stagingDirectory, recursive: true);
-                }
-            }
-        }
-
-        string installedExecutable = Path.GetFullPath(entry.InstalledExecutableRelativePath, versionDirectory);
-        EnsureContained(versionDirectory, installedExecutable, "shared payload executable");
-        if (!File.Exists(installedExecutable))
-            throw new FileNotFoundException("The installed shared executable is missing.", installedExecutable);
-
-        EnsureExistingAncestorsAreNotReparsePoints(appDirectory);
-        Directory.CreateDirectory(appDirectory);
-        EnsureContained(_appsBaseDirectory, appDirectory, "per-app install receipt directory");
-        EnsureNoReparsePoints(_appsBaseDirectory, appDirectory);
-        string installedWorkingDirectory = ResolveInstalledWorkingDirectory(entry, versionDirectory);
-        CommitInstalledShortcut(entry, installedExecutable, installedWorkingDirectory,
-            entry.InstallShortcutArguments, appDirectory, expectedHash);
-        return $"{entry.Name} installation completed.";
-        }
-        finally
-        {
-            sharedLock.Release();
-        }
-    }
-
-    internal string RefreshInstalledShortcut(LauncherEntry entry)
-    {
-        ManagedPayloadRemoval.Gate.Wait();
-        try
-        {
-            using (ManagedPayloadRemoval.AcquireStoreLockAsync(Path.GetDirectoryName(_appsBaseDirectory)!, CancellationToken.None)
-                       .GetAwaiter().GetResult())
-                return RefreshInstalledShortcutCore(entry);
-        }
-        finally { ManagedPayloadRemoval.Gate.Release(); }
-    }
-
-    private string RefreshInstalledShortcutCore(LauncherEntry entry)
-    {
-        string executable = entry.TryGetInstalledExecutablePath()
-            ?? throw new InvalidOperationException($"{entry.Name} has no complete installed version.");
-        string versionDirectory = Path.GetDirectoryName(executable)!;
-        if (entry.InstalledWorkingDirectoryRelativePath is not null)
-        {
-            while (!File.Exists(Path.Combine(versionDirectory, CompletionMarker)))
-                versionDirectory = Path.GetDirectoryName(versionDirectory)
-                    ?? throw new InvalidDataException("Installed version marker was not found.");
-        }
-        EnsureNoReparsePoints(versionDirectory, executable);
-        string workingDirectory = ResolveInstalledWorkingDirectory(entry, versionDirectory);
-        var arguments = entry.InstallDefinition?.Type == LauncherInstallType.SharedPayload
-            ? entry.InstallShortcutArguments : entry.Arguments;
-        CreateShortcut(entry, executable, workingDirectory, arguments, entry.InstalledAppDirectory!);
-        return $"{entry.Name} installation is already current; shortcut refreshed.";
-    }
-
-    private static bool IsCompleteSharedPayload(string versionDirectory, string expectedHash)
-    {
-        string completionMarker = Path.Combine(versionDirectory, CompletionMarker);
-        if (!File.Exists(completionMarker)) return false;
-        EnsureNoReparsePoints(Path.GetDirectoryName(versionDirectory)!, completionMarker);
-        string installedHash = ComputeDirectoryHash(versionDirectory, excludeInstallState: true);
-        return string.Equals(expectedHash, installedHash, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string ResolveInstalledWorkingDirectory(LauncherEntry entry, string versionDirectory)
-    {
-        if (entry.InstalledWorkingDirectoryRelativePath is null)
-            return Path.GetDirectoryName(Path.GetFullPath(entry.InstalledExecutableRelativePath!, versionDirectory))!;
-
-        string executableDirectory = Path.GetDirectoryName(
-            Path.GetFullPath(entry.InstalledExecutableRelativePath!, versionDirectory))!;
-        var workingDirectory = Path.GetFullPath(entry.InstalledWorkingDirectoryRelativePath, executableDirectory);
-        EnsureContained(versionDirectory, workingDirectory, "설치 작업 폴더");
-        EnsureNoReparsePoints(versionDirectory, workingDirectory);
-        return workingDirectory;
-    }
-
-    private void CreateShortcut(LauncherEntry entry, string executablePath, string workingDirectory,
-        IReadOnlyList<string> arguments, string receiptDirectory)
-    {
-        EnsureExistingAncestorsAreNotReparsePoints(_startMenuDirectory);
-        Directory.CreateDirectory(_startMenuDirectory);
-        EnsureExistingAncestorsAreNotReparsePoints(_startMenuDirectory);
-        EnsureContained(_appsBaseDirectory, receiptDirectory, "app install receipt directory");
-        EnsureNoReparsePoints(_appsBaseDirectory, receiptDirectory);
-        string shortcutFileName = ResolveShortcutFileName(entry, receiptDirectory);
-        var shortcutPath = Path.Combine(_startMenuDirectory, shortcutFileName);
-        EnsureContained(_startMenuDirectory, shortcutPath, "시작 메뉴 바로 가기");
-
-        var temporaryShortcutPath = Path.Combine(_startMenuDirectory,
-            Path.GetFileNameWithoutExtension(shortcutFileName) + ".tmp-" + Guid.NewGuid().ToString("N") + ".lnk");
-        object? shell = null;
-        object? shortcut = null;
-        try
-        {
-            var shellType = Type.GetTypeFromProgID("WScript.Shell", throwOnError: true)
-                ?? throw new PlatformNotSupportedException("Windows Script Host를 사용할 수 없습니다.");
-            shell = Activator.CreateInstance(shellType)
-                ?? throw new InvalidOperationException("바로 가기 생성기를 시작하지 못했습니다.");
-            shortcut = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, [temporaryShortcutPath]);
-            var shortcutType = shortcut?.GetType() ?? throw new InvalidOperationException("바로 가기를 만들지 못했습니다.");
-            shortcutType.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, shortcut, [executablePath]);
-            shortcutType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, shortcut, [workingDirectory]);
-            shortcutType.InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, shortcut, [$"{entry.Name} 실행"]);
-            if (arguments.Count > 0)
-                shortcutType.InvokeMember("Arguments", System.Reflection.BindingFlags.SetProperty, null, shortcut, [BuildWindowsCommandLine(arguments)]);
-            string iconPath = ResolveShortcutIconPath(entry, receiptDirectory, executablePath);
-            shortcutType.InvokeMember("IconLocation", System.Reflection.BindingFlags.SetProperty, null, shortcut,
-                [iconPath]);
-            shortcutType.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
-            if (!File.Exists(temporaryShortcutPath))
-                throw new InvalidOperationException("The temporary Start Menu shortcut was not created.");
-            File.Move(temporaryShortcutPath, shortcutPath, overwrite: true);
-            WriteAtomically(Path.Combine(receiptDirectory, "shortcut.name"), shortcutFileName);
-        }
-        finally
-        {
-            if (shortcut is not null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
-            if (shell is not null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
-            if (File.Exists(temporaryShortcutPath)) File.Delete(temporaryShortcutPath);
-        }
-    }
-
-    private void CommitInstalledShortcut(LauncherEntry entry, string executablePath, string workingDirectory,
-        IReadOnlyList<string> arguments, string receiptDirectory, string version)
-    {
-        string shortcutFileName = ResolveShortcutFileName(entry, receiptDirectory);
-        string shortcutPath = Path.Combine(_startMenuDirectory, shortcutFileName);
-        string shortcutNameReceipt = Path.Combine(receiptDirectory, "shortcut.name");
-        bool hadShortcut = File.Exists(shortcutPath);
-        byte[]? previousShortcut = null;
-        if (hadShortcut)
-        {
-            EnsureNoReparsePoints(_startMenuDirectory, shortcutPath);
-            previousShortcut = File.ReadAllBytes(shortcutPath);
-        }
-
-        bool hadShortcutName = File.Exists(shortcutNameReceipt);
-        string? previousShortcutName = null;
-        if (hadShortcutName)
-        {
-            EnsureNoReparsePoints(receiptDirectory, shortcutNameReceipt);
-            previousShortcutName = File.ReadAllText(shortcutNameReceipt);
-        }
-
-        try
-        {
-            CreateShortcut(entry, executablePath, workingDirectory, arguments, receiptDirectory);
-            WriteAtomically(Path.Combine(receiptDirectory, "current.version"), version);
-        }
-        catch (Exception installError)
-        {
-            try
-            {
-                if (hadShortcut)
-                    WriteBytesAtomically(shortcutPath, previousShortcut!);
-                else if (File.Exists(shortcutPath))
-                    File.Delete(shortcutPath);
-
-                if (hadShortcutName)
-                    WriteAtomically(shortcutNameReceipt, previousShortcutName!);
-                else if (File.Exists(shortcutNameReceipt))
-                    File.Delete(shortcutNameReceipt);
-            }
-            catch (Exception rollbackError)
-            {
-                throw new AggregateException("Install receipt commit failed and the previous shortcut could not be restored.",
-                    installError, rollbackError);
-            }
-
-            throw;
-        }
-    }
-
-    private static void WriteBytesAtomically(string path, byte[] contents)
-    {
-        string temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        try
-        {
-            File.WriteAllBytes(temporaryPath, contents);
-            File.Move(temporaryPath, path, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
-        }
-    }
-
-    private string ResolveShortcutFileName(LauncherEntry entry, string receiptDirectory)
-    {
-        string receiptPath = Path.Combine(receiptDirectory, "shortcut.name");
-        if (File.Exists(receiptPath))
-        {
-            string existingName = File.ReadAllText(receiptPath).Trim();
-            if (existingName.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(Path.GetFileName(existingName), existingName, StringComparison.Ordinal))
-            {
-                string recordedPath = Path.Combine(_startMenuDirectory, existingName);
-                EnsureContained(_startMenuDirectory, recordedPath, "recorded start menu shortcut");
-                EnsureNoReparsePoints(_startMenuDirectory, recordedPath);
-                return existingName;
-            }
-        }
-
-        string uniqueName = SafeShortcutName(entry.Name, entry.Id) + " (" + SafeShortcutName(entry.Id, entry.Id) + ").lnk";
-        EnsureContained(_startMenuDirectory, Path.Combine(_startMenuDirectory, uniqueName), "unique start menu shortcut");
-        return uniqueName;
-    }
-
-    private static string ResolveShortcutIconPath(LauncherEntry entry, string receiptDirectory, string executablePath)
-    {
-        string sourceIcon = entry.IconPath;
-        string? sourceRoot = entry.InstallIconSourceDirectory;
-        if (!string.IsNullOrWhiteSpace(sourceIcon) && sourceRoot is not null && File.Exists(sourceIcon))
-        {
-            try
-            {
-                EnsureContained(sourceRoot, sourceIcon, "shortcut icon source");
-                EnsureNoReparsePoints(sourceRoot, sourceIcon);
-                string extension = Path.GetExtension(sourceIcon);
-                if (extension.Length is < 2 or > 12 || extension[1..].Any(character => !char.IsAsciiLetterOrDigit(character)))
-                    extension = ".ico";
-                string destination = Path.Combine(receiptDirectory, "shortcut-icon" + extension);
-                EnsureContained(receiptDirectory, destination, "shortcut icon receipt");
-                if (!Path.GetFullPath(sourceIcon).Equals(Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
-                {
-                    string temporary = Path.Combine(receiptDirectory,
-                        "shortcut-icon.tmp-" + Guid.NewGuid().ToString("N") + extension);
-                    try
-                    {
-                        File.Copy(sourceIcon, temporary, overwrite: false);
-                        File.Move(temporary, destination, overwrite: true);
-                    }
-                    finally
-                    {
-                        if (File.Exists(temporary)) File.Delete(temporary);
-                    }
-                }
-                EnsureNoReparsePoints(receiptDirectory, destination);
-                return destination;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
-            {
-                // An unavailable or unsafe optional icon falls back to the installed executable's icon.
-            }
-        }
-
-        foreach (string extension in new[] { ".ico", ".png", ".bmp" })
-        {
-            string existingIcon = Path.Combine(receiptDirectory, "shortcut-icon" + extension);
-            if (!File.Exists(existingIcon)) continue;
-            EnsureNoReparsePoints(receiptDirectory, existingIcon);
-            return existingIcon;
-        }
-        return executablePath;
-    }
-
-    private static void CopyPublishDirectory(string sourceDirectory, string destinationDirectory)
-    {
-        EnsureDirectoryIsNotReparsePoint(sourceDirectory);
-        var pending = new Stack<string>();
-        pending.Push(sourceDirectory);
-        while (pending.Count > 0)
-        {
-            var currentDirectory = pending.Pop();
-            foreach (var path in Directory.EnumerateFileSystemEntries(currentDirectory))
-            {
-                var attributes = File.GetAttributes(path);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException($"게시 폴더에 reparse point가 포함되어 있습니다: {path}");
-
-                var relativePath = Path.GetRelativePath(sourceDirectory, path);
-                if (string.Equals(Path.GetFileName(relativePath), CompletionMarker, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException($"게시 폴더에 예약된 설치 표식 파일이 포함되어 있습니다: {path}");
-                if (ShouldExclude(relativePath))
-                    continue;
-
-                var destination = Path.GetFullPath(relativePath, destinationDirectory);
-                EnsureContained(destinationDirectory, destination, "복사 대상");
-                if ((attributes & FileAttributes.Directory) != 0)
-                {
-                    Directory.CreateDirectory(destination);
-                    pending.Push(path);
-                }
-                else
-                {
+                    string destination = Path.Combine(target, relative);
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                    File.Copy(path, destination, overwrite: false);
+                    File.Move(Path.Combine(backup, relative), destination, overwrite: true);
                 }
-            }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            throw;
         }
     }
 
-    private static bool ShouldExclude(string relativePath)
+    private static bool IsSafeRelative(string relative) =>
+        !Path.IsPathRooted(relative) && !relative.Split('\\', '/').Contains("..") && !relative.Equals(ManifestFileName, StringComparison.OrdinalIgnoreCase);
+
+    private static void MoveWithRetry(string source, string destination)
     {
-        foreach (var segment in relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        for (int attempt = 0; ; attempt++)
         {
-            if (segment.StartsWith(".build-staging-", StringComparison.OrdinalIgnoreCase) ||
-                segment.StartsWith("app.previous-", StringComparison.OrdinalIgnoreCase) ||
-                segment.Contains(".previous-", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("deskcal.db", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("deskcal.db-wal", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("deskcal.db-shm", StringComparison.OrdinalIgnoreCase) ||
-                segment.Contains(".migrating-", StringComparison.OrdinalIgnoreCase))
-                return true;
+            try { File.Move(source, destination, overwrite: true); return; }
+            catch (Exception error) when ((error is IOException or UnauthorizedAccessException) && attempt < 9) { Thread.Sleep(300); }
         }
+    }
+
+    private static void RemoveEmptyParents(string file, string root)
+    {
+        string? folder = Path.GetDirectoryName(file);
+        string stop = Path.GetFullPath(root).TrimEnd('\\');
+        while (folder is not null && !string.Equals(Path.GetFullPath(folder).TrimEnd('\\'), stop, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (!Directory.Exists(folder) || Directory.EnumerateFileSystemEntries(folder).Any()) return;
+                Directory.Delete(folder);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return; }
+            folder = Path.GetDirectoryName(folder);
+        }
+    }
+
+    // ───────────────────────── 설치 (설치 프로그램) ─────────────────────────
+
+    /// <summary>릴리스의 설치 프로그램을 실행하고 끝나길 기다림. .msi 는 msiexec 로</summary>
+    public async Task<InstalledApp?> RunSetupAsync(AppDefinition app, string setupPath, string? arguments, IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        InstalledApp? before = Detect(app);
+        if (before is not null && IsRunning(before.Directory)) throw new AppRunningException(app.Name);
+        progress?.Report("설치 프로그램 실행 중…");
+        bool msi = setupPath.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
+        var start = msi
+            ? new ProcessStartInfo("msiexec.exe", $"/i \"{setupPath}\" {arguments ?? "/qn /norestart"}")
+            : new ProcessStartInfo(setupPath, arguments ?? "/S");
+        start.UseShellExecute = true;
+        start.WorkingDirectory = Path.GetDirectoryName(setupPath)!;
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("설치 프로그램을 시작하지 못했습니다.");
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        if (process.ExitCode is not (0 or 3010 or 1641))
+            throw new InvalidOperationException($"설치 프로그램이 오류로 끝났습니다 (종료 코드 {process.ExitCode}).");
+        // Velopack 처럼 설치를 마친 뒤 앱을 띄우는 설치 프로그램도 있음: 등록될 때까지 잠깐 기다림
+        for (int i = 0; i < 20; i++)
+        {
+            if (Detect(app) is { } installed) return installed;
+            await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+        }
+        return null;
+    }
+
+    // ───────────────────────── 실행 · 제거 ─────────────────────────
+
+    public void Launch(AppDefinition app, InstalledApp installed)
+    {
+        string executable = installed.ExecutablePath ?? throw new FileNotFoundException("실행 파일을 찾지 못했습니다. 앱 편집에서 실행 파일 이름을 지정하세요.");
+        var start = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = true,  // 관리자 권한을 요구하는 앱(DiskAtlas)도 UAC 확인으로 시작
+            WorkingDirectory = Path.GetDirectoryName(executable)!
+        };
+        if (!string.IsNullOrWhiteSpace(app.Arguments)) start.Arguments = app.Arguments;
+        Process.Start(start)?.Dispose();
+    }
+
+    /// <summary>설치 폴더 안의 실행 파일로 돌고 있는 프로세스가 있는지</summary>
+    public static bool IsRunning(string directory)
+    {
+        if (!Directory.Exists(directory)) return false;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string folder in new[] { directory, Path.Combine(directory, "current") })
+            if (Directory.Exists(folder))
+                foreach (string exe in Directory.EnumerateFiles(folder, "*.exe")) names.Add(Path.GetFileNameWithoutExtension(exe));
+        foreach (string name in names)
+            foreach (Process process in Process.GetProcessesByName(name))
+                using (process)
+                {
+                    try
+                    {
+                        if (process.MainModule?.FileName is { } path && IsInside(path, directory)) return true;
+                    }
+                    catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+                    {
+                        // 관리자 권한으로 도는 프로세스는 경로를 못 읽음: 같은 이름이면 실행 중으로 봄 (파일을 망가뜨리지 않게)
+                        return true;
+                    }
+                }
         return false;
     }
 
-    private static string ComputeDirectoryHash(string directory, bool excludeInstallState = false)
+    /// <summary>
+    /// 런처가 설치한 앱은 바로 가기·"앱" 목록·설치 폴더를 지움. 앱의 자체 설치 프로그램으로 설치된 앱은 그 제거 프로그램을 실행.
+    /// 설치 폴더 밖의 사용자 데이터는 건드리지 않음.
+    /// </summary>
+    public async Task UninstallAsync(AppDefinition app, InstalledApp installed, CancellationToken cancellationToken = default)
     {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var files = EnumerateFilesWithoutReparsePoints(directory)
-            .Where(path => !string.Equals(Path.GetFileName(path), CompletionMarker, StringComparison.OrdinalIgnoreCase))
-            .Where(path => !excludeInstallState || !ShouldExclude(Path.GetRelativePath(directory, path)))
-            .OrderBy(path => Path.GetRelativePath(directory, path), StringComparer.OrdinalIgnoreCase);
-        foreach (var file in files)
+        if (IsRunning(installed.Directory)) throw new AppRunningException(app.Name);
+        if (!installed.ManagedByLauncher && (installed.QuietUninstallCommand ?? installed.UninstallCommand) is { Length: > 0 } command)
         {
-            var relativePath = Path.GetRelativePath(directory, file).Replace('\\', '/');
-            hash.AppendData(Encoding.UTF8.GetBytes(relativePath));
-            hash.AppendData([0]);
-            using var stream = File.OpenRead(file);
-            var buffer = new byte[128 * 1024];
-            int read;
-            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-                hash.AppendData(buffer.AsSpan(0, read));
-            hash.AppendData([0]);
+            var (file, arguments) = SplitCommand(command);
+            using Process process = Process.Start(new ProcessStartInfo(file, arguments) { UseShellExecute = true })
+                ?? throw new InvalidOperationException("제거 프로그램을 시작하지 못했습니다.");
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return;
         }
-        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+        RemoveManaged(installed.InstallName, installed.Directory, app.Name);
     }
 
-    private static IReadOnlyList<string> EnumerateFilesWithoutReparsePoints(string root)
+    /// <summary>i-luncher.exe --uninstall &lt;InstallName&gt; (Windows "앱" 목록의 제거 버튼)</summary>
+    public void UninstallByName(string installName)
     {
-        EnsureDirectoryIsNotReparsePoint(root);
-        var files = new List<string>();
-        var pending = new Stack<string>();
-        pending.Push(root);
-        while (pending.Count > 0)
+        string? directory;
+        using (RegistryKey? key = Registry.CurrentUser.OpenSubKey(KeyPath(installName)))
+            directory = key?.GetValue("InstallLocation") as string;
+        directory ??= Path.Combine(_programsRoot, installName);
+        if (Directory.Exists(directory) && IsRunning(directory)) throw new AppRunningException(installName);
+        RemoveManaged(installName, directory, installName);
+    }
+
+    private void RemoveManaged(string installName, string directory, string displayName)
+    {
+        string full = Path.GetFullPath(directory);
+        // 안전장치: 런처가 관리하는 폴더(기록 파일이 있거나 Programs 아래의 같은 이름)만 통째로 지움
+        bool owned = File.Exists(Path.Combine(full, ManifestFileName)) ||
+                     string.Equals(full.TrimEnd('\\'), Path.Combine(_programsRoot, installName).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        if (_shortcutDirectory is not null)
+            foreach (string link in Directory.Exists(_shortcutDirectory) ? Directory.GetFiles(_shortcutDirectory, "*.lnk") : [])
+                if (ShortcutTarget(link) is { } linked && IsInside(linked, full))
+                    TryDeleteFile(link);
+        Registry.CurrentUser.DeleteSubKeyTree(KeyPath(installName), throwOnMissingSubKey: false);
+        if (owned && Directory.Exists(full))
         {
-            var directory = pending.Pop();
-            foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+            for (int attempt = 0; ; attempt++)
             {
-                var attributes = File.GetAttributes(path);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException($"설치 파일에 reparse point가 포함되어 있습니다: {path}");
-                if ((attributes & FileAttributes.Directory) != 0)
-                    pending.Push(path);
-                else
-                    files.Add(path);
-            }
-        }
-        return files;
-    }
-
-    private static void WriteAtomically(string path, string contents)
-    {
-        var temporaryPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.WriteAllText(temporaryPath, contents, new UTF8Encoding(false));
-        File.Move(temporaryPath, path, overwrite: true);
-    }
-
-    private static void ValidateExecutable(string executablePath, string expectedDirectory)
-    {
-        EnsureExistingAncestorsAreNotReparsePoints(executablePath);
-        EnsureContained(expectedDirectory, executablePath, "실행 파일");
-        EnsureNoReparsePoints(expectedDirectory, executablePath);
-        if (!string.Equals(Path.GetExtension(executablePath), ".exe", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("실행 파일은 .exe 파일이어야 합니다.");
-        if (!File.Exists(executablePath))
-            throw new FileNotFoundException("실행 파일이 없습니다.", executablePath);
-    }
-
-    internal static void EnsureContained(string baseDirectory, string path, string label)
-    {
-        var root = Path.GetFullPath(baseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        var candidate = Path.GetFullPath(path);
-        var basePath = root.TrimEnd(Path.DirectorySeparatorChar);
-        if (!string.Equals(candidate.TrimEnd(Path.DirectorySeparatorChar), basePath, StringComparison.OrdinalIgnoreCase) &&
-            !candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException($"{label} 경로가 허용된 폴더를 벗어납니다: {path}");
-    }
-
-    internal static void EnsureNoReparsePoints(string baseDirectory, string path)
-    {
-        EnsureDirectoryIsNotReparsePoint(baseDirectory);
-        var relativePath = Path.GetRelativePath(baseDirectory, path);
-        var current = Path.GetFullPath(baseDirectory);
-        foreach (var segment in relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-        {
-            if (segment is "" or ".") continue;
-            current = Path.Combine(current, segment);
-            if (!File.Exists(current) && !Directory.Exists(current)) break;
-            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException($"reparse point 경로는 사용할 수 없습니다: {current}");
-        }
-    }
-
-    private static void EnsureDirectoryIsNotReparsePoint(string path)
-    {
-        if (Directory.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException($"reparse point 폴더는 사용할 수 없습니다: {path}");
-    }
-
-    private static bool PathsOverlap(string first, string second)
-    {
-        static string WithSeparator(string path) =>
-            Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        var firstPath = WithSeparator(first);
-        var secondPath = WithSeparator(second);
-        return firstPath.StartsWith(secondPath, StringComparison.OrdinalIgnoreCase) ||
-               secondPath.StartsWith(firstPath, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsPathWithin(string parent, string candidate)
-    {
-        var parentPath = Path.GetFullPath(parent).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        var candidatePath = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        return candidatePath.StartsWith(parentPath, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void EnsureExistingAncestorsAreNotReparsePoints(string path)
-    {
-        var existing = Path.GetFullPath(path);
-        while (!File.Exists(existing) && !Directory.Exists(existing))
-        {
-            existing = Path.GetDirectoryName(existing)
-                ?? throw new InvalidDataException($"경로의 기존 상위 폴더를 확인할 수 없습니다: {path}");
-        }
-
-        for (var current = new DirectoryInfo(existing); current is not null; current = current.Parent)
-            if ((current.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException($"reparse point 폴더는 사용할 수 없습니다: {current.FullName}");
-    }
-
-    private static void EnsureTreeHasNoReparsePoints(string root)
-    {
-        EnsureDirectoryIsNotReparsePoint(root);
-        var pending = new Stack<string>();
-        pending.Push(root);
-        while (pending.Count > 0)
-        {
-            var directory = pending.Pop();
-            foreach (var path in Directory.EnumerateFileSystemEntries(directory))
-            {
-                var attributes = File.GetAttributes(path);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException($"reparse point가 포함된 임시 폴더는 삭제하지 않습니다: {path}");
-                if ((attributes & FileAttributes.Directory) != 0)
-                    pending.Push(path);
+                try { Directory.Delete(full, recursive: true); break; }
+                catch (Exception error) when ((error is IOException or UnauthorizedAccessException) && attempt < 5) { Thread.Sleep(400); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    throw new IOException($"{displayName} 설치 폴더의 일부 파일을 지우지 못했습니다: {full}\n{error.Message}");
+                }
             }
         }
     }
 
-    private static string SafeShortcutName(string name, string fallback)
+    private static (string File, string Arguments) SplitCommand(string command)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var value = new string(name.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.');
-        return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        string text = command.Trim();
+        if (text.StartsWith('"'))
+        {
+            int end = text.IndexOf('"', 1);
+            if (end > 0) return (text[1..end], text[(end + 1)..].Trim());
+        }
+        int exe = text.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        return exe > 0 ? (text[..(exe + 4)], text[(exe + 4)..].Trim()) : (text, "");
     }
 
-    private static string BuildWindowsCommandLine(IReadOnlyList<string> arguments) =>
-        string.Join(" ", arguments.Select(QuoteWindowsArgument));
+    // ───────────────────────── 등록 ─────────────────────────
 
-    private static string QuoteWindowsArgument(string argument)
+    private void Register(AppDefinition app, string target, string executable, string version)
     {
-        if (argument.Length > 0 && argument.All(character => !char.IsWhiteSpace(character) && character != '"'))
-            return argument;
-        var result = new StringBuilder("\"");
-        var backslashes = 0;
-        foreach (var character in argument)
+        using RegistryKey key = Registry.CurrentUser.CreateSubKey(KeyPath(app.EffectiveInstallName));
+        // 앱의 자체 설치 프로그램이 둔 제거 프로그램이 폴더에 있으면 그것을 유지
+        bool keepUninstaller = key.GetValue("UninstallString") is string existing && !existing.Contains("--uninstall", StringComparison.OrdinalIgnoreCase) &&
+            SplitCommand(existing).File is { } file && File.Exists(file) && IsInside(file, target);
+        long sizeKb = 0;
+        try { sizeKb = Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories).Sum(path => new FileInfo(path).Length) / 1024; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        key.SetValue("DisplayName", app.Name);
+        if (version.Length > 0) key.SetValue("DisplayVersion", version);
+        if (key.GetValue("Publisher") is null) key.SetValue("Publisher", "i-luncher");
+        key.SetValue("InstallLocation", target);
+        key.SetValue("DisplayIcon", executable);
+        if (!keepUninstaller)
         {
-            if (character == '\\')
-            {
-                backslashes++;
-                continue;
-            }
-            if (character == '"')
-                result.Append('\\', backslashes * 2 + 1).Append('"');
-            else
-                result.Append('\\', backslashes).Append(character);
-            backslashes = 0;
+            key.SetValue("UninstallString", $"\"{_launcherCommand}\" --uninstall \"{app.EffectiveInstallName}\"");
+            key.SetValue("QuietUninstallString", $"\"{_launcherCommand}\" --uninstall \"{app.EffectiveInstallName}\" --quiet");
         }
-        return result.Append('\\', backslashes * 2).Append('"').ToString();
+        key.SetValue("InstallDate", DateTime.Now.ToString("yyyyMMdd"));
+        key.SetValue("EstimatedSize", (int)Math.Min(int.MaxValue, sizeKb), RegistryValueKind.DWord);
+        key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+        key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+        key.SetValue("ILuncherAppId", app.Id);
+        key.SetValue("ILuncherRepository", app.Repository);
+        if (!string.IsNullOrEmpty(app.Description)) key.SetValue("Comments", app.Description);
+    }
+
+    private void TryCreateShortcut(AppDefinition app, string executable, string workingDirectory)
+    {
+        if (_shortcutDirectory is null) return;
+        try
+        {
+            Directory.CreateDirectory(_shortcutDirectory);
+            string path = Path.Combine(_shortcutDirectory, AppDefinition.SafeFolderName(app.Name) + ".lnk");
+            Type shellType = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("WScript.Shell 없음");
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            try
+            {
+                dynamic link = shell.CreateShortcut(path);
+                link.TargetPath = executable;
+                link.WorkingDirectory = Path.GetDirectoryName(executable) ?? workingDirectory;
+                link.IconLocation = executable + ",0";
+                link.Description = string.IsNullOrWhiteSpace(app.Description) ? app.Name : app.Description;
+                if (!string.IsNullOrWhiteSpace(app.Arguments)) link.Arguments = app.Arguments;
+                link.Save();
+            }
+            finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            Debug.WriteLine("Shortcut failed: " + error.Message);  // 바로 가기는 없어도 런처에서 실행 가능
+        }
+    }
+
+    private static string? ShortcutTarget(string path)
+    {
+        Type? shellType = Type.GetTypeFromProgID("WScript.Shell");
+        if (shellType is null) return null;
+        dynamic shell = Activator.CreateInstance(shellType)!;
+        try { return (string)shell.CreateShortcut(path).TargetPath; }
+        catch (Exception) { return null; }
+        finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
+    }
+
+    // ───────────────────────── .NET 실행 환경 ─────────────────────────
+
+    public sealed record RuntimeRequirement(string Name, string Version);
+
+    /// <summary>프레임워크 의존 .NET 앱이면 필요한 공유 프레임워크 (Desktop 이 있으면 그것). 자체 포함·네이티브 앱은 null</summary>
+    public static RuntimeRequirement? ReadRuntimeRequirement(string executable)
+    {
+        string config = Path.ChangeExtension(executable, ".runtimeconfig.json");
+        if (!File.Exists(config)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(config), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            if (!document.RootElement.TryGetProperty("runtimeOptions", out var options)) return null;
+            if (options.TryGetProperty("includedFrameworks", out _)) return null;
+            var frameworks = new List<RuntimeRequirement>();
+            if (options.TryGetProperty("framework", out var single)) frameworks.Add(Read(single));
+            if (options.TryGetProperty("frameworks", out var many) && many.ValueKind == JsonValueKind.Array)
+                frameworks.AddRange(many.EnumerateArray().Select(Read));
+            frameworks.RemoveAll(item => item.Name.Length == 0);
+            return frameworks.FirstOrDefault(item => item.Name == "Microsoft.WindowsDesktop.App")
+                ?? frameworks.FirstOrDefault(item => item.Name == "Microsoft.AspNetCore.App")
+                ?? frameworks.FirstOrDefault();
+        }
+        catch (JsonException) { return null; }
+
+        static RuntimeRequirement Read(JsonElement item) => new(
+            item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+            item.TryGetProperty("version", out var version) ? version.GetString() ?? "0.0.0" : "0.0.0");
+    }
+
+    public bool IsRuntimeAvailable(RuntimeRequirement requirement, string appRuntime)
+    {
+        if (IsRuntimeRoot(appRuntime, requirement)) return true;
+        return _useGlobalRuntimes && GlobalDotNetRoots().Any(root => IsRuntimeRoot(root, requirement));
+    }
+
+    private static IEnumerable<string> GlobalDotNetRoots()
+    {
+        string? registered = null;
+        try
+        {
+            using RegistryKey machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+            using RegistryKey? setup = machine.OpenSubKey(@"SOFTWARE\dotnet\Setup\InstalledVersions\x64");
+            registered = setup?.GetValue("InstallLocation") as string;
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { }
+        return new[]
+        {
+            Environment.GetEnvironmentVariable("DOTNET_ROOT_X64"),
+            Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+            registered,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")
+        }.Where(root => !string.IsNullOrWhiteSpace(root)).Select(root => root!).Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>root 가 requirement 를 실행할 수 있는 dotnet 루트인지: 같은 주 버전에서 요구 버전 이상 + host\fxr</summary>
+    public static bool IsRuntimeRoot(string root, RuntimeRequirement requirement)
+    {
+        try
+        {
+            if (!Version.TryParse(requirement.Version.Split('-')[0], out Version? needed)) needed = new Version(0, 0);
+            string shared = Path.Combine(root, "shared", requirement.Name);
+            bool frameworkPresent = Directory.Exists(shared) && Directory.EnumerateDirectories(shared).Any(folder =>
+                Version.TryParse(Path.GetFileName(folder).Split('-')[0], out Version? available) &&
+                available.Major == needed.Major && available >= needed);
+            bool coreNeeded = requirement.Name != "Microsoft.NETCore.App";
+            bool corePresent = !coreNeeded || IsRuntimeRoot(root, requirement with { Name = "Microsoft.NETCore.App" });
+            string fxr = Path.Combine(root, "host", "fxr");
+            return frameworkPresent && corePresent && Directory.Exists(fxr) && Directory.EnumerateDirectories(fxr).Any();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    // ───────────────────────── 설치 기록 ─────────────────────────
+
+    public sealed class InstallManifest
+    {
+        public string AppId { get; set; } = "";
+        public string Repository { get; set; } = "";
+        public string Tag { get; set; } = "";
+        public string Version { get; set; } = "";
+        public string Executable { get; set; } = "";
+        public long ExecutableSize { get; set; }
+        public DateTime ExecutableWriteTimeUtc { get; set; }
+        public DateTimeOffset InstalledAt { get; set; }
+        public List<string> Files { get; set; } = [];
+
+        public bool MatchesExecutable(string directory, string executable)
+        {
+            if (!string.Equals(Path.GetFullPath(Path.Combine(directory, Executable)), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)) return false;
+            var file = new FileInfo(executable);
+            return file.Exists && file.Length == ExecutableSize && Math.Abs((file.LastWriteTimeUtc - ExecutableWriteTimeUtc).TotalSeconds) < 2;
+        }
+    }
+
+    private static readonly JsonSerializerOptions ManifestJson = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    public static InstallManifest? ReadManifest(string directory)
+    {
+        string path = Path.Combine(directory, ManifestFileName);
+        try { return File.Exists(path) ? JsonSerializer.Deserialize<InstallManifest>(File.ReadAllText(path), ManifestJson) : null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+    private static void WriteManifest(string directory, InstallManifest manifest)
+    {
+        string path = Path.Combine(directory, ManifestFileName);
+        File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(manifest, ManifestJson));
+        File.Move(path + ".tmp", path, overwrite: true);
+        try { File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden); } catch (IOException) { }
+    }
+
+    // ───────────────────────── 도우미 ─────────────────────────
+
+    private static bool IsInside(string path, string folder)
+    {
+        try
+        {
+            string root = Path.GetFullPath(folder).TrimEnd('\\') + "\\";
+            return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return false; }
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            string target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try { File.Delete(path); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 }

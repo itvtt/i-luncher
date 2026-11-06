@@ -1,0 +1,89 @@
+﻿<Window x:Class="ILauncher.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="설정"
+        Width="600" Height="700" MinWidth="520" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#FF10141C"
+        Foreground="#FFF5F7FB"
+        FontFamily="Segoe UI, Malgun Gothic"
+        TextOptions.TextFormattingMode="Display"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary Source="LauncherResources.xaml" />
+    </Window.Resources>
+    <Grid Margin="22,18,22,18">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <TextBlock FontSize="17" FontWeight="SemiBold" Text="설정" />
+        <ScrollViewer Grid.Row="1" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,6,0">
+                <TextBlock Margin="0,12,0,2" FontSize="13.5" FontWeight="SemiBold" Text="앱 목록 위치" />
+                <RadioButton x:Name="ApiCatalogRadio" GroupName="Catalog" Content="API 서버 (모든 사용자가 같은 목록, 권장)" Checked="CatalogRadio_Checked" />
+                <StackPanel x:Name="ApiFields" Margin="22,0,0,6">
+                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="API 서버 주소" />
+                    <TextBox x:Name="ApiServerBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="API 서버 주소" />
+                    <TextBlock x:Name="ApiServerHint" Style="{StaticResource HintTextStyle}" />
+                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="관리자 비밀번호 (앱 목록을 바꿀 때만)" />
+                    <PasswordBox x:Name="AdminPasswordBox" Style="{StaticResource FieldPasswordBoxStyle}" AutomationProperties.Name="관리자 비밀번호" />
+                    <TextBlock x:Name="AdminPasswordHint" Style="{StaticResource HintTextStyle}" />
+                </StackPanel>
+                <RadioButton x:Name="RepositoryCatalogRadio" GroupName="Catalog" Content="GitHub 저장소 (모든 사용자가 같은 목록)" Checked="CatalogRadio_Checked" />
+                <RadioButton x:Name="LocalCatalogRadio" GroupName="Catalog" Content="이 PC에만 저장" Checked="CatalogRadio_Checked" />
+                <StackPanel x:Name="RepositoryFields" Margin="22,0,0,0">
+                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="저장소 주소" />
+                    <TextBox x:Name="CatalogRepositoryBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="앱 목록 저장소 주소" />
+                    <TextBlock x:Name="CatalogRepositoryHint" Style="{StaticResource HintTextStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="파일 경로" />
+                            <TextBox x:Name="CatalogPathBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="앱 목록 파일 경로" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="브랜치" />
+                            <TextBox x:Name="CatalogBranchBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="앱 목록 브랜치" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Style="{StaticResource HintTextStyle}" Text="비우면 빌드 설정(launcher.env) 값을 씁니다. 앱을 추가·수정·삭제하면 이 파일에 커밋이 하나씩 생기며, 쓰기 권한이 있는 토큰이 필요합니다. 읽기는 읽기 토큰(또는 공개 저장소면 토큰 없이)으로 됩니다." />
+                </StackPanel>
+
+                <TextBlock Margin="0,22,0,2" FontSize="13.5" FontWeight="SemiBold" Text="GitHub 토큰" />
+                <TextBlock Style="{StaticResource HintTextStyle}" Text="비공개·사내 저장소의 릴리스를 받거나 앱 목록을 바꿀 때 씁니다. 호스트마다 하나씩 등록하며, 이 PC의 Windows 사용자만 풀 수 있게 암호화해 저장합니다 (DPAPI). 목록을 바꾸려면 contents: write, 설치만 하려면 contents: read 권한이면 됩니다." />
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="호스트" />
+                        <TextBox x:Name="TokenHostBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="토큰 호스트" TextChanged="TokenHostBox_TextChanged" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="토큰" />
+                        <PasswordBox x:Name="TokenBox" Style="{StaticResource FieldPasswordBoxStyle}" AutomationProperties.Name="토큰" />
+                    </StackPanel>
+                </Grid>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TokenStatusText" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="TestTokenButton" Content="확인" Height="32" Padding="12,0" Margin="8,0,0,0" Click="TestTokenButton_Click" Style="{StaticResource ToolbarButtonStyle}" ToolTip="입력한 (또는 등록된) 토큰으로 앱 목록 저장소를 읽어 봅니다" />
+                        <Button x:Name="RemoveTokenButton" Content="삭제" Height="32" Padding="12,0" Margin="8,0,0,0" Click="RemoveTokenButton_Click" Style="{StaticResource ToolbarButtonStyle}" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock x:Name="RegisteredHostsText" Style="{StaticResource HintTextStyle}" Margin="0,8,0,0" />
+
+                <TextBlock Margin="0,22,0,2" FontSize="13.5" FontWeight="SemiBold" Text="i-luncher 업데이트" />
+                <TextBlock x:Name="LauncherInfoText" Style="{StaticResource HintTextStyle}" FontSize="12" />
+                <CheckBox x:Name="AutoUpdateBox" Content="시작할 때 새 버전이 있으면 자동으로 업데이트" />
+                <Button x:Name="CheckNowButton" Content="지금 확인" HorizontalAlignment="Left" Height="32" Padding="12,0" Margin="0,10,0,0" Click="CheckNowButton_Click" Style="{StaticResource ToolbarButtonStyle}" />
+            </StackPanel>
+        </ScrollViewer>
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="ErrorText" VerticalAlignment="Center" Foreground="#FFF0CF8A" FontSize="12" TextWrapping="Wrap" Margin="0,0,12,0" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="취소" Width="90" Height="36" Margin="0,0,8,0" IsCancel="True" Style="{StaticResource ToolbarButtonStyle}" Padding="0" />
+                <Button Content="저장" Width="90" Height="36" Click="SaveButton_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="0" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

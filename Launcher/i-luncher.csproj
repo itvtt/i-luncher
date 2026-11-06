@@ -9,24 +9,63 @@
     <AssemblyName>i-luncher</AssemblyName>
     <ApplicationIcon>Assets/ILauncher.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 릴리스 버전의 바닥값. Actions 러너(.github\workflows\release.yml)는 마지막 릴리스의 다음 번호를 -p:Version 으로 넘김.
+         큰 변경으로 번호를 올리려면 여기만 올리면 됨 -->
+    <Version>1.0.0</Version>
+    <Product>i-luncher</Product>
+    <Description>GitHub 릴리스로 사내 앱을 설치·업데이트하는 런처</Description>
+    <!-- 버전 표시가 1.0.0+커밋해시 가 되지 않게 (런처·앱 버전 비교는 릴리스 태그 기준) -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- .NET 10 이 없는 PC 에는 i-luncher-Setup.exe 가 실행 환경을 <설치 폴더>\dotnet 에 넣음 -->
+    <AppHostRelativeDotNet>dotnet</AppHostRelativeDotNet>
+    <AppHostDotNetSearch>AppRelative;EnvironmentVariable;Global</AppHostDotNetSearch>
+    <DefaultItemExcludes>$(DefaultItemExcludes);out\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
-    <Compile Include="..\Bootstrapper\Core\*.cs"
-             Exclude="..\Bootstrapper\Core\FrameworkCompatibility.cs"
-             Link="Bootstrapper\Core\%(Filename)%(Extension)" />
+    <!-- 앱들과 같은 자체 업데이터 (AppKit) 로 런처도 업데이트 -->
+    <Compile Include="..\AppKit\AppUpdater.cs" Link="AppKit\AppUpdater.cs" />
+    <InternalsVisibleTo Include="Launcher.Checks" />
   </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets/ILauncher.ico" />
     <Resource Include="Assets/ILauncher.png" />
-    <Resource Include="..\Projects\FolderCompareWPF\Assets\FolderCompare.png" Link="Assets\BuiltIns\FolderCompare.png" />
-    <Resource Include="..\Projects\SwiftCopy\SwiftCopy.App\Assets\SwiftCopy-128.png" Link="Assets\BuiltIns\SwiftCopy-128.png" />
-    <Resource Include="..\Projects\DiskAtlas\DiskAtlas.App\Assets\DiskAtlas.png" Link="Assets\BuiltIns\DiskAtlas.png" />
-    <Resource Include="..\Projects\DeskCal\cal.ico" Link="Assets\BuiltIns\DeskCal.ico" />
+    <None Remove="Assets/Build-Icon.ps1;Assets/ILauncher.svg" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Projects\FolderCompareWPF\FolderCompareWPF.csproj" />
-    <ProjectReference Include="..\Projects\SwiftCopy\SwiftCopy.App\SwiftCopy.App.csproj" />
-    <ProjectReference Include="..\Projects\DiskAtlas\DiskAtlas.App\DiskAtlas.App.csproj" />
-    <ProjectReference Include="..\Projects\DeskCal\DeskCal.csproj" />
-  </ItemGroup>
+
+  <!-- dotnet publish -p:ReleaseZip=<경로> 이면 게시 폴더를 릴리스 zip 으로도 묶음 (build\Publish-Release.ps1) -->
+  <Target Name="PackReleaseZip" AfterTargets="Publish" Condition="'$(ReleaseZip)' != ''">
+    <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ReleaseZip)" Overwrite="true" />
+  </Target>
+
+  <!-- 빌드 설정: 저장소 루트의 .env 에서 런처가 쓰는 줄만 골라 실행 파일 옆 launcher.env 로 (.env.sample 참고).
+       Actions 러너에서는 LAUNCHER_REPOSITORY 가 비어 있으면 그 러너의 저장소 (릴리스를 올리는 곳에서 업데이트도 받음) -->
+  <Target Name="WriteLauncherSettings" BeforeTargets="AssignTargetPaths">
+    <PropertyGroup>
+      <_LauncherEnvFile>$(MSBuildProjectDirectory)\..\.env</_LauncherEnvFile>
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(_LauncherEnvFile)" Condition="Exists('$(_LauncherEnvFile)')">
+      <Output TaskParameter="Lines" ItemName="_LauncherEnvLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_LauncherSetting Include="@(_LauncherEnvLine)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*(API_SERVER|LAUNCHER_REPOSITORY|CATALOG_REPOSITORY|CATALOG_PATH|CATALOG_BRANCH|NOTICES_PATH|GITHUB_HOST|LAUNCHER_TOKEN)\s*='))" />
+      <_LauncherRepositoryLine Include="@(_LauncherSetting)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*LAUNCHER_REPOSITORY\s*=\s*\S'))" />
+    </ItemGroup>
+    <ItemGroup Condition="'@(_LauncherRepositoryLine)' == '' and '$(GITHUB_ACTIONS)' == 'true' and '$(GITHUB_SERVER_URL)' != ''">
+      <_LauncherSetting Include="LAUNCHER_REPOSITORY=$(GITHUB_SERVER_URL)/$(GITHUB_REPOSITORY)" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_LauncherSettingsPath>$(IntermediateOutputPath)launcher.env</_LauncherSettingsPath>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_LauncherSettingsPath)" Lines="# i-luncher build settings (generated from .env);@(_LauncherSetting)" Overwrite="true" WriteOnlyWhenDifferent="true" Encoding="utf-8" />
+    <ItemGroup>
+      <Content Include="$(_LauncherSettingsPath)" Link="launcher.env" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <FileWrites Include="$(_LauncherSettingsPath)" />
+    </ItemGroup>
+  </Target>
 </Project>

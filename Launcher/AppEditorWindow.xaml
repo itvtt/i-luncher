@@ -1,0 +1,119 @@
+﻿<Window x:Class="ILauncher.AppEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="앱 추가"
+        Width="600" Height="720" MinWidth="520" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="CanResize"
+        Background="#FF10141C"
+        Foreground="#FFF5F7FB"
+        FontFamily="Segoe UI, Malgun Gothic"
+        TextOptions.TextFormattingMode="Display"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ResourceDictionary Source="LauncherResources.xaml" />
+    </Window.Resources>
+    <Grid Margin="22,18,22,18">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <TextBlock x:Name="HeaderText" FontSize="17" FontWeight="SemiBold" Text="앱 추가" />
+
+        <ScrollViewer Grid.Row="1" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,6,0">
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="GitHub 저장소 주소" />
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBox x:Name="RepositoryBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="GitHub 저장소 주소" KeyDown="RepositoryBox_KeyDown" />
+                    <Button x:Name="FetchButton" Grid.Column="1" Margin="8,0,0,0" Padding="14,0" Height="34" Content="불러오기" Click="FetchButton_Click" Style="{StaticResource ToolbarButtonStyle}" />
+                </Grid>
+                <TextBlock Style="{StaticResource HintTextStyle}" Text="예: https://github.company.com/team/DeskCal · 저장소 정보와 최신 릴리스를 읽어 아래 칸을 채웁니다." />
+                <Border x:Name="ReleaseInfo" Margin="0,10,0,0" Padding="12,9" Background="#FF161C27" BorderBrush="#FF2A3140" BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
+                    <TextBlock x:Name="ReleaseInfoText" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="이름" />
+                        <TextBox x:Name="NameBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="이름" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="분류" />
+                        <TextBox x:Name="CategoryBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="분류" />
+                    </StackPanel>
+                </Grid>
+                <WrapPanel x:Name="CategorySuggestions" Margin="0,6,0,0" />
+
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설명" />
+                <TextBox x:Name="DescriptionBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설명" />
+
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설치 방법" />
+                <WrapPanel>
+                    <RadioButton x:Name="KindAuto" Content="자동" GroupName="Kind" IsChecked="True" ToolTip="zip 이 있으면 zip, Velopack·설치 프로그램만 있으면 설치 프로그램" />
+                    <RadioButton x:Name="KindZip" Content="zip 풀어서 설치" GroupName="Kind" />
+                    <RadioButton x:Name="KindSetup" Content="설치 프로그램 실행" GroupName="Kind" />
+                </WrapPanel>
+
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="릴리스 파일" />
+                <TextBox x:Name="AssetBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="릴리스 zip 파일 이름" />
+                <TextBlock Style="{StaticResource HintTextStyle}" Text="비우면 자동 (win-x64 zip). 버전이 들어간 이름은 * 를 쓰세요: MyApp-*-win-x64.zip" />
+                <ListBox x:Name="AssetList" Margin="0,6,0,0" Style="{StaticResource AssetListStyle}" Visibility="Collapsed" SelectionChanged="AssetList_SelectionChanged" />
+
+                <Expander Margin="0,14,0,0" Foreground="{StaticResource TextBrush}" Header="고급 설정">
+                    <StackPanel Margin="4,0,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설치 폴더 이름" />
+                                <TextBox x:Name="InstallNameBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설치 폴더 이름" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="실행 파일" />
+                                <TextBox x:Name="ExecutableBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="실행 파일" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HintTextStyle}" Text="설치 폴더 이름은 %LOCALAPPDATA%\Programs\이름 과 Windows '앱' 목록 이름입니다. 앱의 자체 업데이터·설치 프로그램과 같아야 앱을 따로 실행해도 스스로 업데이트합니다. 실행 파일은 비우면 자동으로 찾습니다." />
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="실행 인수" />
+                        <TextBox x:Name="ArgumentsBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="실행 인수" />
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="아이콘" />
+                        <TextBox x:Name="IconBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="아이콘" />
+                        <TextBlock Style="{StaticResource HintTextStyle}" Text="저장소 안 경로(Assets/App.png) 또는 https 주소. 비우면 저장소의 .csproj ApplicationIcon 이나 Assets 의 아이콘을 자동으로 씁니다." />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설치 프로그램 파일" />
+                                <TextBox x:Name="SetupAssetBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설치 프로그램 파일" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설치 프로그램 인수" />
+                                <TextBox x:Name="SetupArgumentsBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설치 프로그램 인수" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HintTextStyle}" Text="설치 프로그램은 '설치 프로그램 실행' 방식이거나, zip 방식인데 PC에 .NET 실행 환경이 없을 때 씁니다. 인수를 비우면 /S (Velopack 은 --silent)." />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 순서" />
+                                <TextBox x:Name="OrderBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="표시 순서" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="앱 id" />
+                                <TextBox x:Name="IdBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="앱 id" />
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox x:Name="PrereleaseBox" Content="프리릴리스도 최신 버전으로 보기" />
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="ErrorText" VerticalAlignment="Center" Foreground="#FFF0CF8A" FontSize="12" TextWrapping="Wrap" Margin="0,0,12,0" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="취소" Width="90" Height="36" Margin="0,0,8,0" IsCancel="True" Style="{StaticResource ToolbarButtonStyle}" Padding="0" />
+                <Button x:Name="SaveButton" Content="저장" Width="90" Height="36" Click="SaveButton_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="0" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

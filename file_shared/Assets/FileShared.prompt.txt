@@ -1,9 +1,0 @@
-﻿Built-in image_gen; transparent_background=true.
-
-Use case: logo-brand
-Asset type: a single polished Windows desktop application icon for a file sharing utility named File Shared, to use as an ICO at 16–256px and as a launcher tile.
-Primary request: create an immediately recognizable file-sharing application icon: a clean folded document paired with two bold opposing transfer arrows, composed as one compact friendly mark.
-Style/medium: refined modern desktop app icon with subtle dimensional depth and crisp simple geometry, restrained soft highlights; not photorealistic.
-Composition/framing: square canvas, centered isolated icon filling roughly 80% of the canvas, generous safe margins, strong readable silhouette and few large shapes so it remains clear at small sizes.
-Scene/backdrop: genuinely transparent background, preserving alpha; no enclosing presentation canvas, no scene.
-Constraints: one icon only; no text, letters, numbers, wordmark, watermark, border, extra objects, tiny decorative details, or checkerboard pattern. The document and sharing arrows should stay visually distinct at thumbnail scale.

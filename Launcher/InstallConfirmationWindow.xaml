@@ -1,4 +1,4 @@
-<Window x:Class="ILauncher.InstallConfirmationWindow"
+﻿<Window x:Class="ILauncher.InstallConfirmationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="앱 설치"
@@ -6,7 +6,7 @@
         MinWidth="360"
         MaxWidth="520"
         MinHeight="236"
-        MaxHeight="360"
+        MaxHeight="420"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         WindowStyle="None"
@@ -35,7 +35,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0"
+                <TextBlock x:Name="HeaderText" Grid.Row="0"
                            Text="앱 설치"
                            Foreground="#FFB9C7D8"
                            FontSize="13"
@@ -75,11 +75,16 @@
                                    TextTrimming="CharacterEllipsis"
                                    MaxHeight="58"
                                    AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock Margin="0,8,0,0"
+                        <TextBlock x:Name="QuestionText" Margin="0,8,0,0"
                                    Text="이 앱을 설치할까요?"
                                    FontSize="14"
                                    Foreground="#FFB9C7D8"
                                    TextWrapping="Wrap" />
+                        <TextBlock x:Name="DetailText" Margin="0,6,0,0"
+                                   FontSize="12"
+                                   Foreground="#FF8C96A8"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed" />
                     </StackPanel>
                 </Grid>
                 <StackPanel Grid.Row="2"

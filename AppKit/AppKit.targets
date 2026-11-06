@@ -1,0 +1,60 @@
+<Project>
+  <!-- i-luncher AppKit: 앱 프로젝트에 <Import Project="AppKit\AppKit.targets" /> 한 줄로 붙이면
+         - 빌드할 때 .env 의 UPDATE_* (또는 Actions 러너의 저장소)로 실행 파일 옆 update.json 을 만들고 (AppUpdater.cs 가 읽음)
+         - dotnet publish -p:ReleaseZip=<경로> 로 릴리스 zip 을 만들고
+         - .NET 실행 환경을 앱 옆 dotnet\ 에서 먼저 찾게 함 (.NET 이 없는 PC 에 i-luncher 가 실행 환경을 넣어 줌)
+       AppKit 폴더는 프로젝트 폴더 안에 두세요 (AppUpdater.cs 가 자동으로 컴파일됨). 원본: i-luncher 저장소의 AppKit\ -->
+  <PropertyGroup>
+    <AppHostRelativeDotNet Condition="'$(AppHostRelativeDotNet)' == ''">dotnet</AppHostRelativeDotNet>
+    <AppHostDotNetSearch Condition="'$(AppHostDotNetSearch)' == ''">AppRelative;EnvironmentVariable;Global</AppHostDotNetSearch>
+    <!-- 버전이 1.2.3+커밋해시 가 아니라 릴리스 태그와 같은 1.2.3 이 되게 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <DefaultItemExcludes>$(DefaultItemExcludes);out\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Target Name="AppKitPackReleaseZip" AfterTargets="Publish" Condition="'$(ReleaseZip)' != ''">
+    <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ReleaseZip)" Overwrite="true" />
+  </Target>
+
+  <Target Name="AppKitWriteUpdateConfig" BeforeTargets="AssignTargetPaths">
+    <PropertyGroup>
+      <_AppKitEnvFile Condition="Exists('$(MSBuildProjectDirectory)\.env')">$(MSBuildProjectDirectory)\.env</_AppKitEnvFile>
+      <_AppKitEnvFile Condition="'$(_AppKitEnvFile)' == '' and Exists('$(MSBuildProjectDirectory)\..\.env')">$(MSBuildProjectDirectory)\..\.env</_AppKitEnvFile>
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(_AppKitEnvFile)" Condition="'$(_AppKitEnvFile)' != ''">
+      <Output TaskParameter="Lines" ItemName="_AppKitEnvLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_AppKitApiLine Include="@(_AppKitEnvLine)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('UPDATE_GITHUB_API='))" />
+      <_AppKitRepoLine Include="@(_AppKitEnvLine)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('UPDATE_REPOSITORY='))" />
+      <_AppKitTokenLine Include="@(_AppKitEnvLine)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('UPDATE_TOKEN='))" />
+      <_AppKitAssetLine Include="@(_AppKitEnvLine)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('UPDATE_ASSET='))" />
+      <_AppKitNameLine Include="@(_AppKitEnvLine)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('UPDATE_INSTALL_NAME='))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AppKitApi>@(_AppKitApiLine)</_AppKitApi>
+      <_AppKitRepo>@(_AppKitRepoLine)</_AppKitRepo>
+      <_AppKitToken>@(_AppKitTokenLine)</_AppKitToken>
+      <_AppKitAsset>@(_AppKitAssetLine)</_AppKitAsset>
+      <_AppKitName>@(_AppKitNameLine)</_AppKitName>
+      <_AppKitApi Condition="'$(_AppKitApi)' != ''">$(_AppKitApi.Substring(18).Trim())</_AppKitApi>
+      <_AppKitRepo Condition="'$(_AppKitRepo)' != ''">$(_AppKitRepo.Substring(18).Trim())</_AppKitRepo>
+      <_AppKitToken Condition="'$(_AppKitToken)' != ''">$(_AppKitToken.Substring(13).Trim())</_AppKitToken>
+      <_AppKitAsset Condition="'$(_AppKitAsset)' != ''">$(_AppKitAsset.Substring(13).Trim())</_AppKitAsset>
+      <_AppKitName Condition="'$(_AppKitName)' != ''">$(_AppKitName.Substring(20).Trim())</_AppKitName>
+      <!-- Actions 러너에서 UPDATE_REPOSITORY 가 비어 있으면 "이 저장소": 릴리스를 올리는 곳에서 업데이트도 받음 -->
+      <_AppKitApi Condition="'$(_AppKitRepo)' == '' and '$(GITHUB_ACTIONS)' == 'true'">$(GITHUB_API_URL)</_AppKitApi>
+      <_AppKitRepo Condition="'$(_AppKitRepo)' == '' and '$(GITHUB_ACTIONS)' == 'true'">$(GITHUB_REPOSITORY)</_AppKitRepo>
+      <!-- 설치 폴더·Windows "앱" 목록 이름과 릴리스 zip 이름의 기본값: 실행 파일 이름 -->
+      <_AppKitName Condition="'$(_AppKitName)' == ''">$(AssemblyName)</_AppKitName>
+      <_AppKitAsset Condition="'$(_AppKitAsset)' == ''">$(_AppKitName)-win-x64.zip</_AppKitAsset>
+      <_AppKitConfigPath>$(IntermediateOutputPath)update.json</_AppKitConfigPath>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_AppKitConfigPath)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="{ &quot;Api&quot;: &quot;$(_AppKitApi)&quot;, &quot;Repository&quot;: &quot;$(_AppKitRepo)&quot;, &quot;Token&quot;: &quot;$(_AppKitToken)&quot;, &quot;Asset&quot;: &quot;$(_AppKitAsset)&quot;, &quot;InstallName&quot;: &quot;$(_AppKitName)&quot; }" />
+    <ItemGroup>
+      <Content Include="$(_AppKitConfigPath)" Link="update.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <FileWrites Include="$(_AppKitConfigPath)" />
+    </ItemGroup>
+  </Target>
+</Project>

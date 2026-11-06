@@ -1,6 +1,7 @@
 <Project>
+  <!-- i-luncher 저장소 공통 설정. 앱 버전은 각 앱 프로젝트의 <Version> 과 릴리스 빌드의 -p:Version 이 정합니다
+       (예전의 통합 빌드·버전 지문 설정은 쓰지 않음: Projects\ 아래 앱도 자기 csproj 버전 그대로 빌드됨). -->
   <PropertyGroup>
-    <!-- The repository builds one integrated product by default. -->
-    <ILuncherIntegrated Condition="'$(ILuncherIntegrated)' == ''">true</ILuncherIntegrated>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 </Project>

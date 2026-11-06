@@ -1,0 +1,70 @@
+# {{NAME}} 릴리스 (i-luncher AppKit): self-hosted Windows 러너가 main 에 푸시될 때마다 빌드하고,
+# 다음 버전을 골라 GitHub Release 에 {{NAME}}-win-x64.zip 을 올립니다.
+#   - i-luncher 는 이 저장소 주소로 앱을 추가해 두면 최신 릴리스 버전을 보여 주고, 클릭할 때 설치·업데이트합니다
+#   - 설치된 앱은 따로 실행해도 시작할 때 이 릴리스를 확인해 스스로 업데이트합니다 (AppKit\AppUpdater.cs)
+# github.com 과 사내 GitHub Enterprise 모두 그대로 동작합니다.
+#
+# 처음 한 번:
+#   - 러너: Windows x64, .NET SDK, 레이블 self-hosted + windows
+#   - 비공개·internal 저장소면 앱이 릴리스를 읽을 토큰이 필요: Secret RELEASE_ENV 에 .env 내용 (최소 UPDATE_TOKEN=<읽기 전용 토큰>),
+#     또는 러너 PC 에 .env 를 두고 러너 환경 변수 RELEASE_ENV_PATH 로 경로를 알려 줌. 공개 저장소면 필요 없음
+#   - nuget.org 가 막혀 있으면 러너 PC 환경 변수 NUGET_SOURCE 에 사내 NuGet 미러 주소
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', '.env.sample', '.gitignore']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: {{NAME}}-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 릴리스 노트: 지난 릴리스 태그 이후의 커밋 목록
+
+      - name: Restore .env
+        shell: powershell
+        env:
+          APP_ENV: ${{ secrets.RELEASE_ENV }}
+        run: |
+          if ($env:APP_ENV) { [IO.File]::WriteAllText("$PWD\.env", $env:APP_ENV, (New-Object Text.UTF8Encoding($false))); Write-Host '.env from secret RELEASE_ENV' }
+          elseif ($env:RELEASE_ENV_PATH -and (Test-Path $env:RELEASE_ENV_PATH)) { Copy-Item $env:RELEASE_ENV_PATH .env -Force; Write-Host ".env from $env:RELEASE_ENV_PATH" }
+          else { Write-Host "::notice::No .env: the app checks this repository's releases without a token (fine for a public repository)." }
+
+      - name: Pick version
+        id: version
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build\Get-NextVersion.ps1 -Project '{{PROJECT}}'
+
+      - name: Build
+        id: build
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build\Publish-App.ps1 -Project '{{PROJECT}}' -Version ${{ steps.version.outputs.version }}
+
+      - name: Create release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_PREVIOUS: ${{ steps.version.outputs.previous }}
+          RELEASE_ASSETS: ${{ steps.build.outputs.zip }}
+          RELEASE_TITLE: '{{NAME}}'
+          RELEASE_FOOTER: 'i-luncher 에서 설치하세요. 설치된 앱은 시작할 때 스스로 업데이트합니다.'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build\New-GitHubRelease.ps1

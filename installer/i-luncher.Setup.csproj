@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- i-luncher-Setup.exe: 릴리스 zip (과 .NET 10 이 없는 PC 용 .NET 10 실행 환경)을 품은 작은 사용자별 설치 프로그램.
+       Windows 10/11 에 들어 있는 .NET Framework 4.8 로 돌아가므로 .NET 10 이 없는 PC 에서도 시작됨.
+       build\Publish-Release.ps1 이 -p:PayloadZip=<릴리스 zip> -p:RuntimeDirectory=<실행 환경> -p:UninstallerExe=<exe> 로 빌드.
+       .NET 10 SDK 만 있으면 됨: %WINDIR% 의 프레임워크로 컴파일 (참조 어셈블리 팩·NuGet 불필요) -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+    <FrameworkPathOverride>$(WINDIR)\Microsoft.NET\Framework64\v4.0.30319</FrameworkPathOverride>
+    <AssemblyName>i-luncher-Setup</AssemblyName>
+    <RootNamespace>ILuncher.Setup</RootNamespace>
+    <ApplicationIcon>..\Launcher\Assets\ILauncher.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Product>i-luncher</Product>
+    <Description>i-luncher 설치</Description>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PayloadZip)' != ''">
+    <EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" />
+  </ItemGroup>
+  <!-- -p:RuntimeDirectory=<dotnet 루트 모양의 폴더> 를 zip 으로 묶어 품음 -->
+  <Target Name="PackRuntime" BeforeTargets="AssignTargetPaths" Condition="'$(RuntimeDirectory)' != ''">
+    <Error Condition="!Exists('$(RuntimeDirectory)\host\fxr')" Text="RuntimeDirectory 에는 host\fxr 와 shared\ 가 있어야 합니다 (dotnet 루트): $(RuntimeDirectory)" />
+    <ZipDirectory SourceDirectory="$(RuntimeDirectory)" DestinationFile="$(IntermediateOutputPath)runtime.zip" Overwrite="true" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)runtime.zip" LogicalName="runtime.zip" />
+      <FileWrites Include="$(IntermediateOutputPath)runtime.zip" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup Condition="'$(UninstallerExe)' != ''">
+    <EmbeddedResource Include="$(UninstallerExe)" LogicalName="uninstall.exe" />
+  </ItemGroup>
+
+  <!-- -p:BuildUninstaller=true 는 같은 프로그램을 패키지 없이 빌드: 설치 폴더에 놓이는 작은 uninstall.exe -->
+  <Target Name="RequirePayload" BeforeTargets="Build" Condition="'$(BuildUninstaller)' != 'true' And ('$(PayloadZip)' == '' Or !Exists('$(PayloadZip)'))">
+    <Error Text="PayloadZip 은 릴리스 zip (i-luncher-win-x64.zip) 을 가리켜야 합니다. build\Publish-Release.ps1 로 빌드하세요." />
+  </Target>
+
+</Project>

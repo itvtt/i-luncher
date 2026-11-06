@@ -14,7 +14,7 @@
 **/.pullverse*/
 *.log
 *.lnk
-.i-luncher-workspace.json
+**/out/
 **/AGENTS.md
 
 # Local credentials and signing material
