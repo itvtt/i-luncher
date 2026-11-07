@@ -4,7 +4,7 @@ namespace ILauncher.Services;
 
 /// <summary>
 /// GitHub 저장소 주소 하나에서 웹 주소와 REST API 주소를 정함.
-/// github.com → https://api.github.com, GitHub Enterprise Server(사내 GitHub) → https://&lt;호스트&gt;/api/v3,
+/// github.com → https://api.github.com, GitHub Enterprise Server → https://&lt;호스트&gt;/api/v3,
 /// GitHub Enterprise Cloud 데이터 상주(*.ghe.com) → https://api.&lt;호스트&gt;
 /// </summary>
 public sealed partial record GitHubRepository(string Host, string Owner, string Name, string Scheme = "https")
@@ -19,7 +19,7 @@ public sealed partial record GitHubRepository(string Host, string Owner, string 
 
     public string ApiRepositoryUrl => $"{ApiBase}/repos/{Uri.EscapeDataString(Owner)}/{Uri.EscapeDataString(Name)}";
 
-    /// <summary>토큰을 고르는 기준: API 호스트가 아닌 웹 호스트 (github.com, ghe.company.com)</summary>
+    /// <summary>토큰을 고르는 기준: API 호스트가 아닌 웹 호스트 (github.com, ghe.example.com)</summary>
     public string TokenHost => Host.ToLowerInvariant();
 
     public override string ToString() => WebUrl;
@@ -34,7 +34,7 @@ public sealed partial record GitHubRepository(string Host, string Owner, string 
     private static partial Regex SshPattern();
 
     /// <summary>
-    /// 받는 형식: https://host/owner/repo(.git)(/releases/...), http://host/owner/repo (사내망),
+    /// 받는 형식: https://host/owner/repo(.git)(/releases/...), http://host/owner/repo (http 서버),
     /// git@host:owner/repo.git, https://api.github.com/repos/owner/repo, https://host/api/v3/repos/owner/repo,
     /// 그리고 owner/repo (defaultHost 가 있을 때. 없으면 github.com)
     /// </summary>
@@ -64,7 +64,7 @@ public sealed partial record GitHubRepository(string Host, string Owner, string 
         {
             host = string.IsNullOrWhiteSpace(defaultHost) ? "github.com" : NormalizeHost(defaultHost!);
             path = value;
-            // "ghe.company.com/owner/repo" 처럼 스킴 없이 붙여 넣은 주소
+            // "ghe.example.com/owner/repo" 처럼 스킴 없이 붙여 넣은 주소
             string first = value.Split('/')[0];
             if (first.Contains('.') && value.Count(c => c == '/') >= 2)
             {

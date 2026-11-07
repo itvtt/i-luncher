@@ -13,7 +13,7 @@
          큰 변경으로 번호를 올리려면 여기만 올리면 됨 -->
     <Version>1.0.0</Version>
     <Product>i-luncher</Product>
-    <Description>GitHub 릴리스로 사내 앱을 설치·업데이트하는 런처</Description>
+    <Description>GitHub 릴리스로 앱을 설치·업데이트하는 런처</Description>
     <!-- 버전 표시가 1.0.0+커밋해시 가 되지 않게 (런처·앱 버전 비교는 릴리스 태그 기준) -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- .NET 10 이 없는 PC 에는 i-luncher-Setup.exe 가 실행 환경을 <설치 폴더>\dotnet 에 넣음 -->

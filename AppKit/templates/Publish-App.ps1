@@ -1,7 +1,7 @@
 ﻿# 앱 릴리스 zip 을 out\ 에 만듭니다 (i-luncher AppKit). .github\workflows\release.yml 이 부르고, 손으로도 실행할 수 있습니다:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build\Publish-App.ps1 -Project <앱.csproj> [-Version 1.2.3]
 # 결과: out\<이름>-win-x64.zip  (i-luncher 가 설치·업데이트하고, 설치된 앱이 스스로 업데이트할 때 받는 패키지)
-# .NET SDK 만 있으면 됩니다. nuget.org 가 막힌 사내망이면 -NuGetSource 또는 환경 변수 NUGET_SOURCE 로 사내 미러를 주세요.
+# .NET SDK 만 있으면 됩니다. nuget.org 가 막힌 망이면 -NuGetSource 또는 환경 변수 NUGET_SOURCE 로 NuGet 미러를 주세요.
 param(
     [Parameter(Mandatory = $true)][string]$Project,
     [string]$Version = '',

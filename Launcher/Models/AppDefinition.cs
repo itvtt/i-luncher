@@ -17,7 +17,7 @@ public sealed partial class AppDefinition
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    /// <summary>GitHub 저장소 주소 (https://github.company.com/team/DeskCal)</summary>
+    /// <summary>GitHub 저장소 주소 (https://github.example.com/team/DeskCal)</summary>
     public string Repository { get; set; } = "";
     public string Description { get; set; } = "";
     public string Category { get; set; } = "";
@@ -71,7 +71,7 @@ public sealed partial class AppDefinition
         if (string.IsNullOrWhiteSpace(Id)) return "앱 id가 비어 있습니다.";
         if (CreateId(Id) != Id) return "앱 id에는 영문 소문자·숫자·하이픈만 쓸 수 있습니다.";
         if (string.IsNullOrWhiteSpace(Name)) return "앱 이름을 입력하세요.";
-        if (!Services.GitHubRepository.TryParse(Repository, out _, defaultHost)) return "GitHub 저장소 주소를 확인하세요. 예: https://github.company.com/team/App";
+        if (!Services.GitHubRepository.TryParse(Repository, out _, defaultHost)) return "GitHub 저장소 주소를 확인하세요. 예: https://github.example.com/team/App";
         if (Executable is { Length: > 0 } executable && (Path.IsPathRooted(executable) || executable.Split('\\', '/').Contains("..")))
             return "실행 파일은 설치 폴더 안의 상대 경로로 입력하세요.";
         return null;

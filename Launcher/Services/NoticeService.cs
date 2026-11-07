@@ -6,7 +6,7 @@ using ILauncher.Models;
 namespace ILauncher.Services;
 
 /// <summary>
-/// 공지: 카탈로그 저장소의 공지.txt 를 Contents API 로 읽음 (GitHub Pages·별도 워크플로 없이 사내 GitHub 에서도 동작).
+/// 공지: 카탈로그 저장소의 공지.txt 를 Contents API 로 읽음 (GitHub Pages·별도 워크플로 없이 GitHub Enterprise 에서도 동작).
 /// 형식: 공지마다 첫 줄은 제목, 다음 줄부터 본문, 공지 사이는 --- 만 있는 줄. 제목이 같으면 같은 공지,
 /// 본문을 고치면 읽은 사람에게도 다시 알림.
 /// </summary>

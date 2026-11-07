@@ -64,16 +64,16 @@ try
     Console.WriteLine("GitHubRepository");
     await CheckSync("github.com, enterprise, ssh, api and shorthand addresses", () =>
     {
-        var cloud = GitHubRepository.Parse("https://github.com/itvtt/i-luncher.git")!;
-        Equal("https://api.github.com/repos/itvtt/i-luncher", cloud.ApiRepositoryUrl, "github.com api");
-        var ghes = GitHubRepository.Parse("https://GHE.Company.com/team/DeskCal/releases/tag/v1.0.0")!;
-        Equal("https://ghe.company.com/api/v3/repos/team/DeskCal", ghes.ApiRepositoryUrl, "GHES api");
-        Equal("https://ghe.company.com/team/DeskCal", ghes.WebUrl, "GHES web");
-        Equal("ghe.company.com", GitHubRepository.Parse("git@ghe.company.com:team/DeskCal.git")!.Host, "ssh host");
-        Equal("team/DeskCal", GitHubRepository.Parse("https://ghe.company.com/api/v3/repos/team/DeskCal")!.FullName, "GHES api url");
+        var cloud = GitHubRepository.Parse("https://github.com/owner/i-luncher.git")!;
+        Equal("https://api.github.com/repos/owner/i-luncher", cloud.ApiRepositoryUrl, "github.com api");
+        var ghes = GitHubRepository.Parse("https://GHE.Example.com/team/DeskCal/releases/tag/v1.0.0")!;
+        Equal("https://ghe.example.com/api/v3/repos/team/DeskCal", ghes.ApiRepositoryUrl, "GHES api");
+        Equal("https://ghe.example.com/team/DeskCal", ghes.WebUrl, "GHES web");
+        Equal("ghe.example.com", GitHubRepository.Parse("git@ghe.example.com:team/DeskCal.git")!.Host, "ssh host");
+        Equal("team/DeskCal", GitHubRepository.Parse("https://ghe.example.com/api/v3/repos/team/DeskCal")!.FullName, "GHES api url");
         Equal("github.com", GitHubRepository.Parse("https://api.github.com/repos/a/b")!.Host, "api.github.com url");
-        Equal("ghe.company.com", GitHubRepository.Parse("team/DeskCal", "ghe.company.com")!.Host, "shorthand uses default host");
-        Equal("ghe.company.com", GitHubRepository.Parse("ghe.company.com/team/DeskCal")!.Host, "no scheme");
+        Equal("ghe.example.com", GitHubRepository.Parse("team/DeskCal", "ghe.example.com")!.Host, "shorthand uses default host");
+        Equal("ghe.example.com", GitHubRepository.Parse("ghe.example.com/team/DeskCal")!.Host, "no scheme");
         Equal("https://api.acme.ghe.com", GitHubRepository.Parse("https://acme.ghe.com/o/r")!.ApiBase, "ghe.com data residency");
         Equal("http://10.0.0.5:8080/api/v3", GitHubRepository.Parse("http://10.0.0.5:8080/o/r")!.ApiBase, "http with port");
         Assert(GitHubRepository.Parse("https://token@github.com/o/r") is null, "credentials in URL are refused");
@@ -224,11 +224,11 @@ try
     {
         string buildDir = Path.Combine(root, "api-settings");
         Directory.CreateDirectory(buildDir);
-        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://192.168.0.32:2003/\nLAUNCHER_REPOSITORY=https://github.com/itvtt/i-luncher\n");
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003/\nLAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\n");
         var settings = LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir);
         Equal(LauncherSettings.ModeApi, settings.CatalogMode, "API server first");
-        Equal("http://192.168.0.32:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/itvtt/DeskCal")!), "github.com via the relay");
-        Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://ghe.company.com/team/x")!) is null, "an Enterprise server is asked directly");
+        Equal("http://10.0.0.5:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/owner/DeskCal")!), "github.com via the relay");
+        Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!) is null, "an Enterprise server is asked directly");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
         settings.User.SetAdminPassword("secret");
         Equal("secret", settings.User.GetAdminPassword(), "admin password round-trips");

@@ -36,7 +36,7 @@ public sealed class GitHubApiException(int status, string message) : Exception(m
 }
 
 /// <summary>
-/// github.com 과 사내 GitHub Enterprise 에 같은 방식으로 접근 (REST API v3).
+/// github.com 과 GitHub Enterprise 에 같은 방식으로 접근 (REST API v3).
 /// 토큰은 호스트별로 tokenProvider 가 줌. 공개 저장소는 토큰 없이도 동작.
 /// </summary>
 public sealed class GitHubClient : IDisposable
@@ -144,7 +144,7 @@ public sealed class GitHubClient : IDisposable
                 ? $"{repository.Host} API 사용 한도를 넘었습니다. 잠시 후 다시 시도하세요."
                 : $"{repository.Host} API 사용 한도를 넘었습니다. 설정에서 토큰을 등록하면 한도가 늘어납니다.",
             403 => hasToken ? $"{repository.FullName}에 대한 권한이 없습니다. 토큰 권한을 확인하세요." : $"{repository.FullName}에 접근하려면 토큰이 필요합니다.",
-            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 토큰으로 읽을 수 없습니다." : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개·사내 저장소라면 설정에서 {repository.Host} 토큰을 등록하세요.",
+            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 토큰으로 읽을 수 없습니다." : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개·내부(internal) 저장소라면 설정에서 {repository.Host} 토큰을 등록하세요.",
             409 or 422 => "다른 사람이 먼저 목록을 바꿨습니다. 새로 고친 뒤 다시 시도하세요.",
             _ => $"{repository.Host} 응답 {status}" + (detail.Length > 0 ? $": {detail}" : "")
         };
@@ -293,7 +293,7 @@ public sealed class GitHubClient : IDisposable
             published, String(root, "html_url") ?? "", String(root, "body") ?? "", assets);
     }
 
-    /// <summary>릴리스 파일을 받음. API 주소(Accept: octet-stream)라 비공개·사내 저장소에서도 받아짐. SHA-256 을 돌려줌</summary>
+    /// <summary>릴리스 파일을 받음. API 주소(Accept: octet-stream)라 비공개·내부(internal) 저장소에서도 받아짐. SHA-256 을 돌려줌</summary>
     public async Task<string> DownloadAssetAsync(GitHubRepository repository, GitHubAsset asset, string destination,
         IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {

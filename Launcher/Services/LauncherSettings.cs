@@ -13,7 +13,7 @@ public sealed class BuildSettings
 {
     public const string FileName = "launcher.env";
 
-    /// <summary>API 서버 (예: http://192.168.0.32:2003): 앱 목록·공지와 GitHub 중계</summary>
+    /// <summary>API 서버 (예: http://<서버 IP>:2003): 앱 목록·공지와 GitHub 중계</summary>
     public string ApiServer { get; init; } = "";
     public string LauncherRepository { get; init; } = "";
     public string CatalogRepository { get; init; } = "";

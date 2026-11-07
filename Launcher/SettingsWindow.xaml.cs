@@ -24,7 +24,7 @@ public partial class SettingsWindow : Window
         ApiServerBox.Text = user.ApiServer ?? "";
         ApiServerHint.Text = build.ApiServer.Length > 0
             ? $"비우면 빌드 설정의 {build.ApiServer}. github.com 저장소의 릴리스도 이 서버의 GitHub 중계로 받아 토큰이 필요 없습니다."
-            : "예: http://192.168.0.32:2003 (ApiServer 프로그램이 보여 주는 주소). github.com 저장소의 릴리스도 이 서버로 받아 토큰이 필요 없습니다.";
+            : "예: http://<서버 IP>:2003 (ApiServer 프로그램이 보여 주는 주소). github.com 저장소의 릴리스도 이 서버로 받아 토큰이 필요 없습니다.";
         AdminPasswordHint.Text = user.GetAdminPassword() is { Length: > 0 } ? "저장됨 (새로 입력하면 바뀜, 비워 두면 그대로)" : "저장된 비밀번호 없음 (목록 보기·설치에는 필요 없음)";
         CatalogRepositoryBox.Text = user.CatalogRepository ?? "";
         CatalogPathBox.Text = user.CatalogPath ?? "";
@@ -138,7 +138,7 @@ public partial class SettingsWindow : Window
         string repositoryText = CatalogRepositoryBox.Text.Trim();
         if (RepositoryCatalogRadio.IsChecked == true && repositoryText.Length > 0 && !GitHubRepository.TryParse(repositoryText, out _, _settings.DefaultHost))
         {
-            ErrorText.Text = "저장소 주소를 확인하세요. 예: https://github.company.com/team/i-luncher";
+            ErrorText.Text = "저장소 주소를 확인하세요. 예: https://github.example.com/team/i-luncher";
             return;
         }
         if (RepositoryCatalogRadio.IsChecked == true && repositoryText.Length == 0 && _settings.Build.CatalogRepository.Length == 0 && _settings.Build.LauncherRepository.Length == 0)
@@ -149,7 +149,7 @@ public partial class SettingsWindow : Window
         string apiText = ApiServerBox.Text.Trim();
         if (apiText.Length > 0 && !(Uri.TryCreate(apiText, UriKind.Absolute, out var apiUri) && (apiUri.Scheme == Uri.UriSchemeHttp || apiUri.Scheme == Uri.UriSchemeHttps)))
         {
-            ErrorText.Text = "API 서버 주소를 확인하세요. 예: http://192.168.0.32:2003";
+            ErrorText.Text = "API 서버 주소를 확인하세요. 예: http://<서버 IP>:2003";
             return;
         }
         if (ApiCatalogRadio.IsChecked == true && apiText.Length == 0 && _settings.Build.ApiServer.Length == 0)

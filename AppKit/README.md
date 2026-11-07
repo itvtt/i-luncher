@@ -6,7 +6,7 @@
 - **Actions 릴리스**: `main`에 푸시할 때마다 self-hosted Windows 러너가 다음 버전을 골라 `<이름>-win-x64.zip`을 릴리스합니다.
 - **i-luncher 규약**: 런처가 같은 zip으로 설치·업데이트하고, 런처로 설치한 앱도 따로 실행하면 스스로 업데이트합니다.
 
-github.com과 사내 GitHub Enterprise 모두 동작합니다. .NET 6 이상 WPF·WinForms·콘솔 앱에 쓸 수 있습니다.
+github.com과 GitHub Enterprise 모두 동작합니다. .NET 6 이상 WPF·WinForms·콘솔 앱에 쓸 수 있습니다.
 
 ## 넣기
 
@@ -55,13 +55,13 @@ protected override void OnStartup(StartupEventArgs e)
 
 | 키 | 뜻 |
 |---|---|
-| `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<사내 호스트>/api/v3` (Actions에서는 비워도 됨) |
+| `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<호스트>/api/v3` (Actions에서는 비워도 됨) |
 | `UPDATE_REPOSITORY` | `소유자/이름` (Actions에서는 비워도 그 저장소) |
 | `UPDATE_TOKEN` | 비공개·internal 저장소면 **읽기 전용** 토큰. 앱에 포함되므로 쓰기 권한 금지 |
 | `UPDATE_INSTALL_NAME` | 설치 폴더·"앱" 목록 이름 (기본: 실행 파일 이름). i-luncher 카탈로그의 `installName`과 같아야 함 |
 | `UPDATE_ASSET` | 릴리스 파일 이름 (기본: `<설치이름>-win-x64.zip`) |
 
-Actions에서는 Secret `RELEASE_ENV`에 `.env` 내용을 넣거나 러너 PC의 `.env` 경로를 러너 환경 변수 `RELEASE_ENV_PATH`로 알려 줍니다. nuget.org가 막힌 망이면 러너 환경 변수 `NUGET_SOURCE`에 사내 미러를 지정합니다.
+Actions에서는 Secret `RELEASE_ENV`에 `.env` 내용을 넣거나 러너 PC의 `.env` 경로를 러너 환경 변수 `RELEASE_ENV_PATH`로 알려 줍니다. nuget.org가 막힌 망이면 러너 환경 변수 `NUGET_SOURCE`에 NuGet 미러를 지정합니다.
 
 ## 버전
 

@@ -4,7 +4,7 @@
 // 동작:
 //   1. 앱 옆의 update.json (빌드할 때 .env 의 UPDATE_* 또는 Actions 저장소에서 만들어짐)에서 릴리스 저장소를 읽음
 //   2. "설치된 사본"(Windows "앱" 목록 HKCU\...\Uninstall\<InstallName> 의 InstallLocation 이 이 폴더)일 때만,
-//      시작 몇 초 뒤 GitHub(사내 GitHub Enterprise 포함) 최신 릴리스를 확인
+//      시작 몇 초 뒤 GitHub(GitHub Enterprise 포함) 최신 릴리스를 확인
 //   3. 지금보다 높은 버전이면 <InstallName>-win-x64.zip 을 받아 두고, 앱이 끝날 때 파일을 바꿈 (다음 실행부터 새 버전).
 //      onReady 를 넘기면 "지금 다시 시작"을 고를 수 있음
 // i-luncher 로 설치한 앱도, 앱의 설치 프로그램으로 설치한 앱도 같은 규칙이라 둘 다 이 업데이터가 알아봄.

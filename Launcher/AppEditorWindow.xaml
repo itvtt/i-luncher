@@ -26,7 +26,7 @@
                     <TextBox x:Name="RepositoryBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="GitHub 저장소 주소" KeyDown="RepositoryBox_KeyDown" />
                     <Button x:Name="FetchButton" Grid.Column="1" Margin="8,0,0,0" Padding="14,0" Height="34" Content="불러오기" Click="FetchButton_Click" Style="{StaticResource ToolbarButtonStyle}" />
                 </Grid>
-                <TextBlock Style="{StaticResource HintTextStyle}" Text="예: https://github.company.com/team/DeskCal · 저장소 정보와 최신 릴리스를 읽어 아래 칸을 채웁니다." />
+                <TextBlock Style="{StaticResource HintTextStyle}" Text="예: https://github.example.com/team/DeskCal · 저장소 정보와 최신 릴리스를 읽어 아래 칸을 채웁니다." />
                 <Border x:Name="ReleaseInfo" Margin="0,10,0,0" Padding="12,9" Background="#FF161C27" BorderBrush="#FF2A3140" BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
                     <TextBlock x:Name="ReleaseInfoText" FontSize="12" TextWrapping="Wrap" />
                 </Border>

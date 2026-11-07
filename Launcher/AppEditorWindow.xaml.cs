@@ -78,7 +78,7 @@ public partial class AppEditorWindow : Window
         ErrorText.Text = "";
         if (!GitHubRepository.TryParse(RepositoryBox.Text, out var repository, _defaultHost))
         {
-            if (RepositoryBox.Text.Trim().Length > 0) ErrorText.Text = "GitHub 저장소 주소를 확인하세요. 예: https://github.company.com/team/App";
+            if (RepositoryBox.Text.Trim().Length > 0) ErrorText.Text = "GitHub 저장소 주소를 확인하세요. 예: https://github.example.com/team/App";
             return;
         }
         _fetching = true;

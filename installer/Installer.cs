@@ -275,7 +275,7 @@ internal static class Installer
             link.TargetPath = exe;
             link.WorkingDirectory = workingDirectory;
             link.IconLocation = exe + ",0";
-            link.Description = "사내 앱 설치·업데이트";
+            link.Description = "앱 설치·업데이트";
             link.Save();
         }
         finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }

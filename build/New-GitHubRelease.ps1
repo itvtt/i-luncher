@@ -4,7 +4,7 @@
 #   릴리스 노트: 지난 릴리스 태그 이후의 커밋 제목 (병합 커밋 제외).
 # 환경 변수: GH_TOKEN (contents: write), GITHUB_API_URL, GITHUB_REPOSITORY, GITHUB_SHA — Actions 가 넣어 줌.
 #           RELEASE_VERSION, RELEASE_ASSETS(올릴 파일, ; 로 구분), RELEASE_TITLE(예: i-luncher), RELEASE_PREVIOUS(지난 태그) — 워크플로가 넣어 줌.
-# github.com 과 사내 GitHub Enterprise 모두 같은 API 입니다.
+# github.com 과 GitHub Enterprise 모두 같은 API 입니다.
 param(
     [string]$Version = $env:RELEASE_VERSION,
     [string]$Assets = $env:RELEASE_ASSETS,
