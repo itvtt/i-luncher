@@ -406,27 +406,91 @@ public sealed class AppInstaller
     /// <summary>설치 폴더 안의 실행 파일로 돌고 있는 프로세스가 있는지</summary>
     public static bool IsRunning(string directory)
     {
-        if (!Directory.Exists(directory)) return false;
+        var running = FindRunning(directory);
+        foreach (Process process in running) process.Dispose();
+        return running.Count > 0;
+    }
+
+    /// <summary>설치 폴더 안의 실행 파일로 도는 프로세스 (부른 쪽이 Dispose)</summary>
+    private static List<Process> FindRunning(string directory)
+    {
+        var found = new List<Process>();
+        if (!Directory.Exists(directory)) return found;
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string folder in new[] { directory, Path.Combine(directory, "current") })
             if (Directory.Exists(folder))
                 foreach (string exe in Directory.EnumerateFiles(folder, "*.exe")) names.Add(Path.GetFileNameWithoutExtension(exe));
         foreach (string name in names)
             foreach (Process process in Process.GetProcessesByName(name))
-                using (process)
-                {
-                    try
-                    {
-                        if (process.MainModule?.FileName is { } path && IsInside(path, directory)) return true;
-                    }
-                    catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
-                    {
-                        // 관리자 권한으로 도는 프로세스는 경로를 못 읽음: 같은 이름이면 실행 중으로 봄 (파일을 망가뜨리지 않게)
-                        return true;
-                    }
-                }
-        return false;
+            {
+                bool inside;
+                try { inside = process.MainModule?.FileName is { } path && IsInside(path, directory); }
+                // 관리자 권한으로 도는 프로세스는 경로를 못 읽음: 같은 이름이면 실행 중으로 봄 (파일을 망가뜨리지 않게)
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { inside = true; }
+                if (inside) found.Add(process);
+                else process.Dispose();
+            }
+        return found;
     }
+
+    /// <summary>
+    /// 설치 폴더에서 도는 앱을 닫음. Windows 다시 시작 관리자(Restart Manager)로 Windows를 끌 때와 같은 종료 요청을 보내
+    /// 앱이 스스로 정리하고 닫히게 함 (트레이로 숨는 앱도 닫힘, 앱이 거부하면 닫히지 않음). force 면 남은 프로세스를 강제로 끝냄.
+    /// 모두 끝났으면 true
+    /// </summary>
+    public static async Task<bool> CloseRunningAsync(string directory, bool force)
+    {
+        var running = FindRunning(directory);
+        try
+        {
+            if (running.Count == 0) return true;
+            var targets = new List<RmUniqueProcess>();
+            foreach (Process process in running)
+                try
+                {
+                    long started = process.StartTime.ToFileTime();
+                    targets.Add(new RmUniqueProcess { ProcessId = process.Id, StartLow = (uint)started, StartHigh = (uint)(started >> 32) });
+                }
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+            if (targets.Count > 0) await Task.Run(() => RestartManagerShutdown(targets.ToArray(), force)).ConfigureAwait(false);
+            // 종료 요청을 받은 앱이 정리를 마치고 끝날 때까지 기다림
+            for (int wait = 0; wait < 150 && IsRunning(directory); wait++) await Task.Delay(100).ConfigureAwait(false);
+            return !IsRunning(directory);
+        }
+        finally
+        {
+            foreach (Process process in running) process.Dispose();
+        }
+    }
+
+    private static void RestartManagerShutdown(RmUniqueProcess[] targets, bool force)
+    {
+        if (RmStartSession(out uint session, 0, new System.Text.StringBuilder(64)) != 0) return;
+        try
+        {
+            if (RmRegisterResources(session, 0, null, (uint)targets.Length, targets, 0, null) != 0) return;
+            RmShutdown(session, force ? RmForceShutdown : 0, IntPtr.Zero);
+        }
+        finally { RmEndSession(session); }
+    }
+
+    private const uint RmForceShutdown = 0x1;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RmUniqueProcess { public int ProcessId; public uint StartLow, StartHigh; }  // RM_UNIQUE_PROCESS (FILETIME = 두 DWORD)
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int RmStartSession(out uint session, int flags, System.Text.StringBuilder sessionKey);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int RmRegisterResources(uint session, uint fileCount, string[]? files, uint processCount, RmUniqueProcess[] processes,
+        uint serviceCount, string[]? services);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll")]
+    private static extern int RmShutdown(uint session, uint flags, IntPtr status);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll")]
+    private static extern int RmEndSession(uint session);
 
     /// <summary>
     /// 런처가 설치한 앱은 바로 가기·"앱" 목록·설치 폴더를 지움. 앱의 자체 설치 프로그램으로 설치된 앱은 그 제거 프로그램을 실행.

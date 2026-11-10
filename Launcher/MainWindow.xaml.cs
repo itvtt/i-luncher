@@ -249,17 +249,42 @@ public partial class MainWindow : Window
         }
         if (card.UpdateAvailable && card.Latest is { } release)
         {
-            if (AppInstaller.IsRunning(card.Installed.Directory))
-            {
-                StatusText.Text = $"{card.Name}이(가) 실행 중이라 v{release.Version} 업데이트는 종료한 뒤 적용됩니다.";
-            }
-            else if (!await InstallAsync(card, release, $"v{release.Version}(으)로 업데이트 중…"))
+            // 실행 중이면 종료하고 업데이트할지 묻고, 아니라고 하면 지금 버전을 그대로 엶
+            if ((await CloseIfRunningAsync(card, "업데이트", UpdateDetail(card, release))).Proceed &&
+                !await InstallAsync(card, release, $"v{release.Version}(으)로 업데이트 중…"))
             {
                 // 업데이트에 실패해도 설치된 버전은 그대로 쓸 수 있음
                 if (card.Installed is null) return;
             }
         }
         Launch(card);
+    }
+
+    private static string UpdateDetail(AppCard card, GitHubRelease release) =>
+        $"v{card.Installed?.Version?.ToString() ?? "?"} → v{release.Version?.ToString() ?? release.Tag} · 업데이트한 뒤 다시 실행합니다.";
+
+    /// <summary>
+    /// 앱이 실행 중이면 종료하고 진행할지 묻고, 그렇다고 하면 닫음 (Windows를 끌 때처럼 앱이 정리하고 닫힘).
+    /// 닫히지 않으면 강제로 끝낼지 한 번 더 물음. Proceed: 계속해도 되는지, Closed: 이 동작으로 닫았는지 (끝난 뒤 다시 실행)
+    /// </summary>
+    private async Task<(bool Proceed, bool Closed)> CloseIfRunningAsync(AppCard card, string action, string detail)
+    {
+        if (card.Installed is not { } installed || !await Task.Run(() => AppInstaller.IsRunning(installed.Directory))) return (true, false);
+        var ask = new InstallConfirmationWindow(card.Name, card.Icon, $"앱 {action}", $"{card.Name}이(가) 실행 중입니다. 종료하고 {action}할까요?",
+            detail, $"종료하고 {action}") { Owner = this };
+        if (ask.ShowDialog() != true) return (false, false);
+        card.BeginWork("종료하는 중…");
+        try
+        {
+            if (await AppInstaller.CloseRunningAsync(installed.Directory, force: false)) return (true, true);
+            var force = new InstallConfirmationWindow(card.Name, card.Icon, "강제 종료", $"{card.Name}이(가) 종료되지 않았습니다. 강제로 종료할까요?",
+                "저장하지 않은 작업은 사라질 수 있습니다.", "강제 종료") { Owner = this };
+            if (force.ShowDialog() != true) return (false, false);
+            if (await AppInstaller.CloseRunningAsync(installed.Directory, force: true)) return (true, true);
+            ShowError($"{card.Name}을(를) 종료하지 못했습니다. 직접 종료한 뒤 다시 시도하세요.");
+            return (false, false);
+        }
+        finally { card.EndWork(); }
     }
 
     private async Task<bool> InstallWithConfirmationAsync(AppCard card, bool reinstall)
@@ -283,8 +308,9 @@ public partial class MainWindow : Window
         var confirm = new InstallConfirmationWindow(card.Name, card.Icon, reinstall ? "다시 설치" : "앱 설치",
             reinstall ? "최신 릴리스로 다시 설치할까요?" : "이 앱을 설치할까요?", detail, reinstall ? "다시 설치" : "설치") { Owner = this };
         if (confirm.ShowDialog() != true) return false;
-        if (!await InstallAsync(card, release, "설치 준비 중…")) return false;
-        if (!reinstall) Launch(card);
+        var (proceed, closed) = reinstall ? await CloseIfRunningAsync(card, "다시 설치", "다시 설치한 뒤 다시 실행합니다.") : (true, false);
+        if (!proceed || !await InstallAsync(card, release, "설치 준비 중…")) return false;
+        if (!reinstall || closed) Launch(card);
         return true;
     }
 
@@ -350,8 +376,9 @@ public partial class MainWindow : Window
 
     private async void UpdateMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (CardOf(sender) is { Latest: { } release } card && !card.IsBusy)
-            await InstallAsync(card, release, $"v{release.Version}(으)로 업데이트 중…");
+        if (CardOf(sender) is not { Latest: { } release, IsBusy: false } card) return;
+        var (proceed, closed) = await CloseIfRunningAsync(card, "업데이트", UpdateDetail(card, release));
+        if (proceed && await InstallAsync(card, release, $"v{release.Version}(으)로 업데이트 중…") && closed) Launch(card);
     }
 
     private async void ReinstallMenu_Click(object sender, RoutedEventArgs e)
@@ -367,6 +394,7 @@ public partial class MainWindow : Window
             : "앱의 제거 프로그램을 실행합니다.";
         var confirm = new InstallConfirmationWindow(card.Name, card.Icon, "앱 제거", "이 앱을 제거할까요?", detail, "제거") { Owner = this };
         if (confirm.ShowDialog() != true) return;
+        if (!(await CloseIfRunningAsync(card, "제거", "앱을 닫은 뒤 제거합니다.")).Proceed) return;
         card.BeginWork("제거 중…");
         try
         {
