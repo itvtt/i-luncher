@@ -85,7 +85,7 @@ GitHub
 
 ## API 서버
 
-`Z:\codex\Projects\ApiServer` (저장소 `ApiServer`)의 `server\relay.py`가 이 PC의 모든 API를 맡습니다 (예전 Terminal Notes 중계 서버, 포트 2003 그대로).
+저장소 `ApiServer`의 `server\relay.py`가 이 PC의 모든 API를 맡습니다 (예전 Terminal Notes 중계 서버, 포트 2003 그대로).
 
 | 주소 | 쓰는 곳 |
 |---|---|
@@ -124,7 +124,7 @@ GitHub
 
 ### i-luncher 저장소
 
-1. 이 폴더를 GitHub 저장소(비공개도 됨)로 올립니다. 앱들은 `Z:\codex\Projects\<앱>`에서 각자 저장소(`<소유자>/<앱>`)로 관리합니다.
+1. 이 폴더를 GitHub 저장소(비공개도 됨)로 올립니다. 앱들은 각자 저장소(`<소유자>/<앱>`)로 따로 관리합니다.
 2. **Settings → Actions → Runners**에 Windows x64 self-hosted 러너를 등록합니다 (레이블 `self-hosted`, `windows`, .NET 10 SDK 필요).
 3. 비공개·internal 저장소면 **Settings → Secrets → Actions**에 `ILUNCHER_ENV`를 만들고 [`.env.sample`](.env.sample)을 참고해 최소 `LAUNCHER_TOKEN=<읽기 전용 토큰>`을 넣습니다. 러너 PC에 `.env`를 두고 러너 환경 변수 `ILUNCHER_ENV_PATH`로 알려 줘도 됩니다. `LAUNCHER_REPOSITORY`는 비워 두면 그 저장소가 됩니다.
 4. `main`에 푸시하면 [release.yml](.github/workflows/release.yml)이 확인(`Launcher.Checks`) → 빌드 → `vX.Y.Z` 릴리스(`i-luncher-Setup.exe`, `i-luncher-win-x64.zip`)를 만듭니다. 초안으로 파일을 모두 올린 뒤 공개하므로 파일이 빠진 릴리스가 최신으로 보이지 않습니다.
@@ -173,6 +173,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build\Publish-Release.ps1 -V
 | `AppKit\` | 앱용 자체 업데이터·빌드 설정·릴리스 템플릿 (런처도 같은 업데이터로 업데이트) |
 | `build\` | 릴리스 스크립트 (버전 고르기, 빌드, GitHub Release 만들기) |
 | `catalog\apps.json`, `공지.txt` | 런처가 API로 읽고 고치는 데이터 |
-| (`Z:\codex\Projects\`) | 각 앱과 API 서버의 소스 — 각자 저장소 (`DeskCal`, `TerminalNotes`, `ApiServer` …) |
+
+각 앱과 API 서버의 소스는 이 저장소가 아니라 앱마다 따로 있는 저장소(`DeskCal`, `TerminalNotes`, `ApiServer` …)에 있습니다.
 
 예전 통합 빌드(앱 DLL을 런처에 포함), 소스 자동 검색·빌드, 온라인 시작 프로그램(Bootstrapper), 바이너리 지문 버전 체계는 GitHub 릴리스 방식으로 바뀌어 제거했습니다. 이전 파일은 git 기록에 있습니다.
