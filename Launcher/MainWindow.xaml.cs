@@ -271,7 +271,7 @@ public partial class MainWindow : Window
     {
         if (card.Installed is not { } installed || !await Task.Run(() => AppInstaller.IsRunning(installed.Directory))) return (true, false);
         var ask = new InstallConfirmationWindow(card.Name, card.Icon, $"앱 {action}", $"{card.Name}이(가) 실행 중입니다. 종료하고 {action}할까요?",
-            detail, $"종료하고 {action}") { Owner = this };
+            detail, action) { Owner = this };
         if (ask.ShowDialog() != true) return (false, false);
         card.BeginWork("종료하는 중…");
         try
