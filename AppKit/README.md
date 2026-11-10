@@ -6,7 +6,7 @@
 - **Actions 릴리스**: `main`에 푸시할 때마다 self-hosted Windows 러너가 다음 버전을 골라 `<이름>-win-x64.zip`을 릴리스합니다.
 - **i-luncher 규약**: 런처가 같은 zip으로 설치·업데이트하고, 런처로 설치한 앱도 따로 실행하면 스스로 업데이트합니다.
 
-github.com과 GitHub Enterprise 모두 동작합니다. .NET 6 이상 WPF·WinForms·콘솔 앱에 쓸 수 있습니다.
+github.com과 GitHub Enterprise 모두 동작합니다. .NET 6 이상 WPF·WinForms·콘솔 앱에 쓸 수 있습니다. .NET Framework 4.8 앱도 SDK 형식 프로젝트(`<TargetFramework>net48</TargetFramework>`, `<LangVersion>latest</LangVersion>`)에 `System.Text.Json` 패키지와 `System.IO.Compression.FileSystem`·`System.Net.Http` 참조를 더하면 같은 방식으로 씁니다(예: file_shared).
 
 ## 넣기
 

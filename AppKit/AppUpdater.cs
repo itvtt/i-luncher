@@ -1,4 +1,4 @@
-// i-luncher AppKit: 앱이 스스로 업데이트하게 하는 파일 하나짜리 업데이터 (.NET 6 이상, WPF·WinForms·콘솔 공통).
+// i-luncher AppKit: 앱이 스스로 업데이트하게 하는 파일 하나짜리 업데이터 (.NET 6 이상과 .NET Framework 4.8, WPF·WinForms·콘솔 공통).
 // 원본은 i-luncher 저장소의 AppKit\AppUpdater.cs 입니다. 앱 저장소에는 AppKit\ 폴더째 복사해 쓰세요 (AppKit\README.md).
 //
 // 동작:
@@ -43,7 +43,7 @@ namespace ILuncher.AppKit
                 if (repository.Length == 0 || repository.Count(c => c == '/') != 1) return null;
                 string api = Read("Api");
                 string installName = Read("InstallName");
-                if (installName.Length == 0) installName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "App");
+                if (installName.Length == 0) installName = Path.GetFileNameWithoutExtension(Platform.ProcessPath ?? "App");
                 string asset = Read("Asset");
                 if (asset.Length == 0) asset = installName + "-win-x64.zip";
                 string token = Read("Token");
@@ -205,13 +205,13 @@ namespace ILuncher.AppKit
                 await source.CopyToAsync(target, 81920, cancellationToken).ConfigureAwait(false);
             }
             if (update.Size > 0 && new FileInfo(partial).Length != update.Size) throw new IOException("업데이트 패키지가 끝까지 받아지지 않았습니다.");
-            string executable = Path.GetFileName(Environment.ProcessPath ?? "");
+            string executable = Path.GetFileName(Platform.ProcessPath ?? "");
             using (var archive = ZipFile.OpenRead(partial))
             {
                 if (executable.Length > 0 && !archive.Entries.Any(entry => string.Equals(Path.GetFileName(entry.FullName), executable, StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException($"업데이트 패키지에 {executable}이(가) 없습니다.");
             }
-            File.Move(partial, path, overwrite: true);
+            Platform.MoveOverwrite(partial, path);
             return path;
         }
 
@@ -240,10 +240,10 @@ namespace ILuncher.AppKit
         public static void LaunchUpdater(string zipPath, string version, bool restart, string? installDirectory = null, string? installName = null)
         {
             string target = (installDirectory ?? AppContext.BaseDirectory).TrimEnd('\\');
-            string executable = Environment.ProcessPath ?? Path.Combine(target, "app.exe");
+            string executable = Platform.ProcessPath ?? Path.Combine(target, "app.exe");
             string name = installName ?? UpdateSettings.Load()?.InstallName ?? Path.GetFileNameWithoutExtension(executable);
             string log = Path.Combine(Path.GetDirectoryName(zipPath)!, "update.log");
-            string script = BuildUpdaterScript(zipPath, target, Path.GetFileName(executable), Environment.ProcessId, log, version, UninstallKey(name), restart);
+            string script = BuildUpdaterScript(zipPath, target, Path.GetFileName(executable), Platform.ProcessId, log, version, UninstallKey(name), restart);
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
             var start = new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {encoded}")
             {
@@ -293,6 +293,24 @@ namespace ILuncher.AppKit
         }
     }
 
+    /// <summary>.NET 6+ 와 .NET Framework 4.8 차이 (.NET Framework 앱: SDK 형식 프로젝트, LangVersion latest, System.Text.Json 패키지)</summary>
+    internal static class Platform
+    {
+#if NETFRAMEWORK
+        public static string? ProcessPath { get { using var process = Process.GetCurrentProcess(); return process.MainModule?.FileName; } }
+        public static int ProcessId { get { using var process = Process.GetCurrentProcess(); return process.Id; } }
+        public static void MoveOverwrite(string source, string destination)
+        {
+            if (File.Exists(destination)) File.Delete(destination);
+            File.Move(source, destination);
+        }
+#else
+        public static string? ProcessPath => Environment.ProcessPath;
+        public static int ProcessId => Environment.ProcessId;
+        public static void MoveOverwrite(string source, string destination) => File.Move(source, destination, overwrite: true);
+#endif
+    }
+
     /// <summary>v1.2.3 / 1.2.3.4 / 1.2.3-beta.1 / 1.2.3+build 비교 (빌드 정보는 무시, 정식 &gt; 프리릴리스)</summary>
     internal static class VersionText
     {
@@ -332,3 +350,8 @@ namespace ILuncher.AppKit
         }
     }
 }
+
+#if NETFRAMEWORK
+// record 의 init 접근자용 (.NET Framework 에는 없음)
+namespace System.Runtime.CompilerServices { internal static class IsExternalInit { } }
+#endif
