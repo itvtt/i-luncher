@@ -39,6 +39,8 @@ public sealed partial class AppDefinition
     /// <summary>프리릴리스도 최신 버전으로 볼지</summary>
     public bool IncludePrerelease { get; set; }
     public int Order { get; set; }
+    /// <summary>빌드 설정 MASTER_USERS 의 계정에만 보임 (예: API 서버 관리 프로그램)</summary>
+    public bool MasterOnly { get; set; }
 
     [JsonIgnore]
     public string EffectiveKind => string.Equals(Kind, InstallKinds.Setup, StringComparison.OrdinalIgnoreCase) ? InstallKinds.Setup : InstallKinds.Zip;

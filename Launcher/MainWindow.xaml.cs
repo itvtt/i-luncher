@@ -133,6 +133,9 @@ public partial class MainWindow : Window
 
     private void MergeCards(IReadOnlyList<AppDefinition> apps)
     {
+        // "마스터만" 앱은 마스터 계정(빌드 설정 MASTER_USERS)에만. 목록을 고칠 때는 서버의 전체 목록에 적용하므로 숨긴 앱도 남음
+        bool master = _settings.Build.IsMaster(Environment.UserName);
+        apps = apps.Where(app => !app.MasterOnly || master).ToList();
         var byId = _cards.ToDictionary(card => card.App.Id, StringComparer.OrdinalIgnoreCase);
         var next = new List<AppCard>();
         foreach (var app in apps)

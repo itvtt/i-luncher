@@ -466,6 +466,18 @@ try
         settings.User.UseLocalCatalog = true;
         Assert(settings.CatalogRepository is null, "local catalog switch");
     });
+
+    await CheckSync("MASTER_USERS: master-only apps show only to the listed accounts, everyone without the line", () =>
+    {
+        string buildDir = Path.Combine(root, "master-settings");
+        Directory.CreateDirectory(buildDir);
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "MASTER_USERS=dm, CORP\\Admin2;\n");
+        var build = BuildSettings.Load(buildDir);
+        Assert(build.IsMaster("dm") && build.IsMaster("DM") && build.IsMaster(@"OTHERPC\admin2") && !build.IsMaster("user01"), "listed accounts only, any domain, any case");
+        Assert(new BuildSettings().IsMaster("user01"), "no MASTER_USERS: no restriction");
+        var app = CatalogSerializer.Parse("{\"apps\":[{\"id\":\"api-server\",\"name\":\"API\",\"repository\":\"https://github.com/o/a\",\"masterOnly\":true}]}")[0];
+        Assert(app.MasterOnly && app.Clone().MasterOnly, "masterOnly is read and kept");
+    });
 }
 finally
 {

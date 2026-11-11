@@ -102,6 +102,7 @@
                             </StackPanel>
                         </Grid>
                         <CheckBox x:Name="PrereleaseBox" Content="프리릴리스도 최신 버전으로 보기" />
+                        <CheckBox x:Name="MasterOnlyBox" Content="마스터 계정에만 보이기" Margin="0,8,0,0" ToolTip="빌드 설정 MASTER_USERS 에 있는 계정에만 보입니다" />
                     </StackPanel>
                 </Expander>
             </StackPanel>

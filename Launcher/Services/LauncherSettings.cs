@@ -22,6 +22,15 @@ public sealed class BuildSettings
     public string NoticesPath { get; init; } = "";
     public string DefaultHost { get; init; } = "";
     public string Token { get; init; } = "";
+    /// <summary>마스터 계정 (MASTER_USERS, 쉼표로 Windows 계정 이름): 앱 목록의 "마스터만" 앱은 이 계정에만 보임. 비우면 제한 없음</summary>
+    public IReadOnlyList<string> MasterUsers { get; init; } = [];
+
+    /// <summary>목록이 비어 있으면 누구나. 계정은 도메인(DOMAIN\이름)을 떼고 대소문자 없이 비교</summary>
+    public bool IsMaster(string account)
+    {
+        string name = account[(account.LastIndexOf('\\') + 1)..];
+        return MasterUsers.Count == 0 || MasterUsers.Any(master => string.Equals(master, name, StringComparison.OrdinalIgnoreCase));
+    }
 
     public static BuildSettings Load(string? directory = null)
     {
@@ -52,7 +61,9 @@ public sealed class BuildSettings
             CatalogBranch = Read("CATALOG_BRANCH"),
             NoticesPath = Read("NOTICES_PATH"),
             DefaultHost = Read("GITHUB_HOST"),
-            Token = Read("LAUNCHER_TOKEN")
+            Token = Read("LAUNCHER_TOKEN"),
+            MasterUsers = Read("MASTER_USERS").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(account => account[(account.LastIndexOf('\\') + 1)..]).Where(account => account.Length > 0).ToArray()
         };
     }
 }

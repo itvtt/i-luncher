@@ -50,6 +50,7 @@ public partial class AppEditorWindow : Window
             IdBox.Text = existing.Id;
             IdBox.IsReadOnly = true;
             PrereleaseBox.IsChecked = existing.IncludePrerelease;
+            MasterOnlyBox.IsChecked = existing.MasterOnly;
             KindZip.IsChecked = string.Equals(existing.Kind, InstallKinds.Zip, StringComparison.OrdinalIgnoreCase);
             KindSetup.IsChecked = string.Equals(existing.Kind, InstallKinds.Setup, StringComparison.OrdinalIgnoreCase);
             KindAuto.IsChecked = string.IsNullOrWhiteSpace(existing.Kind);
@@ -181,6 +182,7 @@ public partial class AppEditorWindow : Window
             Arguments = Clean(ArgumentsBox),
             Icon = Clean(IconBox),
             IncludePrerelease = PrereleaseBox.IsChecked == true,
+            MasterOnly = MasterOnlyBox.IsChecked == true,
             Order = int.TryParse(OrderBox.Text.Trim(), out int order) ? order : _existing?.Order ?? 0
         };
     }
