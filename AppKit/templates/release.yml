@@ -16,6 +16,11 @@ on:
     branches: [main]
     paths-ignore: ['**.md', 'docs/**', '.env.sample', '.gitignore']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example 1.2.0 (empty: the next patch)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -51,6 +56,7 @@ jobs:
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
         run: powershell -NoProfile -ExecutionPolicy Bypass -File build\Get-NextVersion.ps1 -Project '{{PROJECT}}'
 
       - name: Build
