@@ -52,7 +52,7 @@ static class UiSnapshot
                     using var github = new GitHubClient(settings.GetToken, "checks");
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(dataDirectory, "downloads"), () => settings.DefaultHost);
                     SaveWindow(new AppEditorWindow(null, manager, settings.DefaultHost, ["도구", "일정", "파일 공유"]), Suffix(output, "-editor"));
-                    SaveWindow(new SettingsWindow(settings, "1.0.0"), Suffix(output, "-settings"));
+                    SaveWindow(new SettingsWindow(settings), Suffix(output, "-settings"));
                     result = 0;
                 }
                 catch (Exception error)

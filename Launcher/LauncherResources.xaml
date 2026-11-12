@@ -204,7 +204,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.6" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">

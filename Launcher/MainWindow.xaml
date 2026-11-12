@@ -24,6 +24,38 @@
                 <Setter Property="Padding" Value="11,0" />
                 <Setter Property="Margin" Value="6,0,0,0" />
             </Style>
+            <!-- 카드의 "업데이트" 표시와 같은 초록 -->
+            <Style x:Key="UpdateAllButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#FF239B6A" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" BorderBrush="#FF239B6A" BorderThickness="1" CornerRadius="14">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF2BB07A" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#FFD7FFEA" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Background" Value="#FF1D8058" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.5" />
+                                    <Setter Property="Cursor" Value="Arrow" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="SidebarNavButtonStyle" TargetType="Button">
                 <Setter Property="Height" Value="34" />
                 <Setter Property="Margin" Value="0,0,0,3" />
@@ -163,7 +195,7 @@
                                 <TextBlock Text="앱 추가" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="SettingsButton" Width="34" Padding="0" Click="SettingsButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="설정" ToolTip="설정 (저장소·토큰)">
+                        <Button x:Name="SettingsButton" Width="34" Padding="0" Click="SettingsButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="설정" ToolTip="설정">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Button>
                         <Button x:Name="RefreshButton" Width="34" Padding="0" Click="RefreshButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="새로고침" ToolTip="목록과 최신 버전 새로고침 (F5)">
@@ -192,9 +224,11 @@
                 </Border>
 
                 <Grid Grid.Row="3" Margin="0,12,0,10">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock x:Name="SectionTitle" VerticalAlignment="Center" FontSize="17" FontWeight="SemiBold" Text="전체 앱" />
-                    <TextBlock x:Name="CountText" Grid.Column="1" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" />
+                    <Button x:Name="UpdateAllButton" Grid.Column="1" Height="28" Padding="12,0" Margin="0,0,12,0" Content="모두 업데이트" Click="UpdateAllButton_Click"
+                            Style="{StaticResource UpdateAllButtonStyle}" Visibility="Collapsed" AutomationProperties.Name="모두 업데이트" />
+                    <TextBlock x:Name="CountText" Grid.Column="2" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" />
                 </Grid>
 
                 <Grid Grid.Row="4">
