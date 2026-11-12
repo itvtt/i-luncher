@@ -12,6 +12,7 @@
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Loaded="Window_Loaded"
+        AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop"
         PreviewKeyDown="Window_PreviewKeyDown"
         StateChanged="Window_StateChanged">
     <Window.Resources>
@@ -133,7 +134,7 @@
                 <Grid Margin="12,17,10,14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock Margin="8,0,0,12" FontSize="12" FontWeight="SemiBold" Foreground="#FF8C96A8" Text="라이브러리" />
                     <Button x:Name="AllAppsButton" Grid.Row="1" Click="FilterButton_Click" Tag="all" Style="{StaticResource SidebarNavButtonStyle}">
@@ -145,9 +146,14 @@
                     <Button x:Name="UpdatesButton" Grid.Row="3" Click="FilterButton_Click" Tag="updates" Style="{StaticResource SidebarNavButtonStyle}">
                         <Grid><TextBlock Text="업데이트" /><TextBlock x:Name="UpdatesCountText" HorizontalAlignment="Right" FontSize="11" Foreground="#FF8FD4A8" /></Grid>
                     </Button>
-                    <Border Grid.Row="4" Height="1" Margin="8,10,8,12" Background="#FF2B3240" />
-                    <TextBlock Grid.Row="5" Margin="8,0,0,8" FontSize="10.5" FontWeight="SemiBold" Foreground="#FF697486" Text="분류" />
-                    <ScrollViewer Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <!-- 즐겨찾기: 이 PC 의 일반 프로그램 -->
+                    <Button x:Name="FavoritesButton" Grid.Row="4" Click="FilterButton_Click" Tag="favorites" Style="{StaticResource SidebarNavButtonStyle}"
+                            ToolTip="이 PC 에 설치된 프로그램 바로 실행">
+                        <Grid><TextBlock Text="즐겨찾기" /><TextBlock x:Name="FavoritesCountText" HorizontalAlignment="Right" FontSize="11" /></Grid>
+                    </Button>
+                    <Border Grid.Row="5" Height="1" Margin="8,10,8,12" Background="#FF2B3240" />
+                    <TextBlock Grid.Row="6" Margin="8,0,0,8" FontSize="10.5" FontWeight="SemiBold" Foreground="#FF697486" Text="분류" />
+                    <ScrollViewer Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="CategoryButtons" />
                     </ScrollViewer>
                 </Grid>
@@ -192,7 +198,7 @@
                         <Button x:Name="AddAppButton" Click="AddAppButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="앱 추가" ToolTip="GitHub 저장소 주소로 앱 추가">
                             <StackPanel Orientation="Horizontal">
                                 <Path Width="11" Height="11" Margin="0,0,6,0" Data="M 5.5,0 L 5.5,11 M 0,5.5 L 11,5.5" Stroke="{StaticResource TextBrush}" StrokeThickness="1.5" VerticalAlignment="Center" />
-                                <TextBlock Text="앱 추가" VerticalAlignment="Center" />
+                                <TextBlock x:Name="AddAppText" Text="앱 추가" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="SettingsButton" Width="34" Padding="0" Click="SettingsButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="설정" ToolTip="설정">
@@ -233,6 +239,7 @@
 
                 <Grid Grid.Row="4">
                     <ScrollViewer x:Name="CardScrollViewer" Padding="0,0,4,8" SizeChanged="CardScrollViewer_SizeChanged" ScrollChanged="CardScrollViewer_ScrollChanged" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
                         <ItemsControl x:Name="LauncherItems">
                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel IsItemsHost="True" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -319,6 +326,42 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- 즐겨찾기 카드: 누르면 실행, 우클릭으로 편집·삭제 -->
+                        <ItemsControl x:Name="FavoriteItems" Visibility="Collapsed">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel IsItemsHost="True" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource LauncherCardStyle}" Width="{Binding CardWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="96" Margin="0,0,14,14" Padding="0"
+                                            Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}" Opacity="{Binding CardOpacity}"
+                                            AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
+                                        <Button.ContextMenu>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem Header="실행" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
+                                                <MenuItem Header="편집…" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
+                                                <MenuItem Header="파일 위치 열기" Tag="{Binding}" Click="FavoriteFolderMenu_Click" />
+                                                <Separator />
+                                                <MenuItem Header="삭제" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" />
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                        <Grid Margin="16,14,14,14">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                            <Grid Width="48" Height="48" VerticalAlignment="Center">
+                                                <Border CornerRadius="12" Background="#FF2B3546" Visibility="{Binding InitialsVisibility}">
+                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="20" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
+                                                </Border>
+                                                <Image Width="44" Height="44" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            </Grid>
+                                            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="#FFF5F7FB" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Margin="0,5,0,0" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Text="{Binding PathText}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        </StackPanel>
                     </ScrollViewer>
                     <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" MaxWidth="460">
                         <TextBlock x:Name="EmptyStateTitle" HorizontalAlignment="Center" FontSize="15" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />

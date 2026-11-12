@@ -273,13 +273,16 @@ public static class AppIcons
         catch (Exception error) when (error is IOException or NotSupportedException or UnauthorizedAccessException) { return null; }
     }
 
-    private static BitmapSource? FromExecutable(string executable)
+    private static BitmapSource? FromExecutable(string executable) => FromFile(executable);
+
+    /// <summary>파일(실행 파일·dll·ico)의 아이콘 하나를 64px 로</summary>
+    public static BitmapSource? FromFile(string file, int index = 0)
     {
         var handles = new IntPtr[1];
         var ids = new int[1];
         try
         {
-            if (PrivateExtractIcons(executable, 0, 64, 64, handles, ids, 1, 0) == 0 || handles[0] == IntPtr.Zero) return null;
+            if (PrivateExtractIcons(file, index, 64, 64, handles, ids, 1, 0) is 0 or uint.MaxValue || handles[0] == IntPtr.Zero) return null;
             var source = Imaging.CreateBitmapSourceFromHIcon(handles[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             source.Freeze();
             return source;

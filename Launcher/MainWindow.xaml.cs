@@ -33,11 +33,15 @@ public partial class MainWindow : Window
     private AvailableUpdate? _launcherUpdate;
     private bool _launcherUpdating;
     private bool _updatingAll;
+    private readonly FavoriteStore _favoriteStore;
+    private List<FavoriteProgram> _favorites;
 
     public MainWindow(LauncherSettings settings, string? startupMessage = null)
     {
         _settings = settings;
         _startupMessage = startupMessage;
+        _favoriteStore = new FavoriteStore(Path.Combine(settings.DataDirectory, "favorites.json"));
+        _favorites = _favoriteStore.Load();
         InitializeComponent();
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
@@ -499,6 +503,7 @@ public partial class MainWindow : Window
 
     private async void AddAppButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_filter == "favorites") { EditFavorite(null); return; }
         var editor = new AppEditorWindow(null, _manager, _settings.DefaultHost, Categories()) { Owner = this };
         if (editor.ShowDialog() != true || editor.Result is not { } app) return;
         await ChangeCatalogAsync(apps =>
@@ -665,6 +670,12 @@ public partial class MainWindow : Window
 
     private void Render()
     {
+        bool favorites = _filter == "favorites";
+        LauncherItems.Visibility = favorites ? Visibility.Collapsed : Visibility.Visible;
+        FavoriteItems.Visibility = favorites ? Visibility.Visible : Visibility.Collapsed;
+        AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
+        AddAppButton.ToolTip = favorites ? "이 PC 의 프로그램을 즐겨찾기에 추가 (파일을 끌어 놓아도 됨)" : "GitHub 저장소 주소로 앱 추가";
+        if (favorites) { RenderFavorites(); return; }
         string search = SearchBox.Text.Trim();
         IEnumerable<AppCard> items = _cards.Where(card => card.Matches(search));
         items = _filter switch
@@ -717,7 +728,8 @@ public partial class MainWindow : Window
         UpdatesCountText.Text = updates > 0 ? updates.ToString() : "";
         UpdateAllButton.Visibility = updates > 0 || _updatingAll ? Visibility.Visible : Visibility.Collapsed;
         UpdateAllButton.IsEnabled = !_updatingAll;
-        foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates") })
+        FavoritesCountText.Text = _favorites.Count > 0 ? _favorites.Count.ToString() : "";
+        foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites") })
         {
             button.Background = _filter == filter ? SelectedNavBrush : Brushes.Transparent;
             button.Foreground = _filter == filter ? (Brush)FindResource("TextBrush") : (Brush)FindResource("MutedTextBrush");
@@ -763,7 +775,8 @@ public partial class MainWindow : Window
 
     private void EmptyStateButton_Click(object sender, RoutedEventArgs e)
     {
-        if (EmptyStateButton.Tag as string == "add") AddAppButton_Click(sender, e);
+        if (EmptyStateButton.Tag as string == "favorite-add") EditFavorite(null);
+        else if (EmptyStateButton.Tag as string == "add") AddAppButton_Click(sender, e);
         else
         {
             _filter = "all";
