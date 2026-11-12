@@ -203,11 +203,14 @@ public sealed class LauncherSettings
     }
 
     /// <summary>
-    /// github.com 저장소를 API 서버의 GitHub 중계(&lt;API 서버&gt;/api/v3)로 읽을 때 그 주소. 중계를 쓰면 토큰이 필요 없고
-    /// 사용자 PC 에 GitHub 토큰을 두지 않아도 비공개 저장소의 릴리스를 받음
+    /// 저장소를 API 서버의 GitHub 중계(&lt;API 서버&gt;/api/v3)로 읽을 때 그 주소. 중계를 쓰면 토큰이 필요 없고
+    /// 사용자 PC 에 GitHub 토큰을 두지 않아도 비공개 저장소의 릴리스를 받음.
+    /// github.com 과 빌드 설정의 기본 호스트(GITHUB_HOST, GitHub Enterprise: 서버의 RELAY_GITHUB_API 와 같은 호스트)가 대상
     /// </summary>
     public string? ApiBaseFor(GitHubRepository repository) =>
-        ApiServerUrl is { } server && repository.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ? server + "/api/v3" : null;
+        ApiServerUrl is { } server && (repository.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+                                       Build.DefaultHost.Length > 0 && repository.Host.Equals(GitHubRepository.NormalizeHost(Build.DefaultHost), StringComparison.OrdinalIgnoreCase))
+            ? server + "/api/v3" : null;
 
     /// <summary>앱 목록을 둔 저장소. 따로 정하지 않으면 런처 저장소</summary>
     public GitHubRepository? CatalogRepository => CatalogMode == ModeGitHub ? RepositoryCatalog : null;

@@ -24,9 +24,30 @@ foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Re
 
 $api = "$($env:GITHUB_API_URL.TrimEnd('/'))/repos/$env:GITHUB_REPOSITORY"
 $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+# GitHub API 가 가끔 5xx 를 주므로 (응답 없음 포함) 4번까지 다시 시도. 4xx 는 바로 실패.
+# 릴리스 만들기가 5xx 로 끝났어도 초안이 생겼을 수 있어 다시 만들기 전에 같은 태그의 초안을 지움.
+function Remove-DraftRelease([string]$Tag) {
+    try {
+        foreach ($draft in @(Invoke-RestMethod -UseBasicParsing -Uri "$api/releases?per_page=30" -Headers $headers)) {
+            if ($draft.draft -and $draft.tag_name -eq $Tag) { Invoke-RestMethod -UseBasicParsing -Method Delete -Uri $draft.url -Headers $headers | Out-Null }
+        }
+    }
+    catch { Write-Host "  could not clean up drafts: $($_.Exception.Message)" }
+}
 function Send-Json([string]$Method, [string]$Uri, $Data) {
-    Invoke-RestMethod -UseBasicParsing -Method $Method -Uri $Uri -Headers $headers -ContentType 'application/json; charset=utf-8' `
-        -Body ([Text.Encoding]::UTF8.GetBytes(($Data | ConvertTo-Json)))
+    $body = [Text.Encoding]::UTF8.GetBytes(($Data | ConvertTo-Json))
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            return Invoke-RestMethod -UseBasicParsing -Method $Method -Uri $Uri -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $body
+        }
+        catch {
+            $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            if ($attempt -ge 4 -or ($status -ge 400 -and $status -lt 500)) { throw }
+            Write-Host "  GitHub API $Method failed ($($_.Exception.Message)); retrying in $(10 * $attempt) s"
+            Start-Sleep -Seconds (10 * $attempt)
+            if ($Method -eq 'Post' -and $Data.tag_name) { Remove-DraftRelease $Data.tag_name }
+        }
+    }
 }
 
 $log = @()

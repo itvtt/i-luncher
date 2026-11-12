@@ -229,6 +229,13 @@ try
         Equal(LauncherSettings.ModeApi, settings.CatalogMode, "API server first");
         Equal("http://10.0.0.5:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/owner/DeskCal")!), "github.com via the relay");
         Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!) is null, "an Enterprise server is asked directly");
+        // GITHUB_HOST 가 GitHub Enterprise 면 그 호스트도 중계로 (서버의 RELAY_GITHUB_API 가 같은 호스트)
+        string enterpriseDir = Path.Combine(root, "api-settings-enterprise");
+        Directory.CreateDirectory(enterpriseDir);
+        File.WriteAllText(Path.Combine(enterpriseDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003\nGITHUB_HOST=https://GHE.example.com/\nLAUNCHER_REPOSITORY=https://ghe.example.com/team/i-luncher\n");
+        var enterprise = LauncherSettings.Load(Path.Combine(root, "api-data-enterprise"), enterpriseDir);
+        Equal("http://10.0.0.5:2003/api/v3", enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!), "GITHUB_HOST via the relay");
+        Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://other.example.com/team/x")!) is null, "other hosts are asked directly");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
         settings.User.SetAdminPassword("secret");
         Equal("secret", settings.User.GetAdminPassword(), "admin password round-trips");
