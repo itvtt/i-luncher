@@ -296,11 +296,16 @@
                                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                     <TextBlock Margin="0,0,8,0" FontSize="15" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                                    <Border Grid.Column="1" Height="20" MaxWidth="72" Padding="8,0" VerticalAlignment="Top" Background="#14FFFFFF" CornerRadius="10" IsHitTestVisible="False">
-                                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" Foreground="#FFAEB9CC" Text="{Binding Category}" TextTrimming="CharacterEllipsis" />
+                                                    <!-- 버전 배지: 오른쪽 위 (업데이트 = 초록, 확인 실패·릴리스 없음 = 노랑, 자세한 내용은 툴팁) -->
+                                                    <Border Grid.Column="1" Height="20" MaxWidth="130" Padding="8,0" VerticalAlignment="Top" Background="{Binding VersionBadgeBackground}" CornerRadius="10"
+                                                            Visibility="{Binding VersionVisibility}" ToolTip="{Binding VersionToolTip}">
+                                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" FontWeight="Medium" Foreground="{Binding VersionBrush}" Text="{Binding VersionText}" TextTrimming="CharacterEllipsis" />
                                                     </Border>
                                                     <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" MaxHeight="34" FontSize="11.5" LineHeight="16" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                                                    <TextBlock Grid.Row="3" VerticalAlignment="Center" FontSize="11.5" FontWeight="Medium" Foreground="{Binding VersionBrush}" Text="{Binding VersionText}" ToolTip="{Binding VersionToolTip}" TextTrimming="CharacterEllipsis" />
+                                                    <!-- 카테고리: 왼쪽 아래 -->
+                                                    <Border Grid.Row="3" Height="20" Padding="8,0" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#14FFFFFF" CornerRadius="10" IsHitTestVisible="False">
+                                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" Foreground="#FFAEB9CC" Text="{Binding Category}" TextTrimming="CharacterEllipsis" />
+                                                    </Border>
                                                     <Border Grid.Row="3" Grid.Column="1" Height="26" MinWidth="58" Padding="13,0" Margin="8,0,0,0" CornerRadius="13" Background="{Binding ActionBackground}" Visibility="{Binding ActionVisibility}" IsHitTestVisible="False">
                                                         <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="{Binding ActionForeground}" Text="{Binding ActionText}" />
                                                     </Border>

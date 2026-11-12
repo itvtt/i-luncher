@@ -155,16 +155,17 @@ public sealed class AppCard : INotifyPropertyChanged
     private static readonly Brush UpdateBack = Freeze(new SolidColorBrush(Color.FromRgb(0x23, 0x9B, 0x6A)));
     private static readonly Brush WhiteText = Freeze(new SolidColorBrush(Colors.White));
 
-    public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : IsInstalled ? "열기" : "받기";
-    public Brush ActionBackground => IsBusy ? OpenBack : UpdateAvailable ? UpdateBack : IsInstalled ? OpenBack : GetBack;
-    public Brush ActionForeground => IsBusy || IsInstalled && !UpdateAvailable ? OpenText : WhiteText;
-    /// <summary>설치되지 않았고 받을 릴리스도 없으면 (릴리스 없음·확인 실패) 동작 표시를 숨김</summary>
-    public Visibility ActionVisibility => IsInstalled || IsBusy || Latest is not null ? Visibility.Visible : Visibility.Collapsed;
+    public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : "받기";
+    public Brush ActionBackground => IsBusy ? OpenBack : UpdateAvailable ? UpdateBack : GetBack;
+    public Brush ActionForeground => IsBusy ? OpenText : WhiteText;
+    /// <summary>받기·업데이트·진행 중일 때만 보임. 설치된 앱은 카드를 누르면 열리므로 "열기"는 표시하지 않음</summary>
+    public Visibility ActionVisibility => IsBusy || UpdateAvailable || !IsInstalled && Latest is not null ? Visibility.Visible : Visibility.Collapsed;
 
     public string DescriptionText => IsBusy && BusyText is { Length: > 0 } busy ? busy
         : !string.IsNullOrWhiteSpace(App.Description) ? App.Description
         : GitHubRepository.Parse(App.Repository)?.FullName ?? App.Repository;
 
+    /// <summary>카드 오른쪽 위 버전 배지: 짧게 버전만. 상태(확인 실패·릴리스 없음)는 색과 툴팁으로</summary>
     public string VersionText
     {
         get
@@ -174,22 +175,24 @@ public sealed class AppCard : INotifyPropertyChanged
             if (IsInstalled)
             {
                 if (UpdateAvailable) return $"v{installed} → v{latest}";
-                string text = installed is null ? "설치됨" : $"v{installed}";
-                if (IsChecking) return text + " · 확인 중…";
-                if (LatestError is not null) return text + " · 확인 실패";
-                if (_checked && Latest is null) return text + " · 릴리스 없음";
-                if (Latest is not null && Latest.Version is null) return text + $" · 최신 {Latest.Tag}";
-                return text + (latest is not null ? " · 최신" : "");
+                return installed is null ? "설치됨" : $"v{installed}";
             }
             if (IsChecking) return "확인 중…";
             if (latest is not null) return $"v{latest}";
             if (Latest is not null) return Latest.Tag;
-            if (LatestError is not null) return "릴리스 확인 실패";
+            if (LatestError is not null) return "확인 실패";
             return _checked ? "릴리스 없음" : "";
         }
     }
 
-    public Brush VersionBrush => UpdateAvailable ? UpdateBrush : LatestError is not null || (_checked && Latest is null) ? WarningBrush : NormalBrush;
+    private bool VersionWarning => LatestError is not null || (_checked && Latest is null);
+    public Brush VersionBrush => UpdateAvailable ? UpdateBrush : VersionWarning ? WarningBrush : NormalBrush;
+
+    private static readonly Brush UpdateBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x2E, 0x3D, 0xD6, 0x8C)));
+    private static readonly Brush WarningBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x2E, 0xE6, 0xC0, 0x7A)));
+    private static readonly Brush NormalBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)));
+    public Brush VersionBadgeBackground => UpdateAvailable ? UpdateBadgeBack : VersionWarning ? WarningBadgeBack : NormalBadgeBack;
+    public Visibility VersionVisibility => VersionText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public string VersionToolTip
     {
