@@ -8,35 +8,49 @@ namespace ILauncher;
 /// <summary>즐겨찾기: 이 PC 에 설치된 일반 프로그램을 카드로 두고 누르면 실행. 추가(설치된 프로그램 목록·찾아보기·끌어 놓기), 편집, 삭제</summary>
 public partial class MainWindow
 {
+    /// <summary>즐겨찾기 화면: 즐겨찾기한 런처 앱(앱 카드 그대로) + 이 PC 의 프로그램</summary>
     private void RenderFavorites()
     {
         string search = SearchBox.Text.Trim();
-        var visible = _favorites.Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
-        FavoriteItems.ItemsSource = visible;
+        var apps = _cards.Where(card => card.IsFavorite && card.Matches(search))
+            .OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        var programs = _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
+        LauncherItems.ItemsSource = apps;
+        FavoriteItems.ItemsSource = programs;
         SectionTitle.Text = "즐겨찾기";
-        CountText.Text = $"{visible.Count}개 프로그램";
+        CountText.Text = $"{apps.Count + programs.Count}개";
         RenderCategories();
         UpdateCounts();
         UpdateAllButton.Visibility = Visibility.Collapsed;
 
-        bool empty = visible.Count == 0;
+        bool empty = apps.Count + programs.Count == 0;
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         CardScrollViewer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         if (!empty) return;
         if (_favorites.Count == 0)
         {
-            EmptyStateTitle.Text = "즐겨찾는 프로그램이 없습니다";
-            EmptyStateText.Text = "이 PC 에 설치된 프로그램을 추가하면 여기서 바로 실행합니다.\n실행 파일이나 바로 가기를 이 창에 끌어 놓아도 됩니다.";
+            EmptyStateTitle.Text = "즐겨찾기가 없습니다";
+            EmptyStateText.Text = "앱: 우클릭 → 즐겨찾기에 추가 · 프로그램: 끌어 놓기";
             EmptyStateButton.Content = "프로그램 추가";
             EmptyStateButton.Tag = "favorite-add";
         }
         else
         {
-            EmptyStateTitle.Text = "일치하는 프로그램이 없습니다";
+            EmptyStateTitle.Text = "일치하는 항목이 없습니다";
             EmptyStateText.Text = "";
             EmptyStateButton.Content = "검색 지우기";
             EmptyStateButton.Tag = "clear";
         }
+    }
+
+    /// <summary>앱 카드 우클릭: 즐겨찾기에 추가 / 빼기</summary>
+    private void FavoriteToggleMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not AppCard card) return;
+        string id = card.App.Id;
+        bool removed = _favorites.RemoveAll(item => string.Equals(item.AppId, id, StringComparison.OrdinalIgnoreCase)) > 0;
+        if (!removed) _favorites.Add(new FavoriteProgram { Name = card.Name, AppId = id });
+        SaveFavorites(removed ? $"{card.Name} 즐겨찾기에서 뺌" : $"{card.Name} 즐겨찾기에 추가", switchView: false);
     }
 
     /// <summary>추가(null) 또는 편집</summary>
@@ -49,7 +63,7 @@ public partial class MainWindow
         SaveFavorites(index >= 0 ? $"{result.Name} 수정함" : $"{result.Name} 추가함");
     }
 
-    private void SaveFavorites(string done)
+    private void SaveFavorites(string done, bool switchView = true)
     {
         try
         {
@@ -61,7 +75,7 @@ public partial class MainWindow
         {
             ShowError("즐겨찾기를 저장하지 못했습니다: " + error.Message);
         }
-        if (_filter != "favorites") _filter = "favorites";
+        if (switchView) _filter = "favorites";
         Render();
     }
 

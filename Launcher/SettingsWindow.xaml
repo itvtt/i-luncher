@@ -40,6 +40,16 @@
 
                 <CheckBox x:Name="AutoUpdateBox" Margin="0,16,0,0" Content="i-luncher 자동 업데이트" Checked="Field_Changed" Unchecked="Field_Changed" />
 
+                <!-- 마스터만 보는 앱: 마스터 계정에만 보임 -->
+                <StackPanel x:Name="MasterOnlyPanel" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource FieldLabelStyle}" Margin="0,18,0,5" Text="마스터만 보기" />
+                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10,0,10,8">
+                        <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="MasterOnlyList" />
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
                 <TextBlock x:Name="ErrorText" Margin="0,12,0,0" FontSize="12" Foreground="#FFF0CF8A" TextWrapping="Wrap" Visibility="Collapsed" />
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">

@@ -52,7 +52,7 @@ static class UiSnapshot
                     using var github = new GitHubClient(settings.GetToken, "checks");
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(dataDirectory, "downloads"), () => settings.DefaultHost);
                     SaveWindow(new AppEditorWindow(null, manager, settings.DefaultHost, ["도구", "일정", "파일 공유"]), Suffix(output, "-editor"));
-                    SaveWindow(new SettingsWindow(settings), Suffix(output, "-settings"));
+                    SaveWindow(new SettingsWindow(settings, ((IEnumerable<AppCard>)window.LauncherItems.ItemsSource).Select(card => card.App).ToList()), Suffix(output, "-settings"));
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
                     window.FavoritesButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));

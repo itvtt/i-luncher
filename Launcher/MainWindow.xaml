@@ -251,6 +251,7 @@
                                             <Button.ContextMenu>
                                                 <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                                                     <MenuItem Header="실행" Tag="{Binding}" Click="LaunchMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                                    <MenuItem Header="{Binding FavoriteMenuHeader}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
                                                     <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
                                                     <MenuItem Header="설치 / 다시 설치" Tag="{Binding}" Click="ReinstallMenu_Click" />
                                                     <MenuItem Header="제거" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
@@ -303,16 +304,20 @@
                                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                     <TextBlock Margin="0,0,8,0" FontSize="15" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                                    <!-- 버전 배지: 오른쪽 위 (업데이트 = 초록, 확인 실패·릴리스 없음 = 노랑, 자세한 내용은 툴팁) -->
-                                                    <Border Grid.Column="1" Height="20" MaxWidth="130" Padding="8,0" VerticalAlignment="Top" Background="{Binding VersionBadgeBackground}" CornerRadius="10"
-                                                            Visibility="{Binding VersionVisibility}" ToolTip="{Binding VersionToolTip}">
-                                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" FontWeight="Medium" Foreground="{Binding VersionBrush}" Text="{Binding VersionText}" TextTrimming="CharacterEllipsis" />
-                                                    </Border>
+                                                    <!-- 오른쪽 위: 카테고리 · 버전 배지 (업데이트 = 초록, 확인 실패·릴리스 없음 = 노랑, 자세한 내용은 툴팁) -->
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                                        <Border Height="20" MaxWidth="72" Padding="7,0" Margin="0,0,4,0" Background="#14FFFFFF" CornerRadius="10" IsHitTestVisible="False">
+                                                            <TextBlock VerticalAlignment="Center" FontSize="10.5" Foreground="#FFAEB9CC" Text="{Binding Category}" TextTrimming="CharacterEllipsis" />
+                                                        </Border>
+                                                        <Border Height="20" MaxWidth="96" Padding="7,0" Background="{Binding VersionBadgeBackground}" CornerRadius="10"
+                                                                Visibility="{Binding VersionVisibility}" ToolTip="{Binding VersionToolTip}">
+                                                            <TextBlock VerticalAlignment="Center" FontSize="10.5" FontWeight="Medium" Foreground="{Binding VersionBrush}" Text="{Binding VersionText}" TextTrimming="CharacterEllipsis" />
+                                                        </Border>
+                                                    </StackPanel>
                                                     <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" MaxHeight="34" FontSize="11.5" LineHeight="16" Foreground="{StaticResource MutedTextBrush}" Text="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                                                    <!-- 카테고리: 왼쪽 아래 -->
-                                                    <Border Grid.Row="3" Height="20" Padding="8,0" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#14FFFFFF" CornerRadius="10" IsHitTestVisible="False">
-                                                        <TextBlock VerticalAlignment="Center" FontSize="10.5" Foreground="#FFAEB9CC" Text="{Binding Category}" TextTrimming="CharacterEllipsis" />
-                                                    </Border>
+                                                    <!-- 왼쪽 아래: 즐겨찾기 표시 -->
+                                                    <TextBlock Grid.Row="3" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="#FFF0CF8A" Text="&#xE735;"
+                                                               Visibility="{Binding FavoriteVisibility}" ToolTip="즐겨찾기" />
                                                     <Border Grid.Row="3" Grid.Column="1" Height="26" MinWidth="58" Padding="13,0" Margin="8,0,0,0" CornerRadius="13" Background="{Binding ActionBackground}" Visibility="{Binding ActionVisibility}" IsHitTestVisible="False">
                                                         <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="{Binding ActionForeground}" Text="{Binding ActionText}" />
                                                     </Border>

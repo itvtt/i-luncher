@@ -2,13 +2,16 @@ using System.Text.Json;
 
 namespace ILauncher.Services;
 
-/// <summary>즐겨찾기: 이 PC 에 설치된 일반 프로그램(실행 파일·바로 가기·파일). 이 PC 에만 저장 (경로가 PC 마다 다름)</summary>
+/// <summary>즐겨찾기: 런처 앱(AppId) 또는 이 PC 에 설치된 일반 프로그램(실행 파일·바로 가기·파일). 이 PC 에만 저장 (경로가 PC 마다 다름)</summary>
 public sealed class FavoriteProgram
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Path { get; set; } = "";
     public string Arguments { get; set; } = "";
+    /// <summary>런처 앱을 즐겨찾기한 경우 그 앱의 id (Path 는 비움)</summary>
+    public string AppId { get; set; } = "";
+    public bool IsApp => AppId.Length > 0;
 }
 
 /// <summary>%LOCALAPPDATA%\i-luncher\favorites.json</summary>
@@ -23,7 +26,7 @@ public sealed class FavoriteStore(string filePath)
         try
         {
             if (File.Exists(FilePath) && JsonSerializer.Deserialize<List<FavoriteProgram>>(File.ReadAllText(FilePath), Options) is { } list)
-                return list.Where(item => item.Path.Length > 0).ToList();
+                return list.Where(item => item.Path.Length > 0 || item.AppId.Length > 0).ToList();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         return [];

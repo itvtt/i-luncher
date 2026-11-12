@@ -101,6 +101,11 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility UpdateDotVisibility => UpdateAvailable && !IsBusy ? Visibility.Visible : Visibility.Collapsed;
     // 마스터가 API 서버 관리 프로그램의 앱 목록에서 켬
     public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
+    // 즐겨찾기 (이 PC 에만, FavoriteStore)
+    private bool _favorite;
+    public bool IsFavorite { get => _favorite; set { if (_favorite == value) return; _favorite = value; Notify(); Notify(nameof(FavoriteMenuHeader)); Notify(nameof(FavoriteVisibility)); } }
+    public string FavoriteMenuHeader => IsFavorite ? "즐겨찾기에서 빼기" : "즐겨찾기에 추가";
+    public Visibility FavoriteVisibility => IsFavorite ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NewVisibility => App.New ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility InitialsVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
@@ -174,7 +179,7 @@ public sealed class AppCard : INotifyPropertyChanged
             string? latest = Latest?.Version?.ToString();
             if (IsInstalled)
             {
-                if (UpdateAvailable) return $"v{installed} → v{latest}";
+                if (UpdateAvailable) return $"↑ v{latest}";  // 설치된 버전은 툴팁에
                 return installed is null ? "설치됨" : $"v{installed}";
             }
             if (IsChecking) return "확인 중…";

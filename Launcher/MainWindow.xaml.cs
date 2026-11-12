@@ -671,10 +671,10 @@ public partial class MainWindow : Window
     private void Render()
     {
         bool favorites = _filter == "favorites";
-        LauncherItems.Visibility = favorites ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
         FavoriteItems.Visibility = favorites ? Visibility.Visible : Visibility.Collapsed;
         AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
-        AddAppButton.ToolTip = favorites ? "이 PC 의 프로그램을 즐겨찾기에 추가 (파일을 끌어 놓아도 됨)" : "GitHub 저장소 주소로 앱 추가";
+        AddAppButton.ToolTip = favorites ? "프로그램 추가" : "앱 추가";
         if (favorites) { RenderFavorites(); return; }
         string search = SearchBox.Text.Trim();
         IEnumerable<AppCard> items = _cards.Where(card => card.Matches(search));
@@ -707,7 +707,7 @@ public partial class MainWindow : Window
         if (_cards.Count == 0)
         {
             EmptyStateTitle.Text = "아직 등록된 앱이 없습니다";
-            EmptyStateText.Text = $"GitHub 저장소 주소로 앱을 추가하면 최신 릴리스 버전을 보여 주고, 클릭하면 설치·업데이트·실행합니다.\n앱 목록 위치: {_store.Location}";
+            EmptyStateText.Text = "";
             EmptyStateButton.Content = "앱 추가";
             EmptyStateButton.Tag = "add";
         }
@@ -728,7 +728,8 @@ public partial class MainWindow : Window
         UpdatesCountText.Text = updates > 0 ? updates.ToString() : "";
         UpdateAllButton.Visibility = updates > 0 || _updatingAll ? Visibility.Visible : Visibility.Collapsed;
         UpdateAllButton.IsEnabled = !_updatingAll;
-        FavoritesCountText.Text = _favorites.Count > 0 ? _favorites.Count.ToString() : "";
+        int favoriteCount = _favorites.Count(item => !item.IsApp) + _cards.Count(card => card.IsFavorite);
+        FavoritesCountText.Text = favoriteCount > 0 ? favoriteCount.ToString() : "";
         foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites") })
         {
             button.Background = _filter == filter ? SelectedNavBrush : Brushes.Transparent;
@@ -794,13 +795,27 @@ public partial class MainWindow : Window
 
     private async void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        if (new SettingsWindow(_settings) { Owner = this }.ShowDialog() != true) return;
-        _settings.SaveUser();
-        CreateServices();
-        _cards.Clear();
-        await RefreshAsync(checkReleases: true);
-        await RefreshNoticesAsync();
-        await CheckLauncherUpdateAsync(automatic: false);
+        // 마스터에게만 "마스터만 보기" (마스터는 숨긴 앱까지 모두 보므로 _cards = 전체 목록)
+        bool master = _settings.Build.IsMaster(Environment.UserName);
+        var window = new SettingsWindow(_settings, master ? _cards.Select(card => card.App).ToList() : null) { Owner = this };
+        if (window.ShowDialog() != true) return;
+        var masterOnly = window.MasterOnlyChanges;
+        if (window.SettingsChanged)
+        {
+            _settings.SaveUser();
+            CreateServices();
+            _cards.Clear();
+            await RefreshAsync(checkReleases: true);
+            await RefreshNoticesAsync();
+            await CheckLauncherUpdateAsync(automatic: false);
+        }
+        if (masterOnly.Count > 0)
+            await ChangeCatalogAsync(apps =>
+            {
+                foreach (var app in apps)
+                    if (masterOnly.TryGetValue(app.Id, out bool value)) app.MasterOnly = value;
+                return "i-luncher: 마스터만 보기 변경";
+            }, "마스터만 보기를 바꿨습니다.");
     }
 
     private void CatalogSourceText_Click(object sender, MouseButtonEventArgs e)
