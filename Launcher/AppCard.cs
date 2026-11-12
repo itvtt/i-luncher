@@ -13,7 +13,6 @@ namespace ILauncher;
 /// <summary>카드 하나의 상태: 카탈로그 정의 + 이 PC 의 설치 상태 + GitHub 최신 릴리스</summary>
 public sealed class AppCard : INotifyPropertyChanged
 {
-    private static readonly Brush UpdateBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x8F, 0xD4, 0xA8)));
     private static readonly Brush NormalBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9D, 0xA7, 0xB8)));
     private static readonly Brush WarningBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A)));
     private static readonly Brush InstalledTitleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xF5, 0xF7, 0xFB)));
@@ -98,7 +97,6 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility UpdateMenuVisibility => UpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
     public Visibility InstalledMenuVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ReleaseMenuVisibility => Latest is not null ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility UpdateDotVisibility => UpdateAvailable && !IsBusy ? Visibility.Visible : Visibility.Collapsed;
     // 마스터가 API 서버 관리 프로그램의 앱 목록에서 켬
     public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
     // 즐겨찾기 (이 PC 에만, FavoriteStore)
@@ -153,18 +151,15 @@ public sealed class AppCard : INotifyPropertyChanged
         }
     }
 
-    // 카드 오른쪽 아래의 동작 표시: 누르면 무엇을 하는지
-    private static readonly Brush OpenBack = Freeze(new SolidColorBrush(Color.FromRgb(0x26, 0x30, 0x44)));
-    private static readonly Brush OpenText = Freeze(new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xFF)));
+    // 버전 배지 오른쪽의 동작 아이콘: 누르면 무엇을 하는지 (업데이트 = 초록 ↑, 받기 = 파랑 ↓). 진행 중에는 아래 진행 막대
     private static readonly Brush GetBack = Freeze(new SolidColorBrush(Color.FromRgb(0x38, 0x64, 0xD9)));
     private static readonly Brush UpdateBack = Freeze(new SolidColorBrush(Color.FromRgb(0x23, 0x9B, 0x6A)));
-    private static readonly Brush WhiteText = Freeze(new SolidColorBrush(Colors.White));
 
-    public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : "받기";
-    public Brush ActionBackground => IsBusy ? OpenBack : UpdateAvailable ? UpdateBack : GetBack;
-    public Brush ActionForeground => IsBusy ? OpenText : WhiteText;
-    /// <summary>받기·업데이트·진행 중일 때만 보임. 설치된 앱은 카드를 누르면 열리므로 "열기"는 표시하지 않음</summary>
-    public Visibility ActionVisibility => IsBusy || UpdateAvailable || !IsInstalled && Latest is not null ? Visibility.Visible : Visibility.Collapsed;
+    public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? $"업데이트 v{Latest?.Version}" : "받기";
+    public string ActionGlyph => UpdateAvailable ? "" : "";
+    public Brush ActionBackground => UpdateAvailable ? UpdateBack : GetBack;
+    /// <summary>받기·업데이트가 있을 때만. 설치된 최신 앱은 카드를 누르면 열림</summary>
+    public Visibility ActionVisibility => !IsBusy && (UpdateAvailable || !IsInstalled && Latest is not null) ? Visibility.Visible : Visibility.Collapsed;
 
     public string DescriptionText => IsBusy && BusyText is { Length: > 0 } busy ? busy
         : !string.IsNullOrWhiteSpace(App.Description) ? App.Description
@@ -179,8 +174,7 @@ public sealed class AppCard : INotifyPropertyChanged
             string? latest = Latest?.Version?.ToString();
             if (IsInstalled)
             {
-                if (UpdateAvailable) return $"↑ v{latest}";  // 설치된 버전은 툴팁에
-                return installed is null ? "설치됨" : $"v{installed}";
+                return installed is null ? "설치됨" : $"v{installed}";  // 새 버전은 오른쪽 아이콘·툴팁에
             }
             if (IsChecking) return "확인 중…";
             if (latest is not null) return $"v{latest}";
@@ -191,12 +185,11 @@ public sealed class AppCard : INotifyPropertyChanged
     }
 
     private bool VersionWarning => LatestError is not null || (_checked && Latest is null);
-    public Brush VersionBrush => UpdateAvailable ? UpdateBrush : VersionWarning ? WarningBrush : NormalBrush;
+    public Brush VersionBrush => VersionWarning ? WarningBrush : NormalBrush;
 
-    private static readonly Brush UpdateBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x2E, 0x3D, 0xD6, 0x8C)));
     private static readonly Brush WarningBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x2E, 0xE6, 0xC0, 0x7A)));
     private static readonly Brush NormalBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)));
-    public Brush VersionBadgeBackground => UpdateAvailable ? UpdateBadgeBack : VersionWarning ? WarningBadgeBack : NormalBadgeBack;
+    public Brush VersionBadgeBackground => VersionWarning ? WarningBadgeBack : NormalBadgeBack;
     public Visibility VersionVisibility => VersionText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     public string VersionToolTip
