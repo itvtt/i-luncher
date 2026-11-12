@@ -48,6 +48,8 @@
   <Target Name="WriteLauncherSettings" BeforeTargets="AssignTargetPaths">
     <PropertyGroup>
       <_LauncherEnvFile>$(MSBuildProjectDirectory)\..\.env</_LauncherEnvFile>
+      <!-- 저장소에 .env 가 없으면 프로필 폴더(사용자 환경 변수 APPS_ENV_DIR)의 i-luncher.env -->
+      <_LauncherEnvFile Condition="!Exists('$(_LauncherEnvFile)') and '$(APPS_ENV_DIR)' != '' and Exists('$(APPS_ENV_DIR)\i-luncher.env')">$(APPS_ENV_DIR)\i-luncher.env</_LauncherEnvFile>
     </PropertyGroup>
     <ReadLinesFromFile File="$(_LauncherEnvFile)" Condition="Exists('$(_LauncherEnvFile)')">
       <Output TaskParameter="Lines" ItemName="_LauncherEnvLine" />

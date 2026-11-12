@@ -53,6 +53,8 @@ protected override void OnStartup(StartupEventArgs e)
 
 ## 설정 (`.env`, 빌드할 때만)
 
+저장소에 `.env` 가 없으면 프로필 폴더(사용자 환경 변수 `APPS_ENV_DIR`)의 `<저장소 폴더 이름>.env` 를 읽습니다. 프로젝트 폴더에는 설정 파일을 두지 않는 것을 권장합니다.
+
 | 키 | 뜻 |
 |---|---|
 | `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<호스트>/api/v3` (Actions에서는 비워도 됨) |

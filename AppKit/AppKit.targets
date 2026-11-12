@@ -20,6 +20,10 @@
     <PropertyGroup>
       <_AppKitEnvFile Condition="Exists('$(MSBuildProjectDirectory)\.env')">$(MSBuildProjectDirectory)\.env</_AppKitEnvFile>
       <_AppKitEnvFile Condition="'$(_AppKitEnvFile)' == '' and Exists('$(MSBuildProjectDirectory)\..\.env')">$(MSBuildProjectDirectory)\..\.env</_AppKitEnvFile>
+      <!-- 저장소에 .env 가 없으면 프로필 폴더(사용자 환경 변수 APPS_ENV_DIR)의 <저장소 폴더 이름>.env. 저장소 폴더 = .env.sample 이 있는 폴더 -->
+      <_AppKitRepoRoot>$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildProjectDirectory)', '.env.sample'))</_AppKitRepoRoot>
+      <_AppKitProfileEnv Condition="'$(APPS_ENV_DIR)' != '' and '$(_AppKitRepoRoot)' != ''">$(APPS_ENV_DIR)\$([System.IO.Path]::GetFileName('$(_AppKitRepoRoot)')).env</_AppKitProfileEnv>
+      <_AppKitEnvFile Condition="'$(_AppKitEnvFile)' == '' and '$(_AppKitProfileEnv)' != '' and Exists('$(_AppKitProfileEnv)')">$(_AppKitProfileEnv)</_AppKitEnvFile>
     </PropertyGroup>
     <ReadLinesFromFile File="$(_AppKitEnvFile)" Condition="'$(_AppKitEnvFile)' != ''">
       <Output TaskParameter="Lines" ItemName="_AppKitEnvLine" />
