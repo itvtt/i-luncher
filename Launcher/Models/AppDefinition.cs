@@ -41,6 +41,10 @@ public sealed partial class AppDefinition
     public int Order { get; set; }
     /// <summary>빌드 설정 MASTER_USERS 의 계정에만 보임 (예: API 서버 관리 프로그램)</summary>
     public bool MasterOnly { get; set; }
+    /// <summary>베타(정식 서비스 전): 카드에 "베타" 배지. 마스터가 API 서버 관리 프로그램의 앱 목록에서 정함</summary>
+    public bool Beta { get; set; }
+    /// <summary>새로 추가한 앱: 카드에 "NEW" 배지. 마스터가 API 서버 관리 프로그램의 앱 목록에서 켜고 끔</summary>
+    public bool New { get; set; }
 
     [JsonIgnore]
     public string EffectiveKind => string.Equals(Kind, InstallKinds.Setup, StringComparison.OrdinalIgnoreCase) ? InstallKinds.Setup : InstallKinds.Zip;

@@ -246,6 +246,18 @@
                                                     <Ellipse Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0" Fill="#FF3DD68C" Stroke="#FF141821" StrokeThickness="2.5" Visibility="{Binding UpdateDotVisibility}" ToolTip="새 버전이 있습니다" />
                                                 </Grid>
 
+                                                <!-- 베타·NEW 배지: 아이콘 아래, 버전 줄 높이 (API 서버의 앱 목록에서 마스터가 정함). 이름 칸은 줄이지 않음 -->
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,4" IsHitTestVisible="False">
+                                                    <Border Height="18" Padding="5,0" Margin="1,0" CornerRadius="9" Background="#2EE6C07A" Visibility="{Binding BetaVisibility}"
+                                                            AutomationProperties.Name="베타">
+                                                        <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold" Foreground="#FFF0CF8A" Text="베타" />
+                                                    </Border>
+                                                    <Border Height="18" Padding="5,0" Margin="1,0" CornerRadius="9" Background="#2E3DD68C" Visibility="{Binding NewVisibility}"
+                                                            AutomationProperties.Name="새 앱">
+                                                        <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#FF5FE3A1" Text="NEW" />
+                                                    </Border>
+                                                </StackPanel>
+
                                                 <Grid Grid.Column="1" Margin="14,0,0,0">
                                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

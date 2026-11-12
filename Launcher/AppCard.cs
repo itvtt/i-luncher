@@ -99,6 +99,9 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility InstalledMenuVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ReleaseMenuVisibility => Latest is not null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility UpdateDotVisibility => UpdateAvailable && !IsBusy ? Visibility.Visible : Visibility.Collapsed;
+    // 마스터가 API 서버 관리 프로그램의 앱 목록에서 켬
+    public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility NewVisibility => App.New ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility InitialsVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
     public double IconOpacity => 1.0;

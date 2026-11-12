@@ -478,6 +478,19 @@ try
         var app = CatalogSerializer.Parse("{\"apps\":[{\"id\":\"api-server\",\"name\":\"API\",\"repository\":\"https://github.com/o/a\",\"masterOnly\":true}]}")[0];
         Assert(app.MasterOnly && app.Clone().MasterOnly, "masterOnly is read and kept");
     });
+
+    await CheckSync("Beta and NEW badges come from the API server's app list and stay through a save", () =>
+    {
+        var apps = CatalogSerializer.Parse("{\"apps\":[{\"id\":\"swift\",\"name\":\"Swift\",\"repository\":\"https://github.com/o/s\",\"beta\":true,\"new\":true}," +
+            "{\"id\":\"plain\",\"name\":\"Plain\",\"repository\":\"https://github.com/o/p\"}]}");
+        Assert(apps[0].Beta && apps[0].New && !apps[1].Beta && !apps[1].New, "beta and new are read; missing means off");
+        var card = new ILauncher.AppCard(apps[0]);
+        Assert(card.BetaVisibility == System.Windows.Visibility.Visible && card.NewVisibility == System.Windows.Visibility.Visible &&
+            new ILauncher.AppCard(apps[1]).BetaVisibility == System.Windows.Visibility.Collapsed, "the card shows the badges only when set");
+        string saved = CatalogSerializer.Serialize(apps);
+        var again = CatalogSerializer.Parse(saved);
+        Assert(again[0].Beta && again[0].New && !saved.Contains("\"beta\": false") && !again[1].Beta, "a saved list keeps them (and writes nothing for off)");
+    });
 }
 finally
 {

@@ -183,6 +183,9 @@ public partial class AppEditorWindow : Window
             Icon = Clean(IconBox),
             IncludePrerelease = PrereleaseBox.IsChecked == true,
             MasterOnly = MasterOnlyBox.IsChecked == true,
+            // 베타·NEW 는 API 서버 관리 프로그램에서 정함: 여기서 고쳐도 그대로 둠
+            Beta = _existing?.Beta ?? false,
+            New = _existing?.New ?? false,
             Order = int.TryParse(OrderBox.Text.Trim(), out int order) ? order : _existing?.Order ?? 0
         };
     }
