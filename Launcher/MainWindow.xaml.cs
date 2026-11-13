@@ -14,7 +14,7 @@ public partial class MainWindow : Window
 {
     private static readonly TimeSpan PeriodicRefresh = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan ClickRecheckAfter = TimeSpan.FromMinutes(2);
-    private static readonly Brush SelectedNavBrush = MakeBrush(0x22, 0x2A, 0x3A);
+    private static readonly Brush SelectedNavBrush = MakeBrush(0x2C, 0x2D, 0x32);
 
     private readonly LauncherSettings _settings;
     private readonly string? _startupMessage;
@@ -447,7 +447,7 @@ public partial class MainWindow : Window
         {
             foreach (var card in queued.Where(card => card.IsBusy)) card.EndWork();
             _updatingAll = false;
-            UpdateCounts();
+            Render();  // 업데이트 섹션에서 끝난 앱을 뺌
         }
     }
 
@@ -668,42 +668,87 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 화면 ─────────────────────────
 
+    /// <summary>지금 화면에 보이는 앱 (검사·화면 확인용)</summary>
+    public IReadOnlyList<AppCard> VisibleCards { get; private set; } = [];
+
+    private StoreSection? _updatesSection;
+
+    /// <summary>
+    /// 스토어형 화면: 큰 제목 아래 섹션마다 앱 줄 목록. 전체·설치된 앱 = 업데이트 섹션 + 분류별 섹션,
+    /// 업데이트 = 한 섹션(모두 업데이트), 분류 = 그 분류, 즐겨찾기 = 앱 + 내 PC 프로그램, 검색 = 찾은 앱 + 프로그램
+    /// </summary>
     private void Render()
     {
         bool favorites = _filter == "favorites";
         foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
         AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
-        AddAppButton.ToolTip = favorites ? "프로그램 추가" : "앱 추가";
-        if (favorites) { RenderFavorites(); return; }
+        AddAppButton.ToolTip = AddAppText.Text;
         string search = SearchBox.Text.Trim();
-        IEnumerable<AppCard> items = _cards.Where(card => card.Matches(search));
-        items = _filter switch
-        {
-            "installed" => items.Where(card => card.IsInstalled),
-            "updates" => items.Where(card => card.UpdateAvailable),
-            var filter when filter.StartsWith("category:", StringComparison.Ordinal) =>
-                items.Where(card => string.Equals(card.Category, filter[9..], StringComparison.CurrentCultureIgnoreCase)),
-            _ => items
-        };
-        var visible = items.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        LauncherItems.ItemsSource = visible;
+        static List<AppCard> Sorted(IEnumerable<AppCard> cards) =>
+            cards.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        List<FavoriteCard> Programs() => _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
 
-        SectionTitle.Text = _filter switch
+        var sections = new List<StoreSection>();
+        _updatesSection = null;
+        string title;
+        if (search.Length > 0)
         {
-            "installed" => "설치된 앱",
-            "updates" => "업데이트",
-            var filter when filter.StartsWith("category:", StringComparison.Ordinal) => filter[9..],
-            _ => "전체 앱"
-        };
-        CountText.Text = $"{visible.Count}개 앱";
+            title = "검색";
+            var apps = Sorted(_cards.Where(card => card.Matches(search)));
+            var programs = Programs();
+            if (apps.Count > 0) sections.Add(new StoreSection("앱", apps, $"{apps.Count}개"));
+            if (programs.Count > 0) sections.Add(new StoreSection("내 PC 프로그램", programs, $"{programs.Count}개"));
+        }
+        else if (favorites)
+        {
+            title = "즐겨찾기";
+            var apps = Sorted(_cards.Where(card => card.IsFavorite));
+            var programs = Programs();
+            if (apps.Count > 0) sections.Add(new StoreSection("앱", apps, $"{apps.Count}개"));
+            if (programs.Count > 0) sections.Add(new StoreSection("내 PC 프로그램", programs, $"{programs.Count}개", "프로그램 추가", () => EditFavorite(null)));
+        }
+        else
+        {
+            string? category = _filter.StartsWith("category:", StringComparison.Ordinal) ? _filter[9..] : null;
+            var scope = Sorted(_filter switch
+            {
+                "installed" => _cards.Where(card => card.IsInstalled),
+                "updates" => _cards.Where(card => card.UpdateAvailable),
+                _ when category is not null => _cards.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase)),
+                _ => _cards
+            });
+            title = _filter switch { "installed" => "설치된 앱", "updates" => "업데이트", _ when category is not null => category, _ => "전체 앱" };
+            var updates = scope.Where(card => card.UpdateAvailable).ToList();
+            if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
+            if (_filter != "updates")
+            {
+                if (category is not null) { if (scope.Count > 0) sections.Add(new StoreSection("앱", scope, $"{scope.Count}개")); }
+                else
+                    foreach (var group in scope.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+                        sections.Add(new StoreSection(group.Key, group.ToList(), $"{group.Count()}개"));
+            }
+        }
+
+        SectionList.ItemsSource = sections;
+        VisibleCards = sections.SelectMany(section => section.Items.OfType<AppCard>()).Distinct().ToList();
+        int shown = VisibleCards.Count + sections.SelectMany(section => section.Items.OfType<FavoriteCard>()).Count();
+        SectionTitle.Text = title;
+        CountText.Text = shown > 0 ? $"{shown}개" : "";
         RenderCategories();
         UpdateCounts();
 
-        bool empty = visible.Count == 0;
+        bool empty = sections.Count == 0;
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         CardScrollViewer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         if (!empty) return;
-        if (_cards.Count == 0)
+        if (favorites && search.Length == 0)
+        {
+            EmptyStateTitle.Text = "즐겨찾기가 없습니다";
+            EmptyStateText.Text = "앱: 우클릭 → 즐겨찾기에 추가 · 프로그램: 끌어 놓기";
+            EmptyStateButton.Content = "프로그램 추가";
+            EmptyStateButton.Tag = "favorite-add";
+        }
+        else if (_cards.Count == 0 && search.Length == 0)
         {
             EmptyStateTitle.Text = "아직 등록된 앱이 없습니다";
             EmptyStateText.Text = "";
@@ -712,11 +757,20 @@ public partial class MainWindow : Window
         }
         else
         {
-            EmptyStateTitle.Text = "일치하는 앱이 없습니다";
+            EmptyStateTitle.Text = _filter == "updates" && search.Length == 0 ? "모두 최신입니다" : "일치하는 앱이 없습니다";
             EmptyStateText.Text = "";
-            EmptyStateButton.Content = "필터 지우기";
+            EmptyStateButton.Content = "전체 앱 보기";
             EmptyStateButton.Tag = "clear";
         }
+    }
+
+    private StoreSection UpdatesSection(IReadOnlyList<AppCard> updates) =>
+        new("업데이트", updates, $"{updates.Count}개", _updatingAll ? "업데이트 중…" : "모두 업데이트", () => _ = UpdateAllAsync()) { ActionEnabled = !_updatingAll };
+
+    /// <summary>섹션 오른쪽 파란 링크 (모두 업데이트, 프로그램 추가)</summary>
+    private void SectionAction_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is StoreSection { Action: { } action }) action();
     }
 
     private void UpdateCounts()
@@ -725,8 +779,11 @@ public partial class MainWindow : Window
         InstalledCountText.Text = _cards.Count(card => card.IsInstalled).ToString();
         int updates = _cards.Count(card => card.UpdateAvailable);
         UpdatesCountText.Text = updates > 0 ? updates.ToString() : "";
-        UpdateAllButton.Visibility = updates > 0 || _updatingAll ? Visibility.Visible : Visibility.Collapsed;
-        UpdateAllButton.IsEnabled = !_updatingAll;
+        if (_updatesSection is not null)
+        {
+            _updatesSection.ActionText = _updatingAll ? "업데이트 중…" : "모두 업데이트";
+            _updatesSection.ActionEnabled = !_updatingAll;
+        }
         int favoriteCount = _favorites.Count(item => !item.IsApp) + _cards.Count(card => card.IsFavorite);
         FavoritesCountText.Text = favoriteCount > 0 ? favoriteCount.ToString() : "";
         foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites") })
@@ -886,44 +943,33 @@ public partial class MainWindow : Window
         if (selectId is not null) _noticeWindow.SelectNotice(selectId);
     }
 
-    // ───────────────────────── 카드 폭 ─────────────────────────
+    // ───────────────────────── 줄 목록 열 수 ─────────────────────────
 
-    // 세로 타일 (포스터 + 오로라 글로우): 폭은 창에 맞춰, 높이는 고정
-    private const double MinCardWidth = 208, MaxCardWidth = 300, CardGap = 16;
+    // 스토어형 줄: 한 줄이 이 폭 이상이 되게 1~4열 (이름이 다 보이도록 넉넉하게)
+    private const double MinRowWidth = 280, RowGap = 26;
 
-    public static readonly DependencyProperty CardWidthProperty =
-        DependencyProperty.Register(nameof(CardWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(220.0));
+    public static readonly DependencyProperty RowColumnsProperty =
+        DependencyProperty.Register(nameof(RowColumns), typeof(int), typeof(MainWindow), new PropertyMetadata(3));
 
-    public static readonly DependencyProperty CardHeightProperty =
-        DependencyProperty.Register(nameof(CardHeight), typeof(double), typeof(MainWindow), new PropertyMetadata(272.0));
-
-    public double CardHeight
+    public int RowColumns
     {
-        get => (double)GetValue(CardHeightProperty);
-        set => SetValue(CardHeightProperty, value);
+        get => (int)GetValue(RowColumnsProperty);
+        set => SetValue(RowColumnsProperty, value);
     }
 
-    /// <summary>카드 폭: 창 폭에 맞춰 열 수를 정하고 남는 공간 없이 채움</summary>
-    public double CardWidth
-    {
-        get => (double)GetValue(CardWidthProperty);
-        set => SetValue(CardWidthProperty, value);
-    }
-
-    private void CardScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateCardWidth();
+    private void CardScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateRowColumns();
 
     private void CardScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (e.ViewportWidthChange != 0) UpdateCardWidth();  // 스크롤바가 생기거나 없어질 때
+        if (e.ViewportWidthChange != 0) UpdateRowColumns();  // 스크롤바가 생기거나 없어질 때
     }
 
-    private void UpdateCardWidth()
+    private void UpdateRowColumns()
     {
         double available = CardScrollViewer.ViewportWidth > 0 ? CardScrollViewer.ViewportWidth : CardScrollViewer.ActualWidth - 14;
         if (available <= 0) return;
-        int columns = Math.Max(1, (int)Math.Floor((available + 0.5) / (MinCardWidth + CardGap)));
-        double width = Math.Floor(Math.Min(MaxCardWidth, available / columns - CardGap));
-        if (Math.Abs(width - CardWidth) >= 1) CardWidth = Math.Max(200, width);
+        int columns = Math.Clamp((int)Math.Floor((available + RowGap) / (MinRowWidth + RowGap)), 1, 4);
+        if (columns != RowColumns) RowColumns = columns;
     }
 
     // ───────────────────────── 창 ─────────────────────────

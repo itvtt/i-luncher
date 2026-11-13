@@ -31,7 +31,7 @@ static class UiSnapshot
                     // ILUNCHER_SNAPSHOT_DEMO=1: 처음 세 카드를 업데이트 있음 / 설치됨 / 받는 중 상태로 바꿔 그림
                     if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_DEMO") == "1")
                     {
-                        var demo = ((System.Collections.IEnumerable)window.LauncherItems.ItemsSource).OfType<AppCard>().ToList();
+                        var demo = window.VisibleCards.ToList();
                         InstalledApp Installed(AppCard card, string version) => new(card.App.EffectiveInstallName, @"C:\demo\" + card.App.EffectiveInstallName, null,
                             ReleaseVersion.Parse(version), "설치한 릴리스", null, true, null, null);
                         if (demo.Count > 0) demo[0].Installed = Installed(demo[0], "1.0.9");
@@ -45,14 +45,14 @@ static class UiSnapshot
                     Console.WriteLine($"catalog: {window.CatalogSourceText.Text}");
                     if (window.ErrorPanel.Visibility == Visibility.Visible) Console.WriteLine($"error: {window.ErrorText.Text}");
                     if (window.EmptyState.Visibility == Visibility.Visible) Console.WriteLine($"empty: {window.EmptyStateTitle.Text} / {window.EmptyStateText.Text}");
-                    foreach (AppCard card in ((System.Collections.IEnumerable)window.LauncherItems.ItemsSource).OfType<AppCard>())
+                    foreach (AppCard card in window.VisibleCards)
                         Console.WriteLine($"card [{card.Category}] {card.Name}: {card.VersionText} | {card.DescriptionText} | tooltip: {card.VersionToolTip.Replace(Environment.NewLine, " / ")}");
                     Console.WriteLine($"counts: all {window.AllCountText.Text}, installed {window.InstalledCountText.Text}, updates '{window.UpdatesCountText.Text}'");
 
                     using var github = new GitHubClient(settings.GetToken, "checks");
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(dataDirectory, "downloads"), () => settings.DefaultHost);
                     SaveWindow(new AppEditorWindow(null, manager, settings.DefaultHost, ["도구", "일정", "파일 공유"]), Suffix(output, "-editor"));
-                    SaveWindow(new SettingsWindow(settings, ((System.Collections.IEnumerable)window.LauncherItems.ItemsSource).OfType<AppCard>().Select(card => card.App).ToList()), Suffix(output, "-settings"));
+                    SaveWindow(new SettingsWindow(settings, window.VisibleCards.Select(card => card.App).ToList()), Suffix(output, "-settings"));
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
                     window.FavoritesButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));

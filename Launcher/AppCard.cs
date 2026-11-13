@@ -186,6 +186,10 @@ public sealed class AppCard : INotifyPropertyChanged
     public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? $"업데이트 v{Latest?.Version}" : "받기";
     /// <summary>버튼 글자 (각진 단색 버튼): 업데이트 / 받기</summary>
     public string ActionLabel => UpdateAvailable ? "업데이트" : "받기";
+
+    /// <summary>스토어형 줄의 오른쪽 버튼: 진행 중 / 업데이트 / 열기 / 받기 (받을 릴리스가 없으면 숨김)</summary>
+    public string StoreButtonText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : IsInstalled ? "열기" : Latest is not null ? "받기" : "";
+    public Visibility StoreButtonVisibility => StoreButtonText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Brush ActionBackground => UpdateAvailable ? UpdateBack : GetBack;
     /// <summary>받기·업데이트가 있을 때만. 설치된 최신 앱은 카드를 누르면 열림</summary>
     public Visibility ActionVisibility => !IsBusy && (UpdateAvailable || !IsInstalled && Latest is not null) ? Visibility.Visible : Visibility.Collapsed;

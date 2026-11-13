@@ -8,41 +8,6 @@ namespace ILauncher;
 /// <summary>즐겨찾기: 이 PC 에 설치된 일반 프로그램을 카드로 두고 누르면 실행. 추가(설치된 프로그램 목록·찾아보기·끌어 놓기), 편집, 삭제</summary>
 public partial class MainWindow
 {
-    /// <summary>즐겨찾기 화면: 즐겨찾기한 런처 앱(앱 카드 그대로) + 이 PC 의 프로그램</summary>
-    private void RenderFavorites()
-    {
-        string search = SearchBox.Text.Trim();
-        var apps = _cards.Where(card => card.IsFavorite && card.Matches(search))
-            .OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        var programs = _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
-        // 한 목록에 이어서 (앱 타일과 프로그램 타일은 같은 모양, 템플릿은 종류별)
-        LauncherItems.ItemsSource = apps.Cast<object>().Concat(programs).ToList();
-        SectionTitle.Text = "즐겨찾기";
-        CountText.Text = $"{apps.Count + programs.Count}개";
-        RenderCategories();
-        UpdateCounts();
-        UpdateAllButton.Visibility = Visibility.Collapsed;
-
-        bool empty = apps.Count + programs.Count == 0;
-        EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
-        CardScrollViewer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        if (!empty) return;
-        if (_favorites.Count == 0)
-        {
-            EmptyStateTitle.Text = "즐겨찾기가 없습니다";
-            EmptyStateText.Text = "앱: 우클릭 → 즐겨찾기에 추가 · 프로그램: 끌어 놓기";
-            EmptyStateButton.Content = "프로그램 추가";
-            EmptyStateButton.Tag = "favorite-add";
-        }
-        else
-        {
-            EmptyStateTitle.Text = "일치하는 항목이 없습니다";
-            EmptyStateText.Text = "";
-            EmptyStateButton.Content = "검색 지우기";
-            EmptyStateButton.Tag = "clear";
-        }
-    }
-
     /// <summary>앱 카드 우클릭: 즐겨찾기에 추가 / 빼기</summary>
     private void FavoriteToggleMenu_Click(object sender, RoutedEventArgs e)
     {
