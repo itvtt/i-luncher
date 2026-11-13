@@ -719,7 +719,20 @@ public partial class MainWindow : Window
             });
             title = _filter switch { "installed" => "설치된 앱", "updates" => "업데이트", _ when category is not null => category, _ => "전체 앱" };
             var updates = scope.Where(card => card.UpdateAvailable).ToList();
+            // 전체 앱: 맨 위 큰 홍보 카드 (새 버전 → 새 앱 → 아직 안 받은 앱 → 즐겨찾기 순으로 두 개)
+            if (_filter == "all")
+            {
+                var heroes = Heroes(scope).Take(RowColumns >= 2 ? 2 : 1).Cast<object>().ToList();
+                if (heroes.Count > 0) sections.Add(new StoreSection("", heroes) { ShowHeader = false, Columns = heroes.Count });
+            }
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
+            // 전체 앱: 최근 업데이트 순위 (릴리스 날짜순 번호 목록)
+            if (_filter == "all")
+            {
+                var recent = scope.Where(card => card.Latest?.PublishedAt is not null).OrderByDescending(card => card.Latest!.PublishedAt).Take(6)
+                    .Select((card, index) => (object)new RankItem(card, index + 1, $"{card.Category} · {RankItem.When(card.Latest!.PublishedAt!.Value)}")).ToList();
+                if (recent.Count > 0) sections.Add(new StoreSection("최근 업데이트", recent) { Columns = Math.Min(2, RowColumns) });
+            }
             if (_filter != "updates")
             {
                 if (category is not null) { if (scope.Count > 0) sections.Add(new StoreSection("앱", scope, $"{scope.Count}개")); }
@@ -729,8 +742,10 @@ public partial class MainWindow : Window
             }
         }
 
+        foreach (var section in sections.Where(section => section.Items.Count > 0 && section.Items[0] is AppCard or FavoriteCard)) section.Columns = RowColumns;
         SectionList.ItemsSource = sections;
-        VisibleCards = sections.SelectMany(section => section.Items.OfType<AppCard>()).Distinct().ToList();
+        VisibleCards = sections.SelectMany(section => section.Items.Select(item => item switch { HeroItem hero => hero.Card, RankItem rank => rank.Card, _ => item }))
+            .OfType<AppCard>().Distinct().ToList();
         int shown = VisibleCards.Count + sections.SelectMany(section => section.Items.OfType<FavoriteCard>()).Count();
         SectionTitle.Text = title;
         CountText.Text = shown > 0 ? $"{shown}개" : "";
@@ -762,6 +777,19 @@ public partial class MainWindow : Window
             EmptyStateButton.Content = "전체 앱 보기";
             EmptyStateButton.Tag = "clear";
         }
+    }
+
+    /// <summary>홍보 카드 후보: 새 버전 → 새 앱(NEW) → 아직 안 받은 앱 → 즐겨찾기 → 그 밖의 앱</summary>
+    private static IEnumerable<HeroItem> Heroes(IReadOnlyList<AppCard> scope)
+    {
+        var used = new HashSet<AppCard>();
+        IEnumerable<HeroItem> Pick(IEnumerable<AppCard> cards, Func<AppCard, HeroItem> make) =>
+            cards.Where(used.Add).Select(make);
+        return Pick(scope.Where(card => card.UpdateAvailable), card => new HeroItem(card, "새 버전", $"{card.Name} {card.Latest?.Version}", card.DescriptionText))
+            .Concat(Pick(scope.Where(card => card.App.New), card => new HeroItem(card, "새 앱", card.Name, card.DescriptionText)))
+            .Concat(Pick(scope.Where(card => !card.IsInstalled && card.Latest is not null), card => new HeroItem(card, "아직 안 받은 앱", card.Name, card.DescriptionText)))
+            .Concat(Pick(scope.Where(card => card.IsFavorite), card => new HeroItem(card, "즐겨찾기", card.Name, card.DescriptionText)))
+            .Concat(Pick(scope, card => new HeroItem(card, card.Category, card.Name, card.DescriptionText)));
     }
 
     private StoreSection UpdatesSection(IReadOnlyList<AppCard> updates) =>
@@ -969,7 +997,9 @@ public partial class MainWindow : Window
         double available = CardScrollViewer.ViewportWidth > 0 ? CardScrollViewer.ViewportWidth : CardScrollViewer.ActualWidth - 14;
         if (available <= 0) return;
         int columns = Math.Clamp((int)Math.Floor((available + RowGap) / (MinRowWidth + RowGap)), 1, 4);
-        if (columns != RowColumns) RowColumns = columns;
+        if (columns == RowColumns) return;
+        RowColumns = columns;
+        if (IsLoaded) Render();  // 섹션마다 열 수가 다름 (홍보 카드·순위는 2열)
     }
 
     // ───────────────────────── 창 ─────────────────────────

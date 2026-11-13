@@ -26,6 +26,13 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
         set { _actionEnabled = value; Changed(nameof(ActionEnabled)); }
     }
 
+    /// <summary>열 수 (줄 목록은 창 폭에 맞춰, 홍보 카드·순위는 2열)</summary>
+    public int Columns { get; set; } = 1;
+
+    /// <summary>제목 줄을 숨김 (맨 위 홍보 카드)</summary>
+    public bool ShowHeader { get; set; } = true;
+    public Visibility HeaderVisibility => ShowHeader ? Visibility.Visible : Visibility.Collapsed;
+
     public Visibility ActionVisibility => string.IsNullOrEmpty(_actionText) || Action is null ? Visibility.Collapsed : Visibility.Visible;
 
     public event PropertyChangedEventHandler? PropertyChanged;
