@@ -37,6 +37,9 @@
   <ItemGroup>
     <Resource Include="Assets/ILauncher.ico" />
     <Resource Include="Assets/ILauncher.png" />
+    <!-- 글꼴: Pretendard (SIL OFL 1.1, 라이선스 파일을 함께 배포) -->
+    <Resource Include="Assets/Fonts/*.otf" />
+    <Content Include="Assets/Fonts/Pretendard-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Remove="Assets/Build-Icon.ps1;Assets/ILauncher.svg" />
   </ItemGroup>
 

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="공지" Width="740" Height="500" MinWidth="560" MinHeight="340"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        Background="#FF141821" Foreground="#FFF5F7FB" FontFamily="Segoe UI, Malgun Gothic"
+        Background="#FF141821" Foreground="#FFF5F7FB" FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         Loaded="Window_Loaded" PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <Style TargetType="Button">

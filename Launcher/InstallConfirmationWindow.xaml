@@ -15,8 +15,8 @@
         AllowsTransparency="True"
         Background="Transparent"
         Foreground="#FFF5F7FB"
-        FontFamily="Segoe UI, Malgun Gothic"
-        TextOptions.TextFormattingMode="Display"
+        FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
+        TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="ClearType"
         PreviewKeyDown="Window_PreviewKeyDown"
         Loaded="Window_Loaded">

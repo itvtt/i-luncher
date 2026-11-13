@@ -8,8 +8,8 @@
         ResizeMode="CanResize"
         Background="#FF10141C"
         Foreground="#FFF5F7FB"
-        FontFamily="Segoe UI, Malgun Gothic"
-        TextOptions.TextFormattingMode="Display"
+        FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
+        TextOptions.TextFormattingMode="Ideal"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <ResourceDictionary Source="LauncherResources.xaml" />
