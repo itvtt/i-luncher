@@ -21,6 +21,10 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public double CardOpacity => Exists ? 1.0 : 0.55;
     public string ToolTipText => Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
     public string AutomationId => "Favorite_" + Program.Id;
+    // 앱 카드와 같은 오로라 글로우 (아이콘 색, 없으면 차분한 파랑)
+    private Color AccentColor => CardColors.Accent(Icon) ?? CardColors.Fallback;
+    public Brush AccentGlowBrush => CardColors.Glow(AccentColor);
+    public Brush AccentBorderBrush => CardColors.Border(AccentColor);
 
     public bool Matches(string search) => search.Length == 0 ||
         Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) || Program.Path.Contains(search, StringComparison.CurrentCultureIgnoreCase);

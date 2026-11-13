@@ -15,8 +15,8 @@ public partial class MainWindow
         var apps = _cards.Where(card => card.IsFavorite && card.Matches(search))
             .OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         var programs = _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
-        LauncherItems.ItemsSource = apps;
-        FavoriteItems.ItemsSource = programs;
+        // 한 목록에 이어서 (앱 타일과 프로그램 타일은 같은 모양, 템플릿은 종류별)
+        LauncherItems.ItemsSource = apps.Cast<object>().Concat(programs).ToList();
         SectionTitle.Text = "즐겨찾기";
         CountText.Text = $"{apps.Count + programs.Count}개";
         RenderCategories();

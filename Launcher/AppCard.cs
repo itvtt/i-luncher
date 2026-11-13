@@ -40,7 +40,26 @@ public sealed class AppCard : INotifyPropertyChanged
     public bool IsBusy { get => _busy; private set { _busy = value; NotifyAll(); } }
     public string? BusyText { get => _busyText; private set { _busyText = value; Notify(); Notify(nameof(DescriptionText)); } }
     public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); } }
-    public ImageSource? Icon { get => _icon; set { _icon = value; Notify(); Notify(nameof(IconVisibility)); Notify(nameof(InitialsVisibility)); Notify(nameof(TileBrush)); } }
+    public ImageSource? Icon
+    {
+        get => _icon;
+        set
+        {
+            _icon = value;
+            _accent = null;
+            Notify(); Notify(nameof(IconVisibility)); Notify(nameof(InitialsVisibility)); Notify(nameof(TileBrush));
+            Notify(nameof(AccentGlowBrush)); Notify(nameof(AccentBorderBrush));
+        }
+    }
+
+    // ── 카드 색 (오로라 글로우): 아이콘의 대표 색, 아이콘이 없으면 이름으로 정한 타일 색 ──
+    private Color? _accent;
+    private Color Accent => _accent ??= CardColors.Accent(Icon) ?? TilePalettes[PaletteIndex].Top;
+    /// <summary>아이콘 뒤로 퍼지는 빛</summary>
+    public Brush AccentGlowBrush => CardColors.Glow(Accent);
+    /// <summary>앱 색이 모서리에서 번지는 테두리</summary>
+    public Brush AccentBorderBrush => CardColors.Border(Accent);
+    public Color ActionGlowColor => UpdateAvailable ? Color.FromRgb(0x3D, 0xD6, 0x8C) : Color.FromRgb(0x5B, 0x8C, 0xFF);
 
     public void SetRelease(GitHubRelease? release, string? error)
     {
@@ -136,15 +155,23 @@ public sealed class AppCard : INotifyPropertyChanged
     ];
     private static readonly Brush IconTileBrush = Freeze(new SolidColorBrush(Color.FromArgb(0x00, 0, 0, 0)));
 
+    private int PaletteIndex
+    {
+        get
+        {
+            uint hash = 2166136261;
+            foreach (char c in App.Id.Length > 0 ? App.Id : Name) hash = (hash ^ c) * 16777619;
+            return (int)(hash % (uint)TilePalettes.Length);
+        }
+    }
+
     /// <summary>타일 배경: 아이콘이 있으면 투명, 없으면 이름으로 정한 그라데이션</summary>
     public Brush TileBrush
     {
         get
         {
             if (Icon is not null) return IconTileBrush;
-            uint hash = 2166136261;
-            foreach (char c in App.Id.Length > 0 ? App.Id : Name) hash = (hash ^ c) * 16777619;
-            var (top, bottom) = TilePalettes[hash % (uint)TilePalettes.Length];
+            var (top, bottom) = TilePalettes[PaletteIndex];
             var brush = new LinearGradientBrush(top, bottom, new System.Windows.Point(0, 0), new System.Windows.Point(1, 1));
             brush.Freeze();
             return brush;

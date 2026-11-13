@@ -672,7 +672,6 @@ public partial class MainWindow : Window
     {
         bool favorites = _filter == "favorites";
         foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
-        FavoriteItems.Visibility = favorites ? Visibility.Visible : Visibility.Collapsed;
         AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
         AddAppButton.ToolTip = favorites ? "프로그램 추가" : "앱 추가";
         if (favorites) { RenderFavorites(); return; }
@@ -889,10 +888,20 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 카드 폭 ─────────────────────────
 
-    private const double MinCardWidth = 268, MaxCardWidth = 400, CardGap = 14;
+    // 세로 타일 (포스터 + 오로라 글로우): 폭은 창에 맞춰, 높이는 고정
+    private const double MinCardWidth = 208, MaxCardWidth = 300, CardGap = 16;
 
     public static readonly DependencyProperty CardWidthProperty =
-        DependencyProperty.Register(nameof(CardWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(284.0));
+        DependencyProperty.Register(nameof(CardWidth), typeof(double), typeof(MainWindow), new PropertyMetadata(220.0));
+
+    public static readonly DependencyProperty CardHeightProperty =
+        DependencyProperty.Register(nameof(CardHeight), typeof(double), typeof(MainWindow), new PropertyMetadata(272.0));
+
+    public double CardHeight
+    {
+        get => (double)GetValue(CardHeightProperty);
+        set => SetValue(CardHeightProperty, value);
+    }
 
     /// <summary>카드 폭: 창 폭에 맞춰 열 수를 정하고 남는 공간 없이 채움</summary>
     public double CardWidth
