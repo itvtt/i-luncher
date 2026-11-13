@@ -4,10 +4,10 @@ using System.Windows.Media.Imaging;
 
 namespace ILauncher;
 
-/// <summary>카드의 "오로라 글로우": 아이콘에서 대표 색을 뽑아 아이콘 뒤 빛과 테두리 그라데이션을 만듦</summary>
+/// <summary>타일 색: 아이콘에서 대표 색을 뽑아 아이콘 뒤 은은한 빛과 카테고리 태그 색을 만듦</summary>
 public static class CardColors
 {
-    private static readonly Dictionary<Color, Brush> Glows = [], Borders = [];
+    private static readonly Dictionary<Color, Brush> Glows = [];
 
     /// <summary>아이콘의 대표 색: 채도 높은 픽셀 위주 평균. 회색·흰색 위주 아이콘이면 null</summary>
     public static Color? Accent(ImageSource? icon)
@@ -67,7 +67,7 @@ public static class CardColors
         return Color.FromRgb((byte)Math.Round((r + m) * 255), (byte)Math.Round((g + m) * 255), (byte)Math.Round((b + m) * 255));
     }
 
-    /// <summary>아이콘 뒤로 퍼지는 빛 (카드 위쪽 가운데)</summary>
+    /// <summary>아이콘 뒤 은은한 빛 (카드 위쪽 가운데, 약하게)</summary>
     public static Brush Glow(Color accent)
     {
         lock (Glows)
@@ -75,11 +75,10 @@ public static class CardColors
             if (Glows.TryGetValue(accent, out var cached)) return cached;
             var brush = new RadialGradientBrush
             {
-                Center = new Point(0.5, 0.36), GradientOrigin = new Point(0.5, 0.36), RadiusX = 0.78, RadiusY = 0.5,
+                Center = new Point(0.5, 0.34), GradientOrigin = new Point(0.5, 0.34), RadiusX = 0.75, RadiusY = 0.42,
                 GradientStops =
                 {
-                    new GradientStop(Color.FromArgb(0x66, accent.R, accent.G, accent.B), 0),
-                    new GradientStop(Color.FromArgb(0x22, accent.R, accent.G, accent.B), 0.55),
+                    new GradientStop(Color.FromArgb(0x29, accent.R, accent.G, accent.B), 0),
                     new GradientStop(Color.FromArgb(0x00, accent.R, accent.G, accent.B), 1)
                 }
             };
@@ -88,25 +87,20 @@ public static class CardColors
         }
     }
 
-    /// <summary>테두리: 왼쪽 위에서 앱 색이 번지고 가운데서 사라졌다가 오른쪽 아래에 다시 옅게</summary>
-    public static Brush Border(Color accent)
+    private static readonly Dictionary<Color, (Brush Back, Brush Text)> Tags = [];
+
+    /// <summary>카테고리 태그: 앱 색을 옅게 깐 배경과 밝게 섞은 글자</summary>
+    public static (Brush Back, Brush Text) Tag(Color accent)
     {
-        lock (Borders)
+        lock (Tags)
         {
-            if (Borders.TryGetValue(accent, out var cached)) return cached;
-            var brush = new LinearGradientBrush
-            {
-                StartPoint = new Point(0, 0), EndPoint = new Point(1, 1),
-                GradientStops =
-                {
-                    new GradientStop(Color.FromArgb(0xE6, accent.R, accent.G, accent.B), 0),
-                    new GradientStop(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF), 0.45),
-                    new GradientStop(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF), 0.6),
-                    new GradientStop(Color.FromArgb(0x8C, accent.R, accent.G, accent.B), 1)
-                }
-            };
-            brush.Freeze();
-            return Borders[accent] = brush;
+            if (Tags.TryGetValue(accent, out var cached)) return cached;
+            var back = new SolidColorBrush(Color.FromArgb(0x29, accent.R, accent.G, accent.B));
+            static byte Lift(byte value) => (byte)(value + (255 - value) * 0.55);
+            var text = new SolidColorBrush(Color.FromRgb(Lift(accent.R), Lift(accent.G), Lift(accent.B)));
+            back.Freeze();
+            text.Freeze();
+            return Tags[accent] = (back, text);
         }
     }
 

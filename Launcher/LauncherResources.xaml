@@ -358,47 +358,37 @@
         </Setter>
     </Style>
 
-    <!-- 포스터 타일 + 오로라 글로우: 세로 타일, 그림자, 앱 색 테두리(BorderBrush 로 받음), 마우스를 올리면 밝아지고 살짝 떠오름 -->
+    <!-- 앱 타일 (정돈된 타일 + 각진 태그): 옅은 선 하나, 은은한 앱 색 빛, 그림자·무지개 테두리 없음. 마우스를 올리면 살짝 밝아짐 -->
     <Style x:Key="PosterCardStyle" TargetType="Button">
-        <Setter Property="Background" Value="#FF121722" />
+        <Setter Property="Background" Value="#FF141820" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="BorderBrush" Value="#33FFFFFF" />
-        <Setter Property="BorderThickness" Value="1.2" />
+        <Setter Property="BorderBrush" Value="#12FFFFFF" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
-        <Setter Property="RenderTransform"><Setter.Value><TranslateTransform /></Setter.Value></Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Grid>
-                        <Border x:Name="Shadow" CornerRadius="20" Background="#FF0B0E15" Margin="2,4,2,0">
-                            <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.5" Color="#FF000000" /></Border.Effect>
-                        </Border>
-                        <Border x:Name="CardBorder" CornerRadius="20" Background="{TemplateBinding Background}"
+                        <Border x:Name="CardBorder" CornerRadius="16" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
-                        <Border x:Name="Highlight" CornerRadius="20" Background="#12FFFFFF" Opacity="0" IsHitTestVisible="False" />
+                        <Border x:Name="Highlight" CornerRadius="16" Background="#0AFFFFFF" Opacity="0" IsHitTestVisible="False" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Highlight" Property="Opacity" Value="1" />
-                            <Setter TargetName="Shadow" Property="Effect">
-                                <Setter.Value><DropShadowEffect BlurRadius="30" ShadowDepth="8" Direction="270" Opacity="0.65" Color="#FF000000" /></Setter.Value>
-                            </Setter>
-                            <Setter Property="RenderTransform"><Setter.Value><TranslateTransform Y="-2" /></Setter.Value></Setter>
+                            <Setter TargetName="CardBorder" Property="BorderBrush" Value="#26FFFFFF" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Highlight" Property="Background" Value="#22000000" />
-                            <Setter Property="RenderTransform"><Setter.Value><TranslateTransform Y="0" /></Setter.Value></Setter>
+                            <Setter TargetName="Highlight" Property="Background" Value="#1A000000" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="CardBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                            <Setter TargetName="CardBorder" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="CardBorder" Property="Opacity" Value="0.62" />
@@ -410,15 +400,11 @@
         </Setter>
     </Style>
 
-    <!-- 타일 위 작은 유리 배지 -->
-    <Style x:Key="GlassChipStyle" TargetType="Border">
-        <Setter Property="Height" Value="22" />
-        <Setter Property="Padding" Value="9,0" />
-        <Setter Property="CornerRadius" Value="11" />
-        <Setter Property="Background" Value="#16FFFFFF" />
-        <Setter Property="BorderBrush" Value="#26FFFFFF" />
-        <Setter Property="BorderThickness" Value="1" />
+    <!-- 각진 태그 (모서리 4px, 테두리 없음): 카테고리·베타·NEW -->
+    <Style x:Key="TagStyle" TargetType="Border">
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Padding" Value="7,0" />
+        <Setter Property="CornerRadius" Value="4" />
         <Setter Property="IsHitTestVisible" Value="False" />
-    </Style>
-</ResourceDictionary>
+    </Style></ResourceDictionary>
 

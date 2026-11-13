@@ -13,7 +13,8 @@ namespace ILauncher;
 /// <summary>카드 하나의 상태: 카탈로그 정의 + 이 PC 의 설치 상태 + GitHub 최신 릴리스</summary>
 public sealed class AppCard : INotifyPropertyChanged
 {
-    private static readonly Brush NormalBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x9D, 0xA7, 0xB8)));
+    // 버전 글자: 흐린 회색 (타일 아래 왼쪽)
+    private static readonly Brush NormalBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x7E, 0x89, 0x9B)));
     private static readonly Brush WarningBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A)));
     private static readonly Brush InstalledTitleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xF5, 0xF7, 0xFB)));
     private static readonly Brush NotInstalledTitleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xC9, 0xD0, 0xDC)));
@@ -48,7 +49,7 @@ public sealed class AppCard : INotifyPropertyChanged
             _icon = value;
             _accent = null;
             Notify(); Notify(nameof(IconVisibility)); Notify(nameof(InitialsVisibility)); Notify(nameof(TileBrush));
-            Notify(nameof(AccentGlowBrush)); Notify(nameof(AccentBorderBrush));
+            Notify(nameof(AccentGlowBrush)); Notify(nameof(CategoryTagBrush)); Notify(nameof(CategoryTextBrush));
         }
     }
 
@@ -57,9 +58,9 @@ public sealed class AppCard : INotifyPropertyChanged
     private Color Accent => _accent ??= CardColors.Accent(Icon) ?? TilePalettes[PaletteIndex].Top;
     /// <summary>아이콘 뒤로 퍼지는 빛</summary>
     public Brush AccentGlowBrush => CardColors.Glow(Accent);
-    /// <summary>앱 색이 모서리에서 번지는 테두리</summary>
-    public Brush AccentBorderBrush => CardColors.Border(Accent);
-    public Color ActionGlowColor => UpdateAvailable ? Color.FromRgb(0x3D, 0xD6, 0x8C) : Color.FromRgb(0x5B, 0x8C, 0xFF);
+    /// <summary>카테고리 태그 (앱 색을 옅게)</summary>
+    public Brush CategoryTagBrush => CardColors.Tag(Accent).Back;
+    public Brush CategoryTextBrush => CardColors.Tag(Accent).Text;
 
     public void SetRelease(GitHubRelease? release, string? error)
     {
@@ -179,11 +180,12 @@ public sealed class AppCard : INotifyPropertyChanged
     }
 
     // 버전 배지 오른쪽의 동작 아이콘: 누르면 무엇을 하는지 (업데이트 = 초록 ↑, 받기 = 파랑 ↓). 진행 중에는 아래 진행 막대
-    private static readonly Brush GetBack = Freeze(new SolidColorBrush(Color.FromRgb(0x38, 0x64, 0xD9)));
-    private static readonly Brush UpdateBack = Freeze(new SolidColorBrush(Color.FromRgb(0x23, 0x9B, 0x6A)));
+    private static readonly Brush GetBack = Freeze(new SolidColorBrush(Color.FromRgb(0x2F, 0x5F, 0xD0)));
+    private static readonly Brush UpdateBack = Freeze(new SolidColorBrush(Color.FromRgb(0x1F, 0x8F, 0x5F)));
 
     public string ActionText => IsBusy ? "진행 중" : UpdateAvailable ? $"업데이트 v{Latest?.Version}" : "받기";
-    public string ActionGlyph => UpdateAvailable ? "" : "";
+    /// <summary>버튼 글자 (각진 단색 버튼): 업데이트 / 받기</summary>
+    public string ActionLabel => UpdateAvailable ? "업데이트" : "받기";
     public Brush ActionBackground => UpdateAvailable ? UpdateBack : GetBack;
     /// <summary>받기·업데이트가 있을 때만. 설치된 최신 앱은 카드를 누르면 열림</summary>
     public Visibility ActionVisibility => !IsBusy && (UpdateAvailable || !IsInstalled && Latest is not null) ? Visibility.Visible : Visibility.Collapsed;
