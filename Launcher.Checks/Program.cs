@@ -93,10 +93,10 @@ try
         Equal(InstallKinds.Zip, AppManager.ResolveKind(app, release), "zip preferred");
         Equal("/S", AppManager.DefaultSetupArguments(app, release), "default silent switch");
 
-        var velopack = Release("v1.0.501", "ATOZ-win-Setup.exe", "ATOZ-win-Portable.zip", "ATOZ-1.0.501-full.nupkg", "releases.win.json", "RELEASES");
-        var atoz = new AppDefinition { Id = "atoz", Name = "ATOZ", Repository = "https://github.com/a/status" };
-        Equal(InstallKinds.Setup, AppManager.ResolveKind(atoz, velopack), "Velopack apps use their installer");
-        Equal("--silent", AppManager.DefaultSetupArguments(atoz, velopack), "Velopack silent switch");
+        var velopack = Release("v1.0.501", "EQStatus-win-Setup.exe", "EQStatus-win-Portable.zip", "EQStatus-1.0.501-full.nupkg", "releases.win.json", "RELEASES");
+        var eqStatus = new AppDefinition { Id = "eqstatus", Name = "EQ Status", Repository = "https://github.com/a/EQStatus" };
+        Equal(InstallKinds.Setup, AppManager.ResolveKind(eqStatus, velopack), "Velopack apps use their installer");
+        Equal("--silent", AppManager.DefaultSetupArguments(eqStatus, velopack), "Velopack silent switch");
 
         var pinned = new AppDefinition { Id = "x", Name = "X", Repository = "https://github.com/a/x", Asset = "X-*-portable.zip" };
         Equal("X-1.2.0-portable.zip", AppManager.SelectZipAsset(pinned, Release("v1.2.0", "X-1.2.0-portable.zip", "X-win-x64.zip"))?.Name, "wildcard asset");
@@ -106,7 +106,7 @@ try
     {
         Equal("DeskCal", AppManager.GuessInstallName("DeskCal-win-x64.zip"), "DeskCal");
         Equal("TerminalNotes", AppManager.GuessInstallName("TerminalNotes-win-x64.zip"), "TerminalNotes");
-        Equal("ATOZ", AppManager.GuessInstallName("ATOZ-win-Setup.exe"), "Velopack setup");
+        Equal("EQStatus", AppManager.GuessInstallName("EQStatus-win-Setup.exe"), "Velopack setup");
         Equal("MyApp", AppManager.GuessInstallName("MyApp-1.2.3.zip"), "version suffix");
     });
 

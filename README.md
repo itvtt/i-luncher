@@ -73,8 +73,8 @@ github.com 저장소는 API 서버의 GitHub 중계로 받으므로 토큰이 �
   "apps": [
     { "id": "deskcal", "name": "바탕화면 달력", "englishName": "Desktop Calendar", "repository": "https://github.example.com/team/DeskCal",
       "category": "일정", "description": "일정 · 4조 교대근무 표시", "installName": "DeskCal" },
-    { "id": "atoz", "name": "ATOZ", "repository": "https://github.example.com/team/status",
-      "kind": "setup", "installName": "ATOZ" }
+    { "id": "eqstatus", "name": "EQ Status", "repository": "https://github.example.com/team/EQStatus",
+      "kind": "setup", "installName": "EQStatus" }
   ]
 }
 ```
