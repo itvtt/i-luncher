@@ -32,6 +32,13 @@ public sealed class BuildSettings
         return MasterUsers.Count == 0 || MasterUsers.Any(master => string.Equals(master, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>MASTER_USERS 에 이름이 있는 계정만 (목록이 비면 아무도 아님): API Manager</summary>
+    public bool IsListedMaster(string account)
+    {
+        string name = account[(account.LastIndexOf('\\') + 1)..];
+        return MasterUsers.Any(master => string.Equals(master, name, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static BuildSettings Load(string? directory = null)
     {
         string path = Path.Combine(directory ?? AppContext.BaseDirectory, FileName);

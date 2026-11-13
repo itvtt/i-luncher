@@ -63,6 +63,16 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(3));
                     Save((FrameworkElement)favoriteEditor.Content, Suffix(output, "-favorite-editor"));
                     favoriteEditor.Close();
+                    // API Manager (마스터 계정만 사이드바에 보임). ILUNCHER_SNAPSHOT_MANAGER=1 이면 창도 그림 (이 PC 서버에 연결함)
+                    Console.WriteLine($"api manager: {window.ApiManagerPanel.Visibility}");
+                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1")
+                    {
+                        var managerWindow = new ApiManager.ManagerWindow { ShowActivated = false, Left = -4000, Top = 0 };
+                        managerWindow.Show();
+                        Pump(TimeSpan.FromSeconds(6));
+                        Save((FrameworkElement)managerWindow.Content, Suffix(output, "-manager"));
+                        managerWindow.Close();
+                    }
                     result = 0;
                 }
                 catch (Exception error)

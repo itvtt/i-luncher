@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- API Manager: i-luncher 안의 API 서버 관리 창 (마스터 계정만, 런처의 MASTER_USERS).
+       이 PC의 API 서버(server\relay.py, Python)를 배포·시작·중지하고 앱 목록·공지·문제 보고·스킬·릴리스를 관리.
+       server\ 의 relay.py 는 런처 설치 폴더의 server\ 로 들어가고, 런처가 새 버전이 되면 시작할 때
+       서버(%LOCALAPPDATA%\TerminalNotesRelay\relay.py)를 새 relay.py 로 바꿈 (SETTINGS 는 그대로 옮김) -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ApiManager</RootNamespace>
+    <AssemblyName>ApiManager</AssemblyName>
+    <DefaultItemExcludes>$(DefaultItemExcludes);server\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="server\relay.py;server\README.md;server\*.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Resource Include="Assets\ApiManager.ico" />
+    <InternalsVisibleTo Include="Launcher.Checks" />
+  </ItemGroup>
+</Project>

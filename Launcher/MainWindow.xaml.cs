@@ -45,11 +45,20 @@ public partial class MainWindow : Window
         InitializeComponent();
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
+        ApiManagerPanel.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
     }
 
     public static string LauncherVersion => AppUpdater.CurrentVersion;
+
+    /// <summary>API Manager (API 서버 관리): MASTER_USERS 에 이름이 있는 계정만</summary>
+    private bool IsApiManager => _settings.Build.IsListedMaster(Environment.UserName);
+
+    private void ApiManagerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (IsApiManager) ApiManager.ManagerHost.Open();
+    }
     private string IconCacheDirectory => Path.Combine(_settings.DataDirectory, "icons");
 
     private void CreateServices()
@@ -98,6 +107,8 @@ public partial class MainWindow : Window
         // 런처가 스스로 파일을 바꾸므로 Windows "앱" 목록의 버전을 실행 중인 버전과 맞춤
         if (AppUpdater.IsInstalledCopy("i-luncher")) AppUpdater.SyncInstalledVersion("i-luncher");
         ShowNotices(_notices.CachedNotices);
+        // 서버 PC 의 마스터: 런처에 든 relay.py 가 더 새 버전이면 서버를 바꾸고, 꺼져 있으면 켬 (앱 목록을 읽기 전에)
+        if (IsApiManager) await ApiManager.ManagerHost.ApplyAsync();
         await RefreshAsync(checkReleases: true);
         _periodic.Start();
         _ = RefreshNoticesAsync();

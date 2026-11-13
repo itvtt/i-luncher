@@ -186,6 +186,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border Height="32" Margin="0,0,0,14" Background="#FF2C2D32" CornerRadius="8">
                         <Grid>
@@ -229,6 +230,13 @@
                     <ScrollViewer Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="CategoryButtons" />
                     </ScrollViewer>
+                    <!-- API Manager: 마스터 계정만 (빌드 설정 MASTER_USERS) -->
+                    <StackPanel x:Name="ApiManagerPanel" Grid.Row="8" Visibility="Collapsed">
+                        <Border Height="1" Margin="8,8,8,10" Background="#FF2E3036" />
+                        <Button x:Name="ApiManagerButton" Click="ApiManagerButton_Click" Style="{StaticResource SidebarNavButtonStyle}" ToolTip="API 서버 관리">
+                            <TextBlock Text="API Manager" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -343,11 +351,8 @@
                                         <Grid>
                                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                             <TextBlock FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" />
-                                            <StackPanel Grid.Row="1" Margin="0,4,118,0">
-                                                <TextBlock FontSize="23" FontWeight="Bold" Foreground="White" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#B3FFFFFF" Text="{Binding Card.EnglishName}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <TextBlock Grid.Row="2" Margin="0,6,118,0" MaxHeight="40" FontSize="13.5" LineHeight="19" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Row="1" Margin="0,4,118,0" FontSize="23" FontWeight="Bold" Foreground="White" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Row="2" Margin="0,4,118,0" MaxHeight="40" FontSize="13.5" LineHeight="19" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                             <Grid Grid.RowSpan="4" Width="100" Height="100" Margin="0,22,0,0" HorizontalAlignment="Right" VerticalAlignment="Top">
                                                 <Grid.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="8" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
                                                 <Border CornerRadius="24" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
