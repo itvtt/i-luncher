@@ -722,7 +722,12 @@ public partial class MainWindow : Window
             // 전체 앱: 맨 위 큰 홍보 카드 (새 버전 → 새 앱 → 아직 안 받은 앱 → 즐겨찾기 순으로 두 개)
             if (_filter == "all")
             {
-                var heroes = Heroes(scope).Take(RowColumns >= 2 ? 2 : 1).Cast<object>().ToList();
+                var picked = Heroes(scope).Take(RowColumns >= 2 ? 2 : 1).ToList();
+                // 나란한 두 카드가 같은 색이면 다음 색으로
+                for (int i = 1; i < picked.Count; i++)
+                    while (picked.Take(i).Any(previous => previous.Palette == picked[i].Palette))
+                        picked[i].Palette = (picked[i].Palette + 1) % HeroItem.PaletteCount;
+                var heroes = picked.Cast<object>().ToList();
                 if (heroes.Count > 0) sections.Add(new StoreSection("", heroes) { ShowHeader = false, Columns = heroes.Count });
             }
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
