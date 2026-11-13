@@ -37,6 +37,7 @@ public partial class AppEditorWindow : Window
         {
             RepositoryBox.Text = existing.Repository;
             NameBox.Text = existing.Name;
+            EnglishNameBox.Text = existing.EnglishName ?? "";
             CategoryBox.Text = existing.Category;
             DescriptionBox.Text = existing.Description;
             AssetBox.Text = existing.Asset ?? "";
@@ -170,6 +171,7 @@ public partial class AppEditorWindow : Window
         {
             Id = id,
             Name = name,
+            EnglishName = Clean(EnglishNameBox),
             Repository = repository?.WebUrl ?? repositoryText,
             Description = DescriptionBox.Text.Trim(),
             Category = CategoryBox.Text.Trim(),

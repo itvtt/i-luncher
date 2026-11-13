@@ -17,6 +17,8 @@ public sealed partial class AppDefinition
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>영문 이름 (이름 옆에 작게 보임)</summary>
+    public string? EnglishName { get; set; }
     /// <summary>GitHub 저장소 주소 (https://github.example.com/team/DeskCal)</summary>
     public string Repository { get; set; } = "";
     public string Description { get; set; } = "";

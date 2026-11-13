@@ -71,8 +71,8 @@ github.com 저장소는 API 서버의 GitHub 중계로 받으므로 토큰이 �
 {
   "schemaVersion": 1,
   "apps": [
-    { "id": "deskcal", "name": "DeskCal", "repository": "https://github.example.com/team/DeskCal",
-      "category": "일정", "description": "바탕화면 달력", "installName": "DeskCal" },
+    { "id": "deskcal", "name": "바탕화면 달력", "englishName": "Desktop Calendar", "repository": "https://github.example.com/team/DeskCal",
+      "category": "일정", "description": "일정 · 4조 교대근무 표시", "installName": "DeskCal" },
     { "id": "atoz", "name": "ATOZ", "repository": "https://github.example.com/team/status",
       "kind": "setup", "installName": "ATOZ" }
   ]
@@ -81,6 +81,7 @@ github.com 저장소는 API 서버의 GitHub 중계로 받으므로 토큰이 �
 
 | 필드 | 뜻 (비우면) |
 |---|---|
+| `name`, `englishName` | 이름 (무슨 앱인지 바로 알 수 있게), 영문 이름 (이름 옆에 작게. 비우면 안 보임) |
 | `kind` | `zip`(릴리스 zip을 런처가 설치) 또는 `setup`(릴리스의 설치 프로그램 실행). 비우면 zip이 있으면 zip, Velopack 릴리스나 설치 프로그램만 있으면 setup |
 | `asset` | 설치할 zip 이름, `*` 가능 (`win-x64`가 든 zip → 앱 이름으로 시작하는 zip → 하나뿐인 zip) |
 | `setupAsset`, `setupArguments` | 설치 프로그램 이름과 인수 (`*Setup*.exe`/`.msi`, 인수 `/S`, Velopack은 `--silent`) |

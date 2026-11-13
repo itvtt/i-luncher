@@ -311,7 +311,7 @@
                                                 <Image Width="56" Height="56" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
                                             <StackPanel Grid.Column="1" Margin="10,8,8,8" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                                 <DockPanel Margin="0,2,0,0">
                                                     <Border DockPanel.Dock="Left" Style="{StaticResource TagStyle}" Height="17" Padding="5,0" Margin="0,0,5,0" Background="#29E6C07A" Visibility="{Binding BetaVisibility}" AutomationProperties.Name="베타">
                                                         <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
@@ -343,8 +343,11 @@
                                         <Grid>
                                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                             <TextBlock FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" />
-                                            <TextBlock Grid.Row="1" Margin="0,4,118,0" FontSize="23" FontWeight="Bold" Foreground="White" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Row="2" Margin="0,4,118,0" MaxHeight="40" FontSize="13.5" LineHeight="19" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Grid.Row="1" Margin="0,4,118,0">
+                                                <TextBlock FontSize="23" FontWeight="Bold" Foreground="White" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#B3FFFFFF" Text="{Binding Card.EnglishName}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="2" Margin="0,6,118,0" MaxHeight="40" FontSize="13.5" LineHeight="19" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                             <Grid Grid.RowSpan="4" Width="100" Height="100" Margin="0,22,0,0" HorizontalAlignment="Right" VerticalAlignment="Top">
                                                 <Grid.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="8" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
                                                 <Border CornerRadius="24" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
@@ -389,7 +392,7 @@
                                             </Grid>
                                             <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="Bold" Foreground="#FFF5F5F7" Text="{Binding Rank}" />
                                             <StackPanel Grid.Column="2" Margin="4,0,8,0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" Text="{Binding Card.Name}" ToolTip="{Binding Card.Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Card.Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding Card.EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                                 <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                             <Border Grid.Column="3" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding Card.StoreButtonVisibility}"

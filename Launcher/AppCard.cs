@@ -106,6 +106,10 @@ public sealed class AppCard : INotifyPropertyChanged
 
     // ── 화면에 보이는 값 ──
     public string Name => App.Name;
+    public string EnglishName => App.EnglishName?.Trim() ?? "";
+    /// <summary>이름 옆 영문 이름 (앞에 띄어쓰기)</summary>
+    public string EnglishSuffix => EnglishName.Length > 0 ? "  " + EnglishName : "";
+    public string FullName => EnglishName.Length > 0 ? $"{Name} · {EnglishName}" : Name;
     public string Category => string.IsNullOrWhiteSpace(App.Category) ? "기타" : App.Category.Trim();
     public string AutomationId => "App_" + App.Id;
     public bool IsInstalled => Installed is not null;
@@ -264,6 +268,7 @@ public sealed class AppCard : INotifyPropertyChanged
     public bool Matches(string search) =>
         search.Length == 0 ||
         Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+        EnglishName.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
         Category.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
         App.Description.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
         App.Repository.Contains(search, StringComparison.OrdinalIgnoreCase);

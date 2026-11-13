@@ -44,6 +44,9 @@
                 </Grid>
                 <WrapPanel x:Name="CategorySuggestions" Margin="0,6,0,0" />
 
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="영문 이름" />
+                <TextBox x:Name="EnglishNameBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="영문 이름" />
+
                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설명" />
                 <TextBox x:Name="DescriptionBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설명" />
 
