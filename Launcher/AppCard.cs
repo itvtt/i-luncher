@@ -39,7 +39,7 @@ public sealed class AppCard : INotifyPropertyChanged
     public DateTime? CheckedAt { get; private set; }
     public bool IsChecking { get => _checking; set { _checking = value; NotifyAll(); } }
     public bool IsBusy { get => _busy; private set { _busy = value; NotifyAll(); } }
-    public string? BusyText { get => _busyText; private set { _busyText = value; Notify(); Notify(nameof(DescriptionText)); } }
+    public string? BusyText { get => _busyText; private set { _busyText = value; Notify(); Notify(nameof(DescriptionText)); Notify(nameof(StoreSubtitle)); } }
     public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); } }
     public ImageSource? Icon
     {
@@ -188,6 +188,8 @@ public sealed class AppCard : INotifyPropertyChanged
     public string ActionLabel => UpdateAvailable ? "업데이트" : "받기";
 
     /// <summary>스토어형 줄의 오른쪽 버튼: 진행 중 / 업데이트 / 열기 / 받기 (받을 릴리스가 없으면 숨김)</summary>
+    /// <summary>줄의 둘째 줄: 분류 · 설명 (진행 중이면 진행 글자)</summary>
+    public string StoreSubtitle => IsBusy && BusyText is { Length: > 0 } busy ? busy : $"{Category} · {DescriptionText}";
     public string StoreButtonText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : IsInstalled ? "열기" : Latest is not null ? "받기" : "";
     public Visibility StoreButtonVisibility => StoreButtonText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Brush ActionBackground => UpdateAvailable ? UpdateBack : GetBack;

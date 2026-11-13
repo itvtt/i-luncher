@@ -720,15 +720,12 @@ public partial class MainWindow : Window
             title = _filter switch { "installed" => "설치된 앱", "updates" => "업데이트", _ when category is not null => category, _ => "전체 앱" };
             var updates = scope.Where(card => card.UpdateAvailable).ToList();
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
-            if (_filter != "updates")
-            {
-                if (category is not null) { if (scope.Count > 0) sections.Add(new StoreSection("앱", scope, $"{scope.Count}개")); }
-                else
-                    foreach (var group in scope.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
-                        sections.Add(new StoreSection(group.Key, group.ToList(), $"{group.Count()}개"));
-            }
+            // 분류마다 섹션을 나누면 길어져서 한 섹션에 모두 (분류는 줄의 설명 앞에, 거르기는 왼쪽 분류에서)
+            if (_filter != "updates" && scope.Count > 0)
+                sections.Add(new StoreSection(_filter == "installed" ? "설치된 앱" : "앱", scope, $"{scope.Count}개"));
         }
 
+        if (sections is [{ Action: null } only]) only.ShowHeader = false;
         SectionList.ItemsSource = sections;
         VisibleCards = sections.SelectMany(section => section.Items.OfType<AppCard>()).Distinct().ToList();
         int shown = VisibleCards.Count + sections.SelectMany(section => section.Items.OfType<FavoriteCard>()).Count();
