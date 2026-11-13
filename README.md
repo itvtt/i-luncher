@@ -17,13 +17,13 @@ GitHub
 │    └─ Releases: i-luncher-Setup.exe, i-luncher-win-x64.zip
 ├─ team/DeskCal              ← 앱마다 자기 저장소와 Actions 러너
 │    └─ Releases: DeskCal-win-x64.zip (+ DeskCal-Setup.exe)
-├─ team/SwiftCopy …
+├─ team/FastCopy …
 └─ team/ATOZ (Velopack)      ← 설치 프로그램 방식도 지원
 
 사용자 PC (%LOCALAPPDATA%\Programs)
 ├─ i-luncher\                ← i-luncher-Setup.exe 로 설치, 스스로 업데이트
 ├─ DeskCal\                  ← 런처가 설치, 앱이 스스로도 업데이트
-└─ SwiftCopy\ …
+└─ FastCopy\ …
 ```
 
 ## 사용
@@ -158,7 +158,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File AppKit\Install-AppKit.ps1 -P
 | 앱 | 릴리스 · 자체 업데이트 |
 |---|---|
 | DeskCal, Terminal Notes | 기존 자체 구현 (`build\Publish-Release.ps1`, `UpdateService.cs`) — 규약과 같음 |
-| FolderCompareWPF, SwiftCopy, DiskAtlas | AppKit 적용 (`.github\workflows\release.yml`, `AppKit\`) |
+| Compare, FastCopy, DiskScan | AppKit 적용 (`.github\workflows\release.yml`, `AppKit\`) |
 | ATOZ | Velopack 자체 업데이트. 런처에서는 설치 프로그램 방식 (`kind: setup`) |
 | file_shared | .NET Framework 4.8 + Windows 서비스라 AppKit 미적용. 릴리스 zip이 있으면 런처로 설치·실행은 가능 |
 
