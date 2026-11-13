@@ -945,8 +945,8 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 줄 목록 열 수 ─────────────────────────
 
-    // 스토어형 줄: 한 줄이 이 폭 이상이 되게 1~4열 (이름이 다 보이도록 넉넉하게)
-    private const double MinRowWidth = 280, RowGap = 26;
+    // 스토어형 줄: 한 줄이 이 폭 이상이 되게 1~4열 (캔버스 모양: 보통 창에서 3열)
+    private const double MinRowWidth = 240, RowGap = 20;
 
     public static readonly DependencyProperty RowColumnsProperty =
         DependencyProperty.Register(nameof(RowColumns), typeof(int), typeof(MainWindow), new PropertyMetadata(3));

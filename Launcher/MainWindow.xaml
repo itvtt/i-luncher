@@ -265,7 +265,7 @@
                         <ScrollViewer.Resources>
                             <!-- 앱 한 줄: 아이콘 · 이름(길면 두 줄) · 설명 · 오른쪽 열기/업데이트/받기 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
-                                <Grid Margin="0,0,26,0">
+                                <Grid Margin="0,0,20,0">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="Card_Click" IsEnabled="{Binding CanInteract}" ToolTipService.ShowOnDisabled="True"
                                             ToolTip="{Binding RunToolTip}" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -284,15 +284,15 @@
                                             <MenuItem Header="설치 폴더 열기" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <Grid MinHeight="80">
+                                        <Grid Height="78">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <Grid Width="56" Height="56" VerticalAlignment="Center">
                                                 <Border CornerRadius="13" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}" />
                                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
                                                 <Image Width="56" Height="56" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
-                                            <StackPanel Grid.Column="1" Margin="12,8,10,8" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" Text="{Binding Name}" TextWrapping="Wrap" LineHeight="19" />
+                                            <StackPanel Grid.Column="1" Margin="10,8,8,8" VerticalAlignment="Center">
+                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                                 <DockPanel Margin="0,2,0,0">
                                                     <Border DockPanel.Dock="Left" Style="{StaticResource TagStyle}" Height="17" Padding="5,0" Margin="0,0,5,0" Background="#29E6C07A" Visibility="{Binding BetaVisibility}" AutomationProperties.Name="베타">
                                                         <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
@@ -303,14 +303,14 @@
                                                     <TextBlock FontSize="12" Foreground="#FF98989D" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" />
                                                 </DockPanel>
                                             </StackPanel>
-                                            <Border Grid.Column="2" Height="28" MinWidth="58" Padding="14,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding StoreButtonVisibility}"
+                                            <Border Grid.Column="2" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding StoreButtonVisibility}"
                                                     ToolTip="{Binding VersionToolTip}">
                                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="#FF4AA3FF" Text="{Binding StoreButtonText}" />
                                             </Border>
                                         </Grid>
                                     </Button>
-                                    <Border Height="1" Margin="68,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
-                                    <ProgressBar Height="2" Margin="68,0,0,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                    <Border Height="1" Margin="66,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
+                                    <ProgressBar Height="2" Margin="66,0,0,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                  IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding ProgressValue, Mode=OneWay}" Visibility="{Binding BusyVisibility}"
                                                  Background="Transparent" BorderThickness="0" Foreground="#FF4AA3FF" />
                                 </Grid>
@@ -318,7 +318,7 @@
 
                             <!-- 즐겨찾기의 내 PC 프로그램 한 줄 -->
                             <DataTemplate DataType="{x:Type local:FavoriteCard}">
-                                <Grid Margin="0,0,26,0">
+                                <Grid Margin="0,0,20,0">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}" Opacity="{Binding CardOpacity}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -330,7 +330,7 @@
                                             <MenuItem Header="삭제" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <Grid MinHeight="80">
+                                        <Grid Height="78">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <Grid Width="56" Height="56" VerticalAlignment="Center">
                                                 <Border CornerRadius="13" Background="#FF2C2D32" Visibility="{Binding InitialsVisibility}">
@@ -338,16 +338,16 @@
                                                 </Border>
                                                 <Image Width="48" Height="48" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
-                                            <StackPanel Grid.Column="1" Margin="12,8,10,8" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" TextWrapping="Wrap" LineHeight="19" />
+                                            <StackPanel Grid.Column="1" Margin="10,8,8,8" VerticalAlignment="Center">
+                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding PathText}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <Border Grid.Column="2" Height="28" MinWidth="58" Padding="14,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32">
+                                            <Border Grid.Column="2" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32">
                                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="#FF4AA3FF" Text="열기" />
                                             </Border>
                                         </Grid>
                                     </Button>
-                                    <Border Height="1" Margin="68,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
+                                    <Border Height="1" Margin="66,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
                                 </Grid>
                             </DataTemplate>
                         </ScrollViewer.Resources>
