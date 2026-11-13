@@ -33,11 +33,16 @@ public partial class App : Application
             return;
         }
 
-        // 하나만 실행: 이미 열려 있으면 그 창을 앞으로
+        // 하나만 실행: 이미 실행 중이면 (트레이에 숨어 있어도) 그 창을 앞으로
         _singleInstance = new Mutex(true, @"Local\i-luncher-main-window", out bool first);
         if (!first)
         {
-            ActivateExistingWindow();
+            try
+            {
+                using var show = EventWaitHandle.OpenExisting(ShowSignalName);
+                show.Set();
+            }
+            catch (WaitHandleCannotBeOpenedException) { ActivateExistingWindow(); }
             Shutdown();
             return;
         }
@@ -46,8 +51,15 @@ public partial class App : Application
         var settings = LauncherSettings.Load(Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data ? data : null);
         var window = new MainWindow(settings);
         MainWindow = window;
+        window.EnableTray();
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
+        _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray), null, -1, executeOnlyOnce: false);
         window.Show();
     }
+
+    private const string ShowSignalName = @"Local\i-luncher-show";
+    private EventWaitHandle? _showSignal;
+    private RegisteredWaitHandle? _showWait;
 
     private static int Uninstall(string installName, bool quiet)
     {
@@ -87,6 +99,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _showWait?.Unregister(null);
+        _showSignal?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);
     }

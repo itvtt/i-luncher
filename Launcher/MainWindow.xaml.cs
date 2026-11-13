@@ -656,7 +656,7 @@ public partial class MainWindow : Window
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             string package = await AppUpdater.DownloadAsync(settings, update, timeout.Token);
             AppUpdater.ScheduleApply(package, update.Version, restart: true, "i-luncher");
-            Application.Current.Shutdown();
+            ExitApp();  // 트레이로 숨지 않고 정말 끝내야 업데이트가 적용됨
         }
         catch (Exception error) when (error is System.Net.Http.HttpRequestException or OperationCanceledException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -965,6 +965,7 @@ public partial class MainWindow : Window
     {
         _periodic.Stop();
         _github.Dispose();
+        DisposeTray();
         base.OnClosed(e);
     }
 

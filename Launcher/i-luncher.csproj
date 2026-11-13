@@ -3,6 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- 트레이 아이콘 (NotifyIcon). WinForms 이름이 WPF 와 겹치지 않게 아래에서 전역 using 을 뺌 -->
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>ILauncher</RootNamespace>
@@ -70,4 +72,8 @@
       <FileWrites Include="$(_LauncherSettingsPath)" />
     </ItemGroup>
   </Target>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 </Project>
