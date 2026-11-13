@@ -26,10 +26,6 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
         set { _actionEnabled = value; Changed(nameof(ActionEnabled)); }
     }
 
-    /// <summary>섹션이 하나뿐이고 링크도 없으면 제목 줄을 숨김 (큰 제목과 겹침)</summary>
-    public bool ShowHeader { get; set; } = true;
-    public Visibility HeaderVisibility => ShowHeader ? Visibility.Visible : Visibility.Collapsed;
-
     public Visibility ActionVisibility => string.IsNullOrEmpty(_actionText) || Action is null ? Visibility.Collapsed : Visibility.Visible;
 
     public event PropertyChangedEventHandler? PropertyChanged;
