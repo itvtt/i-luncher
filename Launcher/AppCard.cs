@@ -14,7 +14,7 @@ namespace ILauncher;
 public sealed class AppCard : INotifyPropertyChanged
 {
     // 버전 글자: 흐린 회색 (타일 아래 왼쪽)
-    private static readonly Brush NormalBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x7E, 0x89, 0x9B)));
+    private static readonly Brush NormalBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xB4, 0xBE, 0xCD)));
     private static readonly Brush WarningBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A)));
     private static readonly Brush InstalledTitleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xF5, 0xF7, 0xFB)));
     private static readonly Brush NotInstalledTitleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xC9, 0xD0, 0xDC)));
@@ -215,6 +215,12 @@ public sealed class AppCard : INotifyPropertyChanged
 
     private bool VersionWarning => LatestError is not null || (_checked && Latest is null);
     public Brush VersionBrush => VersionWarning ? WarningBrush : NormalBrush;
+
+    // 버전 태그 앞 작은 점: 최신 = 초록, 확인 실패·릴리스 없음 = 노랑 (업데이트·받기는 버튼이 보여 줌)
+    private static readonly Brush LatestDot = Freeze(new SolidColorBrush(Color.FromRgb(0x3D, 0xD6, 0x8C)));
+    private bool IsLatest => IsInstalled && !UpdateAvailable && Latest is not null && LatestError is null && !IsChecking;
+    public Brush VersionDotBrush => VersionWarning ? WarningBrush : LatestDot;
+    public Visibility VersionDotVisibility => VersionWarning || IsLatest ? Visibility.Visible : Visibility.Collapsed;
 
     private static readonly Brush WarningBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x2E, 0xE6, 0xC0, 0x7A)));
     private static readonly Brush NormalBadgeBack = Freeze(new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)));
