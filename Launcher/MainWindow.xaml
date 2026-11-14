@@ -492,9 +492,10 @@
         <!-- 상태 표시줄 -->
         <Border Grid.Row="2" Background="#FF19191B" BorderBrush="#FF2E3036" BorderThickness="0,1,0,0">
             <Grid Margin="14,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <TextBlock x:Name="CatalogSourceText" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Cursor="Hand" MouseLeftButtonUp="CatalogSourceText_Click" ToolTip="앱 목록 위치 (클릭하면 열기)" />
                 <TextBlock x:Name="StatusText" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+                <TextBlock Grid.Column="2" Margin="14,0,0,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Opacity="0.75" IsHitTestVisible="False" Text="made by jy01.ahn" />
             </Grid>
         </Border>
     </Grid>
