@@ -31,6 +31,10 @@ i-luncher가 쓰는 API(키 없이 읽고, 고칠 때만 관리자 비밀번호 
     GET  /launcher/notices         런처 공지 {text, revision}
     PUT  /launcher/notices         런처 공지 저장 {text, revision}
 
+EQ Status가 쓰는 API(앱에 내장된 키 X-EQStatus-API-Key, SETTINGS의 EQUIPMENT_API_KEY를 쓸 때만 확인)
+    GET  /api/v1/equipment-status  설비 상태 {items: [{line, sdwt, process, equipmentId, status, hours, downTime, comment}], updatedAt}
+                                   SETTINGS의 EQUIPMENT_DB_*(MySQL)를 EQUIPMENT_REFRESH_SECONDS마다 읽어 두고 ETag로 바뀐 경우에만 내려 줌
+
 GitHub 중계(GitHub REST API v3와 같은 주소, 읽기만): 앱·런처가 토큰 없이 비공개 저장소의 릴리스를 확인하고 받게 함.
 이 서버가 RELAY_GITHUB_TOKEN(비우면 이 PC의 git 자격 증명)으로 github.com에 대신 물어보고, 응답 속 주소를 이 서버로 바꿔 돌려줍니다.
     GET  /api/v3/repos/<소유자>/<저장소>[/releases/latest|/releases|/releases/tags/<태그>|/releases/assets/<id>|/contents/<경로>|/git/trees/<ref>]
@@ -67,6 +71,7 @@ import shutil
 import socket
 import socketserver
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -112,10 +117,18 @@ SETTINGS = {
     "RELAY_PUBLIC_URL": "",            # (선택) 알림 링크의 주소
     "RELAY_TLS_CERT": "",              # (선택) HTTPS 인증서·키 파일
     "RELAY_TLS_KEY": "",
+    "EQUIPMENT_DB_HOST": "",           # (선택) EQ Status 설비 상태 DB(MySQL 8) 주소. 비우면 /api/v1/equipment-status를 열지 않습니다
+    "EQUIPMENT_DB_PORT": 3306,
+    "EQUIPMENT_DB_USER": "",           #        읽기 권한만 있는 계정을 쓰세요
+    "EQUIPMENT_DB_PASSWORD": "",
+    "EQUIPMENT_DB_NAME": "",           #        데이터베이스 이름
+    "EQUIPMENT_STATUS_TABLE": "",      #        설비 상태 표(열: line, prc, eqpid, status, Hr, Down_time, view, comment, sdwt)
+    "EQUIPMENT_API_KEY": "",           # (선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다
+    "EQUIPMENT_REFRESH_SECONDS": 10,   # 설비 상태 DB를 다시 읽는 간격(초)
 }
 # ── 설정 끝 ──
 
-VERSION = "2.16.1"
+VERSION = "2.17.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -134,7 +147,8 @@ STARTUP_SCRIPT = "Terminal Notes Relay.vbs"
 OLD_STARTUP_SHORTCUT = "Terminal Notes Relay.lnk"  # the earlier .NET relay's launcher
 CLIENTS_KEEP = 2000
 APP_AGENT = re.compile(r"TerminalNotes/([0-9][0-9.]*)")
-FEATURES = {"reports": "문제 보고", "skills": "스킬", "announcements": "공지", "badkey": "키 틀림(거절)", "launcher": "i-luncher", "github": "GitHub 중계"}
+FEATURES = {"reports": "문제 보고", "skills": "스킬", "announcements": "공지", "badkey": "키 틀림(거절)", "launcher": "i-luncher", "github": "GitHub 중계",
+            "equipment": "설비 상태"}
 
 log = logging.getLogger("relay")
 
@@ -159,7 +173,10 @@ def copy_settings(source: Path) -> None:
         raise SystemExit("다른 relay.py를 고르세요(지금 이 파일입니다).")
     old = settings_block(source.read_text(encoding="utf-8-sig"))
     text = own.read_text(encoding="utf-8")
+    old, added = with_new_settings(old, settings_block(text))
     new = text.replace(settings_block(text), old, 1)
+    if added:
+        print(f"새 설정 {len(added)}개를 기본값으로 덧붙였습니다: {', '.join(added)}")
     temporary = own.with_name(own.name + ".tmp")
     temporary.write_text(new, encoding="utf-8", newline="")
     os.replace(temporary, own)
@@ -174,6 +191,33 @@ def copy_settings(source: Path) -> None:
     # The older default folders are copied when the relay starts; here only the earlier relay.py's own folder.
     for line in adopt_old_data(config, [source.resolve().parent], include_defaults=False):
         print(line)
+
+
+def with_new_settings(old: str, new: str) -> tuple:
+    """The earlier SETTINGS block plus the keys this relay.py added since (their lines and comments, default values), so the
+    server's file shows every setting there is. Returns (block, added keys); the block is unchanged when nothing is missing."""
+    have = settings_values(old)
+    lines = new.splitlines()
+    added, keys = [], []
+    for index, line in enumerate(lines):
+        match = re.match(r'\s*"([A-Z0-9_]+)"\s*:', line)
+        if not match or match.group(1) in have:
+            continue
+        keys.append(match.group(1))
+        added.append(line)
+        for follow in lines[index + 1:]:
+            if not follow.strip().startswith("#"):
+                break
+            added.append(follow)
+    if not added:
+        return old, []
+    end = old.rfind("}")
+    head = old[:end].rstrip()
+    newline = "\r\n" if "\r\n" in old else "\n"
+    if not head.endswith((",", "{")) and not head.splitlines()[-1].lstrip().startswith("#"):
+        head += ","
+    merged = head + newline + newline.join(added) + newline + old[end:]
+    return (merged, keys) if set(keys) <= set(settings_values(merged)) else (old, [])
 
 
 def listen_address(host: str) -> str:
@@ -331,6 +375,15 @@ class Config:
         api_host = urllib.parse.urlsplit(self.github_api).netloc.lower()
         self.github_web_host = "github.com" if api_host in ("api.github.com", "") else api_host
         self.github_hosts = tuple(dict.fromkeys(GITHUB_HOSTS + (self.github_web_host,)))
+        # EQ Status: its equipment table, read straight from the MySQL DB (the relay's own client, no pip install).
+        self.equipment_db_host = text("EQUIPMENT_DB_HOST")
+        self.equipment_db_port = number("EQUIPMENT_DB_PORT", 3306)
+        self.equipment_db_user = text("EQUIPMENT_DB_USER")
+        self.equipment_db_password = values.get("EQUIPMENT_DB_PASSWORD", "")
+        self.equipment_db_name = text("EQUIPMENT_DB_NAME")
+        self.equipment_table = text("EQUIPMENT_STATUS_TABLE")
+        self.equipment_api_key = text("EQUIPMENT_API_KEY")
+        self.equipment_refresh_seconds = max(1, number("EQUIPMENT_REFRESH_SECONDS", 10))
 
     def validate(self) -> None:
         # Nothing is required: without a key the relay takes any app that reaches its IP, without a password its pages are open,
@@ -384,6 +437,10 @@ class Config:
             f"i-luncher 앱 목록·공지: {self.launcher_dir}  (읽기 /launcher/catalog, 고치기는 관리자 비밀번호)",
             f"GitHub 중계(/api/v3): 토큰 " + ("RELAY_GITHUB_TOKEN" if self.github_token else "이 PC의 git 자격 증명" if self.github_git_credential
                                             else "없음(공개 저장소만)") + f" · 저장소 {', '.join(self.github_proxy_repos) or '앱 목록과 토큰 계정의 저장소'}",
+            "EQ Status 설비 상태(/api/v1/equipment-status): " + (
+                f"{self.equipment_db_host}:{self.equipment_db_port}/{self.equipment_db_name} · 표 {self.equipment_table or '(없음)'} · "
+                f"{self.equipment_refresh_seconds}초마다 읽음 · 앱 키 {'확인' if self.equipment_api_key else '없음'}"
+                if self.equipment_db_host else "꺼짐(SETTINGS의 EQUIPMENT_DB_HOST가 비어 있음)"),
             f"알림 웹훅: {'설정됨 · 링크 ' + self.public_url if self.webhook_url else '없음'}",
             f"로그: {self.log_file}",
         ]
@@ -2039,6 +2096,246 @@ def git_credential_token(host: str) -> str:
     return ""
 
 
+# ── EQ Status 설비 상태 ─────────────────────────────────────────────────────────────────────────────
+
+class MySqlError(Exception):
+    pass
+
+
+class MySqlClient:
+    """Just enough MySQL for one query, with the standard library: TLS when the server offers it, caching_sha2_password
+    (MySQL 8 default; full authentication needs that TLS) or mysql_native_password, text result sets."""
+
+    CLIENT_FLAGS = 0x1 | 0x200 | 0x2000 | 0x8000 | 0x80000  # long password, protocol 41, transactions, secure connection, plugin auth
+    CLIENT_CONNECT_WITH_DB = 0x8
+    CLIENT_SSL = 0x800
+
+    def __init__(self, host: str, port: int, user: str, password: str, database: str, timeout: float = 8.0):
+        self.seq = 0
+        self.sock = socket.create_connection((host, int(port)), timeout=timeout)
+        try:
+            self._login(user, password or "", database)
+        except Exception:
+            self.close()
+            raise
+
+    def _exact(self, size: int) -> bytes:
+        data = b""
+        while len(data) < size:
+            chunk = self.sock.recv(size - len(data))
+            if not chunk:
+                raise MySqlError("DB 연결이 끊겼습니다.")
+            data += chunk
+        return data
+
+    def _read(self) -> bytes:
+        payload = b""
+        while True:
+            header = self._exact(4)
+            size = header[0] | header[1] << 8 | header[2] << 16
+            self.seq = (header[3] + 1) & 0xFF
+            payload += self._exact(size)
+            if size < 0xFFFFFF:
+                return payload
+
+    def _write(self, payload: bytes) -> None:
+        self.sock.sendall(struct.pack("<I", len(payload))[:3] + bytes([self.seq]) + payload)
+        self.seq = (self.seq + 1) & 0xFF
+
+    @staticmethod
+    def _failure(packet: bytes) -> MySqlError:
+        code = struct.unpack("<H", packet[1:3])[0]
+        message = packet[9:] if packet[3:4] == b"#" else packet[3:]
+        return MySqlError(f"MySQL {code}: {message.decode('utf-8', 'replace')}")
+
+    @staticmethod
+    def _scramble(plugin: str, password: str, nonce: bytes) -> bytes:
+        if not password:
+            return b""
+        if plugin == "caching_sha2_password":
+            first = hashlib.sha256(password.encode()).digest()
+            second = hashlib.sha256(hashlib.sha256(first).digest() + nonce).digest()
+        else:
+            first = hashlib.sha1(password.encode()).digest()
+            second = hashlib.sha1(nonce + hashlib.sha1(first).digest()).digest()
+        return bytes(a ^ b for a, b in zip(first, second))
+
+    def _login(self, user: str, password: str, database: str) -> None:
+        packet = self._read()
+        if packet[0] == 0xFF:
+            raise self._failure(packet)
+        pos = packet.index(b"\0", 1) + 1 + 4
+        nonce = packet[pos:pos + 8]
+        pos += 9
+        server_flags = struct.unpack("<H", packet[pos:pos + 2])[0]
+        pos += 5
+        server_flags |= struct.unpack("<H", packet[pos:pos + 2])[0] << 16
+        pos += 2
+        auth_length = packet[pos]
+        pos += 11
+        rest = max(13, auth_length - 8)
+        nonce += packet[pos:pos + rest - 1]
+        plugin = packet[pos + rest:].split(b"\0")[0].decode() or "mysql_native_password"
+        flags = self.CLIENT_FLAGS | (self.CLIENT_CONNECT_WITH_DB if database else 0)
+        secure = False
+        if server_flags & self.CLIENT_SSL:
+            flags |= self.CLIENT_SSL
+            self._write(struct.pack("<IIB", flags, 1 << 24, 45) + b"\0" * 23)
+            # The DB's certificate is usually its own self-signed one: TLS here keeps the password off the wire.
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            self.sock = context.wrap_socket(self.sock)
+            secure = True
+        auth = self._scramble(plugin, password, nonce)
+        body = struct.pack("<IIB", flags, 1 << 24, 45) + b"\0" * 23 + user.encode() + b"\0" + bytes([len(auth)]) + auth
+        if database:
+            body += database.encode() + b"\0"
+        self._write(body + plugin.encode() + b"\0")
+        while True:
+            packet = self._read()
+            if packet[0] == 0x00:
+                return
+            if packet[0] == 0xFF:
+                raise self._failure(packet)
+            if packet[0] == 0xFE:  # the server asks for another method
+                name, _, data = packet[1:].partition(b"\0")
+                plugin = name.decode()
+                if plugin == "mysql_clear_password" and secure:
+                    self._write(password.encode() + b"\0")
+                elif plugin in ("caching_sha2_password", "mysql_native_password"):
+                    self._write(self._scramble(plugin, password, data.rstrip(b"\0")))
+                else:
+                    raise MySqlError(f"지원하지 않는 DB 로그인 방식입니다: {plugin}")
+                continue
+            if packet[0] == 0x01 and packet[1:2] == b"\x03":
+                continue  # caching_sha2 fast path: the OK packet follows
+            if packet[0] == 0x01 and packet[1:2] == b"\x04":
+                if not secure:
+                    raise MySqlError("이 DB 계정은 TLS 연결에서만 로그인할 수 있습니다.")
+                self._write(password.encode() + b"\0")
+                continue
+            raise MySqlError("DB 로그인 응답을 이해하지 못했습니다.")
+
+    @staticmethod
+    def _length(data: bytes, pos: int) -> tuple:
+        first = data[pos]
+        if first < 0xFB:
+            return first, pos + 1
+        if first == 0xFB:
+            return None, pos + 1
+        if first == 0xFC:
+            return struct.unpack("<H", data[pos + 1:pos + 3])[0], pos + 3
+        if first == 0xFD:
+            return int.from_bytes(data[pos + 1:pos + 4], "little"), pos + 4
+        return struct.unpack("<Q", data[pos + 1:pos + 9])[0], pos + 9
+
+    def query(self, sql: str) -> list:
+        """The rows of a SELECT, each a list of str or None."""
+        self.seq = 0
+        self._write(b"\x03" + sql.encode("utf-8"))
+        packet = self._read()
+        if packet[0] == 0xFF:
+            raise self._failure(packet)
+        if packet[0] == 0x00:
+            return []
+        count, _ = self._length(packet, 0)
+        for _ in range(count):
+            self._read()  # column definitions
+        self._read()  # their end
+        rows = []
+        while True:
+            packet = self._read()
+            if packet[0] == 0xFE and len(packet) < 9:
+                return rows
+            if packet[0] == 0xFF:
+                raise self._failure(packet)
+            pos, row = 0, []
+            for _ in range(count):
+                size, pos = self._length(packet, pos)
+                row.append(None if size is None else packet[pos:pos + size].decode("utf-8", "replace"))
+                pos += size or 0
+            rows.append(row)
+
+    def close(self) -> None:
+        try:
+            self.seq = 0
+            self._write(b"\x01")
+        except Exception:
+            pass
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+
+
+class EquipmentStatus:
+    """EQ Status's equipment table: read from the DB at most every EQUIPMENT_REFRESH_SECONDS and kept, so any number of
+    apps polling costs the DB one query per interval. A failed read keeps the last table for a while, then answers 503."""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self.lock = threading.Lock()
+        self.current = None
+        self.tried = 0.0
+        self.error = ""
+        self.connect = MySqlClient  # tests replace it
+
+    def configured(self) -> bool:
+        return bool(self.config.equipment_db_host)
+
+    def snapshot(self) -> dict:
+        if not self.configured():
+            raise RelayError(404, "설비 상태 DB가 설정되지 않았습니다(API 서버 relay.py SETTINGS의 EQUIPMENT_DB_*).")
+        interval = self.config.equipment_refresh_seconds
+        with self.lock:
+            if time.monotonic() - self.tried >= interval or self.current is None and not self.tried:
+                self.tried = time.monotonic()
+                try:
+                    items = self._read()
+                    body = json.dumps(items, ensure_ascii=False, sort_keys=True).encode("utf-8")
+                    self.current = {"items": items, "etag": '"' + hashlib.sha256(body).hexdigest()[:32] + '"', "at": now()}
+                    self.error = ""
+                except Exception as error:
+                    if not self.error:
+                        log.warning("equipment status read failed: %s", error)
+                    self.error = str(error) or error.__class__.__name__
+            stale = self.current is None or self.error and (now() - self.current["at"]).total_seconds() > max(60, interval * 6)
+            if stale:
+                raise RelayError(503, "설비 상태 DB를 읽지 못했습니다: " + (self.error or "아직 읽은 적이 없습니다."))
+            return self.current
+
+    def _read(self) -> list:
+        config = self.config
+        if not re.fullmatch(r"[A-Za-z0-9_$]+(\.[A-Za-z0-9_$]+)?", config.equipment_table):
+            raise MySqlError("EQUIPMENT_STATUS_TABLE은 표 이름(영문·숫자·_)이어야 합니다.")
+        table = ".".join(f"`{part}`" for part in config.equipment_table.split("."))
+        client = self.connect(config.equipment_db_host, config.equipment_db_port, config.equipment_db_user,
+                              config.equipment_db_password, config.equipment_db_name)
+        try:
+            rows = client.query("SELECT `line`, `sdwt`, `prc`, `eqpid`, `status`, `Hr`, `Down_time`, `comment` FROM " + table +
+                                " WHERE LOWER(COALESCE(`view`, '')) <> 'hide' ORDER BY `line`, `prc`, `eqpid`")
+        finally:
+            client.close()
+        items = []
+        for line, sdwt, process, equipment, status, hours, down_time, comment in rows:
+            try:
+                elapsed = float(hours or 0)
+            except ValueError:
+                elapsed = 0.0
+            items.append({"line": line or "", "sdwt": sdwt or "", "process": process or "", "equipmentId": equipment or "",
+                          "status": (status or "").strip().upper(), "hours": elapsed, "downTime": down_time or "", "comment": comment or ""})
+        return items
+
+    def state(self) -> str:
+        if not self.configured():
+            return "설비 상태: 꺼짐"
+        if self.current is None:
+            return "설비 상태: " + (f"DB 읽기 실패 — {self.error}" if self.error else "아직 요청 없음")
+        text = f"설비 상태: {len(self.current['items'])}대 · {local_text(self.current['at'])} 읽음"
+        return text + (f" · 마지막 읽기 실패 — {self.error}" if self.error else "")
+
+
 # ── 서버 ─────────────────────────────────────────────────────────────────────────────────────────────
 
 class RelayServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -2055,6 +2352,7 @@ class RelayServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.launcher = LauncherStore(config.launcher_dir, config.github_hosts)
         self.github = GitHubProxy(config, self.launcher)
         self.releases = Releases(config, self.launcher, self.github)
+        self.equipment = EquipmentStatus(config)
         self.limiter = RateLimiter()
         self.notifier = Notifier(config.webhook_url)
         self.clients = Clients()
@@ -2117,6 +2415,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.server.github.request(self, parts[2:])
         if parts[:1] == ["launcher"]:
             return self._launcher(method, parts[1:])
+        if parts == ["api", "v1", "equipment-status"]:
+            return self._equipment(method)
         if parts[:1] == ["api"]:
             try:
                 self._require_key()
@@ -2127,6 +2427,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._api(method, parts[1:])
         self._require_admin()
         return self._admin(method, parts)
+
+    def _equipment(self, method: str) -> None:
+        """EQ Status: the equipment table as {items, updatedAt}, with its own key (EQUIPMENT_API_KEY) instead of the app key."""
+        server = self.server
+        address, agent = self.client_address[0], self.headers.get("User-Agent", "")
+        if method != "GET":
+            raise RelayError(405, "설비 상태는 읽기(GET)만 합니다.")
+        key = server.config.equipment_api_key
+        if key and not secret_equals(self.headers.get("X-EQStatus-API-Key", ""), key):
+            server.clients.touch(address, agent, "badkey")
+            raise RelayError(401, "키가 맞지 않습니다.")
+        self._limit("equipment", 6000, 3600)
+        server.clients.touch(address, agent, "equipment")
+        snapshot = server.equipment.snapshot()
+        if self.headers.get("If-None-Match") == snapshot["etag"]:
+            self._status = 304
+            self.send_response(304)
+            self.send_header("ETag", snapshot["etag"])
+            self.end_headers()
+            return None
+        return self._json(200, {"items": snapshot["items"], "updatedAt": iso(snapshot["at"])}, {"ETag": snapshot["etag"]})
 
     def _api(self, method: str, parts: list) -> None:
         server = self.server
@@ -2775,7 +3096,7 @@ def admin_status_data(server: RelayServer) -> dict:
         "uptimeSeconds": int((now() - server.started).total_seconds()), "publicUrl": config.public_url,
         "counts": {"reports": len(reports), "newReports": sum(1 for item in reports if item["status"] == "new"),
                    "skills": len(server.skills.all()), "reportsBytes": folder_size(config.reports_dir)},
-        "settings": config.summary(), "firewall": firewall_text(config),
+        "settings": config.summary() + [server.equipment.state()], "firewall": firewall_text(config),
         "githubRepositories": sorted(server.launcher.repositories()), "githubProxyRepositories": list(config.github_proxy_repos),
         "clients": [{"address": entry["address"], "version": entry.get("version") or "", "first": iso(entry["first"]), "last": iso(entry["last"]),
                      "requests": entry["requests"],
@@ -2791,7 +3112,7 @@ def admin_status(server: RelayServer) -> tuple:
         ("문제 보고", len(reports)), ("새 보고", sum(1 for item in reports if item["status"] == "new")),
         ("공유된 스킬", len(server.skills.all())), ("보고서 용량", f'{folder_size(config.reports_dir) / 1048576:.1f} MB')))
     uptime = now() - server.started
-    lines = "".join(f"<li>{esc(line)}</li>" for line in config.summary() + [firewall_text(config)])
+    lines = "".join(f"<li>{esc(line)}</li>" for line in config.summary() + [server.equipment.state(), firewall_text(config)])
     board = server.announcements.read()
     rows = "".join(
         f'<tr><td>{esc(entry["address"])}</td><td>{esc(entry["version"] or "1.0.518 이하")}</td>'

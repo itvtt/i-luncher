@@ -245,6 +245,67 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(self.api_json("POST", "/api/skills", upload)[1]["version"], 2)
         self.assertEqual(self.api_json("GET", "/api/skills/dotnet-skill/versions/1")[1]["body"], "- 원래 내용")
 
+    def equipment_db(self, rows, queries):
+        class FakeDb:
+            def __init__(self, *login):
+                queries.append(login)
+
+            def query(self, sql):
+                queries.append(sql)
+                return [list(row) for row in rows]
+
+            def close(self):
+                pass
+
+        self.config.equipment_db_host = "db.example"
+        self.config.equipment_db_user, self.config.equipment_db_password = "reader", "secret"
+        self.config.equipment_db_name, self.config.equipment_table = "plant", "eqp_status"
+        self.config.equipment_api_key = "eq-key"
+        self.server.equipment.connect = FakeDb
+
+    def test_equipment_status(self):
+        path = "/api/v1/equipment-status"
+        self.assertEqual(self.call("GET", path, key=False)[0], 404)  # off until EQUIPMENT_DB_HOST is set
+        queries = []
+        self.equipment_db([["S1", "S1DPN", "DPN", "EQ-1", "down ", "1.5", "2026-01-01 10:00:00", "alarm"],
+                           ["S3", None, "ETH", "EQ-2", "RUN", "x", None, None]], queries)
+        self.assertEqual(self.call("GET", path)[0], 401)  # its own key, not the Terminal Notes one
+        headers = {"X-EQStatus-API-Key": "eq-key"}
+        status, body, response = self.call("GET", path, headers=headers, key=False)
+        self.assertEqual(status, 200)
+        items = json.loads(body)["items"]
+        self.assertEqual(items[0], {"line": "S1", "sdwt": "S1DPN", "process": "DPN", "equipmentId": "EQ-1", "status": "DOWN",
+                                    "hours": 1.5, "downTime": "2026-01-01 10:00:00", "comment": "alarm"})
+        self.assertEqual((items[1]["sdwt"], items[1]["hours"], items[1]["downTime"]), ("", 0.0, ""))
+        self.assertEqual(queries[0], ("db.example", 3306, "reader", "secret", "plant"))
+        self.assertIn("FROM `eqp_status`", queries[1])
+        self.assertIn("'hide'", queries[1])
+        # Unchanged: 304, and within EQUIPMENT_REFRESH_SECONDS the DB is not asked again.
+        self.assertEqual(self.call("GET", path, headers={**headers, "If-None-Match": response["ETag"]}, key=False)[0], 304)
+        self.assertEqual(len(queries), 2)
+        self.assertIn("설비 상태: 2대", self.admin_json("GET", "/admin/api/status")[1]["settings"][-1])
+
+    def test_equipment_status_db_failure(self):
+        class Refused:
+            def __init__(self, *login):
+                raise ConnectionRefusedError("refused")
+
+        self.equipment_db([], [])
+        self.server.equipment.connect = Refused
+        status, body, _ = self.call("GET", "/api/v1/equipment-status", headers={"X-EQStatus-API-Key": "eq-key"}, key=False)
+        self.assertEqual(status, 503)
+        self.assertIn("refused", json.loads(body))
+
+    def test_settings_from_adds_new_keys(self):
+        old = '# ── 설정 시작 ──\r\nSETTINGS = {\r\n    "RELAY_HOST": "10.0.0.1",\r\n    "RELAY_PORT": 2003\r\n}\r\n# ── 설정 끝 ──'
+        new = relay.settings_block(Path(relay.__file__).read_text(encoding="utf-8"))
+        merged, added = relay.with_new_settings(old, new)
+        values = relay.settings_values(merged)
+        self.assertEqual((values["RELAY_HOST"], values["EQUIPMENT_DB_PORT"], values["EQUIPMENT_DB_HOST"]), ("10.0.0.1", "3306", ""))
+        self.assertIn("EQUIPMENT_STATUS_TABLE", added)
+        self.assertNotIn("RELAY_HOST", added)
+        self.assertEqual(relay.with_new_settings(merged, new), (merged, []))
+
     def test_announcements(self):
         status, board, headers = self.api_json("GET", "/api/announcements")
         self.assertEqual((status, board["exists"], board["revision"]), (200, False, "missing"))
