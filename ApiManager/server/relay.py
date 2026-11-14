@@ -37,7 +37,7 @@ GitHub 중계(GitHub REST API v3와 같은 주소, 읽기만): 앱·런처가 �
     열어 주는 저장소: LAUNCHER_GITHUB_REPOS, 런처 앱 목록에 있는 저장소, 토큰 계정의 저장소
 
 릴리스(관리자 비밀번호, API 서버 프로그램의 릴리스 화면): 앱 목록과 LAUNCHER_GITHUB_REPOS(소유자/저장소)의 저장소마다
-마지막 릴리스, 다음 버전(마지막 릴리스의 다음 패치, 프로젝트 파일 <Version>이 바닥값), 최근 릴리스 실행을 보여 주고,
+마지막 릴리스, 다음 버전(마지막 릴리스 + 1, 자리마다 0~9, 프로젝트 파일 <Version>이 바닥값), 최근 릴리스 실행을 보여 주고,
 고른 버전으로 저장소의 .github/workflows/release.yml을 실행합니다(workflow_dispatch, 입력 version).
     GET  /admin/api/releases       {releases: [{repository, name, latest, next, chooseVersion, run, error}]}
     POST /admin/api/releases       {repository, version} → 202 (토큰에 workflow 권한 필요)
@@ -115,7 +115,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.16.0"
+VERSION = "2.16.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -1825,7 +1825,7 @@ class GitHubProxy:
 # ── 릴리스 ───────────────────────────────────────────────────────────────────────────────────────────
 
 RELEASE_WORKFLOW = "release.yml"
-RELEASE_VERSION_TEXT = re.compile(r"^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,5})$")
+RELEASE_VERSION_TEXT = re.compile(r"^(0|[1-9][0-9]{0,4})\.[0-9]\.[0-9]$")
 RELEASE_ACTIVE = ("requested", "queued", "pending", "waiting", "in_progress")
 RELEASE_REQUEST_SHOWN = 180  # seconds a started release shows as requested until GitHub lists its run
 
@@ -1837,11 +1837,16 @@ def release_version(text) -> tuple | None:
 
 
 def next_release_version(latest: tuple | None, floor: tuple | None) -> str:
-    """What the release workflows pick by themselves: one patch past the last release; the project file's <Version> is
-    the floor (never backwards); 1.0.0 without either."""
+    """What the release workflows pick by themselves: the last release + 1 with every part 0-9 (1.0.9 -> 1.1.0,
+    1.9.9 -> 2.0.0); the project file's <Version> is the floor (never backwards); 1.0.0 without either."""
     floor = floor or (1, 0, 0)
     if latest and latest >= floor:
-        return f"{latest[0]}.{latest[1]}.{latest[2] + 1}"
+        major, minor, patch = latest[0], latest[1], latest[2] + 1
+        if patch > 9:
+            minor, patch = minor + 1, 0
+        if minor > 9:
+            major, minor, patch = major + 1, 0, 0
+        return f"{major}.{minor}.{patch}"
     return ".".join(str(part) for part in floor)
 
 
@@ -1965,7 +1970,7 @@ class Releases:
             raise RelayError(404, "릴리스 목록에 없는 저장소입니다(앱 목록 또는 LAUNCHER_GITHUB_REPOS).")
         full, name = known
         if not RELEASE_VERSION_TEXT.match(version):
-            raise RelayError(400, "버전은 1.2.3 형식으로 쓰세요.")
+            raise RelayError(400, "버전은 1.2.3 형식으로 쓰세요 (가운데·끝 자리는 0~9).")
         token = self.github.token()
         if not token:
             raise RelayError(503, "GitHub 토큰이 없습니다(RELAY_GITHUB_TOKEN 또는 이 PC의 git 자격 증명).")

@@ -67,4 +67,4 @@ Actions에서는 Secret `RELEASE_ENV`에 `.env` 내용을 넣거나 러너 PC의
 
 ## 버전
 
-`Get-NextVersion.ps1`이 마지막 릴리스의 다음 패치 번호를 고르고 `-p:Version`으로 넘깁니다. csproj의 `<Version>`은 바닥값입니다. `Publish-App.ps1`은 실행 파일의 버전이 릴리스 버전과 같은지 확인하고, 다르면 실패합니다.
+`Get-NextVersion.ps1`이 마지막 릴리스 + 1 (자리마다 0~9: `1.0.9` → `1.1.0`)을 고르고 `-p:Version`으로 넘깁니다. csproj의 `<Version>`은 바닥값입니다. `Publish-App.ps1`은 실행 파일의 버전이 릴리스 버전과 같은지 확인하고, 다르면 실패합니다.

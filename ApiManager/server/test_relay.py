@@ -1106,6 +1106,11 @@ class LauncherApiTest(unittest.TestCase):
         status, body, _ = self.call("POST", "/admin/api/releases", {"repository": repository, "version": version}, admin=True)
         return status, json.loads(body)
 
+    def test_next_version_keeps_every_part_0_to_9(self):
+        for latest, floor, expected in (((1, 2, 3), (1, 0, 0), "1.2.4"), ((1, 0, 9), None, "1.1.0"), ((1, 9, 9), None, "2.0.0"),
+                                        ((1, 0, 26), None, "1.1.0"), ((1, 0, 3), (2, 0, 0), "2.0.0")):
+            self.assertEqual(relay.next_release_version(latest, floor), expected, (latest, floor))
+
     def test_releases_show_the_next_version_and_start_the_workflow_with_it(self):
         apps = [{"id": "tool", "name": "Tool", "repository": "https://github.com/other/tool", "order": 2},
                 {"id": "app", "name": "App", "repository": "https://github.com/owner1/app.git", "order": 1}]
@@ -1116,7 +1121,7 @@ class LauncherApiTest(unittest.TestCase):
                          ("owner1/app", "App", "1.2.3", "1.2.0", "1.2.4", True), "one past the last release, the project file being the floor")
         self.assertEqual((app["run"]["status"], app["run"]["conclusion"], app["error"]), ("completed", "success", ""))
         self.assertIn("릴리스 워크플로", tool["error"], "a repository without the workflow says so")
-        for repository, version, code in (("owner1/app", "1.3", 400), ("owner1/app", "1.2.3", 409), ("owner1/app", "0.9.0", 409),
+        for repository, version, code in (("owner1/app", "1.3", 400), ("owner1/app", "1.10.0", 400), ("owner1/app", "1.2.3", 409), ("owner1/app", "0.9.0", 409),
                                           ("owner1/app", "1.2.5", 409), ("owner1/unknown", "9.0.0", 404), ("other/tool", "1.0.0", 409)):
             self.assertEqual(self.release(repository, version)[0], code, (repository, version))
         FakeGitHub.run_status = "in_progress"
