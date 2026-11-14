@@ -474,6 +474,16 @@ try
         Assert(settings.CatalogRepository is null, "local catalog switch");
     });
 
+    await CheckSync("a Windows service with the same exe name running elsewhere does not block an update", () =>
+    {
+        // svchost runs as services in session 0 and its path cannot be read without admin rights
+        string folder = Path.Combine(root, "service-name");
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "svchost.exe"), []);
+        Assert(Process.GetProcessesByName("svchost").Length > 0, "svchost is running");
+        Assert(!AppInstaller.IsRunning(folder), "a folder holding svchost.exe is not 'running'");
+    });
+
     await CheckSync("MASTER_USERS: master-only apps show only to the listed accounts, everyone without the line", () =>
     {
         string buildDir = Path.Combine(root, "master-settings");

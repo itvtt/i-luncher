@@ -11,12 +11,13 @@ using System.Windows.Threading;
 namespace ApiManager;
 
 /// <summary>
-/// API 서버 관리 창 (WPF). 서버(relay.py)를 배포·시작·중지하고, 예전 브라우저 관리 페이지의 일을 이 창에서 함:
+/// API 서버 관리 화면 (i-luncher 오른쪽 화면). 서버(relay.py)를 배포·시작·중지하고, 예전 브라우저 관리 페이지의 일을 함:
 /// i-luncher 앱 목록·런처 공지, Terminal Notes 공지, 문제 보고, 스킬. 관리자 비밀번호는 서버 설정에서 읽어 자동으로 씀.
+/// 런처가 한 번 만들어 두고 다시 씀 (다른 화면으로 가도 고치던 내용이 남음). 보이는 동안만 서버 상태를 확인함.
 /// </summary>
-public partial class ManagerWindow : Window
+public partial class ManagerView : UserControl
 {
-    private static readonly Brush Good = Brush("#FF3DD68C"), Warn = Brush("#FFE6C07A"), Muted = Brush("#FFB3BDCC"), Text1 = Brush("#FFF5F7FB");
+    private static readonly Brush Good = Brush("#FF3DD68C"), Warn = Brush("#FFE6C07A"), Muted = Brush("#FFA1A1A6"), Text1 = Brush("#FFF5F5F7");
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(5) };
     private ServerAddress _address = ServerManager.ReadAddress(ServerManager.DeployedScript);
     private AdminClient? _admin;
@@ -42,18 +43,41 @@ public partial class ManagerWindow : Window
     private readonly DispatcherTimer _messageTimer = new() { Interval = TimeSpan.FromSeconds(6) };
     private string _versionText = "";
 
-    public ManagerWindow()
+    private bool _started;
+    private Window? _host;
+
+    public ManagerView()
     {
         InitializeComponent();
-        InitializeTitleBar();
         ApplyStatusLabels();
         _timer.Tick += async (_, _) => await RefreshHealthAsync();
         _messageTimer.Tick += (_, _) => { _messageTimer.Stop(); MessageBar.Visibility = Visibility.Collapsed; };
-        Loaded += async (_, _) => await InitializeAsync();
+        Loaded += async (_, _) =>
+        {
+            if (Window.GetWindow(this) is { } host && host != _host)
+            {
+                _host = host;
+                host.Closing += Host_Closing;
+                host.Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _releaseTimer?.Stop(); _admin?.Dispose(); };
+            }
+            if (_started) return;
+            _started = true;
+            await InitializeAsync();
+        };
+        // 다른 화면으로 가면 서버 확인을 멈추고, 돌아오면 바로 다시 확인
+        IsVisibleChanged += async (_, _) =>
+        {
+            if (!IsVisible) { _timer.Stop(); _releaseTimer?.Stop(); return; }
+            if (_admin is null) return;
+            _timer.Start();
+            await RefreshHealthAsync();
+            if (CurrentSection is "Server" or "Releases") await LoadSectionAsync(CurrentSection, force: true);
+        };
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
-        Closing += MainWindow_Closing;
-        Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _admin?.Dispose(); };
     }
+
+    /// <summary>알림 창의 주인: 런처 창</summary>
+    private Window OwnerWindow => Window.GetWindow(this) ?? Application.Current.MainWindow;
 
     private static SolidColorBrush Brush(string color) => (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
 
@@ -110,7 +134,7 @@ public partial class ManagerWindow : Window
         finally { SetBusy(false); }
         ConnectAdmin();
         await RefreshHealthAsync();
-        _timer.Start();
+        if (IsVisible) _timer.Start();
         await LoadSectionAsync(CurrentSection, force: true);
     }
 
@@ -166,7 +190,7 @@ public partial class ManagerWindow : Window
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
         if (_python is null || _busy) return;
-        if (MessageBox.Show(this, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
+        if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
                 "API Manager", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         SetBusy(true);
         try
@@ -188,13 +212,6 @@ public partial class ManagerWindow : Window
         menu.PlacementTarget = MoreButton;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         menu.IsOpen = true;
-    }
-
-    private void SettingsToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        bool show = SettingsPanel.Visibility != Visibility.Visible;
-        SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        SettingsToggleButton.Content = show ? "설정 숨기기" : "설정 보기";
     }
 
     private void SettingsFileButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", ServerManager.DeployedScript);
@@ -246,7 +263,7 @@ public partial class ManagerWindow : Window
         string firewall = Str(status["firewall"]);
         FirewallText.Text = firewall;
         FirewallText.Visibility = firewall.Contains("규칙 없음", StringComparison.Ordinal) ? Visibility.Visible : Visibility.Collapsed;
-        SettingsText.Text = string.Join("\n", status["settings"]!.AsArray().Select(line => Str(line)).Append(firewall));
+        SettingsList.ItemsSource = status["settings"]!.AsArray().Select(line => Str(line)).Append(firewall).Select(SettingRow.From).ToList();
         int uptime = (int?)status["uptimeSeconds"] ?? 0;
         string running = uptime >= 86400 ? $"{uptime / 86400}일 {uptime % 86400 / 3600}시간" : uptime >= 3600 ? $"{uptime / 3600}시간 {uptime % 3600 / 60}분" : $"{uptime / 60}분";
         VersionsText.Text = $"{_versionText} · 실행 {running}";
@@ -283,7 +300,7 @@ public partial class ManagerWindow : Window
             "Notices" => NoticeDirty(launcher: NoticeKindLauncher.IsChecked == true),
             _ => false,
         };
-        if (dirty && MessageBox.Show(this, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "API Manager",
+        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "API Manager",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         await RefreshHealthAsync();
         if (section == "Notices")
@@ -331,13 +348,15 @@ public partial class ManagerWindow : Window
         }
     }
 
-    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    /// <summary>런처를 정말 끝낼 때 (트레이로 숨길 때는 아님): 저장하지 않은 편집이 있으면 물음</summary>
+    private void Host_Closing(object? sender, CancelEventArgs e)
     {
+        if (e.Cancel) return;
         var unsaved = new List<string>();
         if (_appsDirty) unsaved.Add("앱 목록");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: false)) unsaved.Add("Terminal Notes 공지");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: true)) unsaved.Add("i-luncher 공지");
-        if (unsaved.Count > 0 && MessageBox.Show(this, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "API Manager",
+        if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "API Manager",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             e.Cancel = true;
     }
@@ -382,7 +401,6 @@ public partial class ManagerWindow : Window
         AppForm.IsEnabled = app is not null;
         RemoveAppButton.IsEnabled = MoveUpButton.IsEnabled = MoveDownButton.IsEnabled = app is not null;
         AppNameBox.Text = app is null ? "" : Str(app.Data["name"]);
-        AppEnglishNameBox.Text = app is null ? "" : Str(app.Data["englishName"]);
         AppRepositoryBox.Text = app is null ? "" : Str(app.Data["repository"]);
         AppIdBox.Text = app is null ? "" : Str(app.Data["id"]);
         AppCategoryBox.Text = app is null ? "" : Str(app.Data["category"]);
@@ -402,7 +420,6 @@ public partial class ManagerWindow : Window
     {
         if (_fillingAppForm || AppsList.SelectedItem is not AppRow app) return;
         Put(app.Data, "name", AppNameBox.Text.Trim(), keepEmpty: true);
-        Put(app.Data, "englishName", AppEnglishNameBox.Text.Trim());
         Put(app.Data, "repository", AppRepositoryBox.Text.Trim(), keepEmpty: true);
         Put(app.Data, "id", AppIdBox.Text.Trim(), keepEmpty: true);
         Put(app.Data, "category", AppCategoryBox.Text.Trim());
@@ -468,7 +485,7 @@ public partial class ManagerWindow : Window
     private void RemoveAppButton_Click(object sender, RoutedEventArgs e)
     {
         if (AppsList.SelectedItem is not AppRow app) return;
-        if (MessageBox.Show(this, $"{app.Title}을(를) 앱 목록에서 뺄까요?\n\n저장해야 런처에 반영됩니다. 이미 설치한 PC의 앱은 지우지 않습니다.", "앱 목록",
+        if (MessageBox.Show(OwnerWindow, $"{app.Title}을(를) 앱 목록에서 뺄까요?\n\n저장해야 런처에 반영됩니다. 이미 설치한 PC의 앱은 지우지 않습니다.", "앱 목록",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         int index = _apps.IndexOf(app);
         _apps.Remove(app);
@@ -718,7 +735,7 @@ public partial class ManagerWindow : Window
     {
         if (_report is not { HasLogs: true } report) return;
         var dialog = new Microsoft.Win32.SaveFileDialog { FileName = $"TerminalNotes-{report.Id}.zip", Filter = "ZIP (*.zip)|*.zip", Title = "로그 저장" };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(OwnerWindow) != true) return;
         await Run(async () =>
         {
             byte[] data = await Admin.GetBytesAsync("admin/api/reports/" + Uri.EscapeDataString(report.Id) + "/logs.zip");
@@ -729,7 +746,7 @@ public partial class ManagerWindow : Window
     private async void DeleteReportButton_Click(object sender, RoutedEventArgs e)
     {
         if (_report is not { } report) return;
-        if (MessageBox.Show(this, $"이 보고서를 삭제할까요?\n\n{report.Summary}\n\n되돌릴 수 없습니다.", "문제 보고",
+        if (MessageBox.Show(OwnerWindow, $"이 보고서를 삭제할까요?\n\n{report.Summary}\n\n되돌릴 수 없습니다.", "문제 보고",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         await Run(async () =>
         {
@@ -798,7 +815,7 @@ public partial class ManagerWindow : Window
     private async void RestoreSkillButton_Click(object sender, RoutedEventArgs e)
     {
         if (_skill is not { } name || SkillVersionsList.SelectedItem is not VersionRow version) { SetMessage("되돌릴 버전을 버전 기록에서 고르세요."); return; }
-        if (MessageBox.Show(this, $"v{version.Version}의 내용을 새 최신 버전으로 올릴까요?\n\n이 스킬을 쓰는 PC에는 업데이트로 보입니다.", "스킬",
+        if (MessageBox.Show(OwnerWindow, $"v{version.Version}의 내용을 새 최신 버전으로 올릴까요?\n\n이 스킬을 쓰는 PC에는 업데이트로 보입니다.", "스킬",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         await Run(async () =>
         {
@@ -812,7 +829,7 @@ public partial class ManagerWindow : Window
     private async void DeleteSkillButton_Click(object sender, RoutedEventArgs e)
     {
         if (_skill is not { } name) return;
-        if (MessageBox.Show(this, $"스킬 {name}을(를) 스토어에서 삭제할까요?\n\n이미 적용한 PC에는 남습니다. 30일 동안 skills\\.trash에 보관됩니다.", "스킬",
+        if (MessageBox.Show(OwnerWindow, $"스킬 {name}을(를) 스토어에서 삭제할까요?\n\n이미 적용한 PC에는 남습니다. 30일 동안 skills\\.trash에 보관됩니다.", "스킬",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         await Run(async () =>
         {
@@ -847,6 +864,22 @@ internal sealed record ReportRow(string Id, string Time, string Version, string 
     public override string ToString() => $"{Summary} · {StatusLabel}";
 }
 
+/// <summary>서버 설정 한 줄 ("항목: 값")</summary>
+internal sealed record SettingRow(string Name, string Value, Brush Brush)
+{
+    private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0xD1, 0xD1, 0xD6)), Warning = new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A));
+
+    public static SettingRow From(string line)
+    {
+        int colon = line.IndexOf(": ", StringComparison.Ordinal);
+        string name = colon > 0 ? line[..colon] : "";
+        string value = colon > 0 ? line[(colon + 2)..] : line;
+        bool warn = value.Contains("주의", StringComparison.Ordinal) || value.Contains("규칙 없음", StringComparison.Ordinal)
+                    || value.Contains("누구나 열 수 있음", StringComparison.Ordinal);
+        return new SettingRow(name, value, warn ? Warning : Normal);
+    }
+}
+
 internal sealed record SkillRow(string Name, string Title, string Detail)
 {
     public override string ToString() => Title;
@@ -864,7 +897,7 @@ internal sealed class AppRow(JsonObject data) : INotifyPropertyChanged
     public string Title => Data["name"]?.ToString() is { Length: > 0 } name ? name : "(이름 없음)";
     public string Detail => string.Join(" · ", new[] { Data["id"]?.ToString(), Data["category"]?.ToString(), Data["kind"]?.ToString(),
             (bool?)Data["masterOnly"] == true ? "마스터만" : null,
-            ManagerWindow.Flag(Data, "beta") ? "베타" : null, ManagerWindow.Flag(Data, "new") ? "NEW" : null }
+            ManagerView.Flag(Data, "beta") ? "베타" : null, ManagerView.Flag(Data, "new") ? "NEW" : null }
         .Where(part => !string.IsNullOrWhiteSpace(part))) is { Length: > 0 } text ? text : "id 없음";
     public event PropertyChangedEventHandler? PropertyChanged;
     public override string ToString() => Title;

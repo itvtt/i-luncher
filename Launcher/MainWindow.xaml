@@ -240,7 +240,7 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Column="1" Margin="30,20,22,0">
+            <Grid x:Name="StorePane" Grid.Column="1" Margin="30,20,22,0">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
 
                 <!-- 큰 제목 · 개수 · 도구 -->
@@ -487,6 +487,9 @@
                     </Grid>
                 </Border>
             </Grid>
+
+            <!-- API Manager · 설정: 앱 목록 대신 오른쪽 화면 전체 -->
+            <ContentControl x:Name="PagePane" Grid.Column="1" Visibility="Collapsed" Focusable="False" />
         </Grid>
 
         <!-- 상태 표시줄 -->

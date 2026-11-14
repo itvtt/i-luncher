@@ -52,7 +52,6 @@ static class UiSnapshot
                     using var github = new GitHubClient(settings.GetToken, "checks");
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(dataDirectory, "downloads"), () => settings.DefaultHost);
                     SaveWindow(new AppEditorWindow(null, manager, settings.DefaultHost, ["도구", "일정", "파일 공유"]), Suffix(output, "-editor"));
-                    SaveWindow(new SettingsWindow(settings, window.VisibleCards.Select(card => card.App).ToList()), Suffix(output, "-settings"));
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
                     window.FavoritesButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));
@@ -63,15 +62,24 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(3));
                     Save((FrameworkElement)favoriteEditor.Content, Suffix(output, "-favorite-editor"));
                     favoriteEditor.Close();
-                    // API Manager (마스터 계정만 사이드바에 보임). ILUNCHER_SNAPSHOT_MANAGER=1 이면 창도 그림 (이 PC 서버에 연결함)
+                    // 설정 (오른쪽 화면)
+                    window.SettingsButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    Pump(TimeSpan.FromSeconds(1));
+                    Save((FrameworkElement)window.Content, Suffix(output, "-settings"));
+                    // API Manager (마스터 계정만 사이드바에 보임, 오른쪽 화면). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
                     Console.WriteLine($"api manager: {window.ApiManagerPanel.Visibility}");
-                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1")
+                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerPanel.Visibility == Visibility.Visible)
                     {
-                        var managerWindow = new ApiManager.ManagerWindow { ShowActivated = false, Left = -4000, Top = 0 };
-                        managerWindow.Show();
+                        window.ApiManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                         Pump(TimeSpan.FromSeconds(6));
-                        Save((FrameworkElement)managerWindow.Content, Suffix(output, "-manager"));
-                        managerWindow.Close();
+                        Save((FrameworkElement)window.Content, Suffix(output, "-manager"));
+                        if (window.PagePane.Content is ApiManager.ManagerView view)
+                            foreach (var (tab, name) in new[] { (2, "-manager-releases"), (1, "-manager-apps") })
+                            {
+                                view.Nav.SelectedIndex = tab;
+                                Pump(TimeSpan.FromSeconds(3));
+                                Save((FrameworkElement)window.Content, Suffix(output, name));
+                            }
                     }
                     result = 0;
                 }

@@ -104,10 +104,10 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `%LOCALAPPDATA%
 | `/api/v3/repos/<소유자>/<저장소>/…` | GitHub 중계: 런처와 각 앱이 비공개 저장소의 릴리스·아이콘을 토큰 없이 받음 (읽기만, 토큰 계정·앱 목록의 저장소만) |
 | `/`, `/apps`, `/status` … | 관리 페이지 (관리자 비밀번호) |
 
-**API Manager**(관리 창)는 런처 안에 있습니다. 왼쪽 아래 **API Manager** 는 빌드 설정 `MASTER_USERS` 에 적은 계정에만 보입니다 (비우면 아무에게도 안 보임). 서버·앱 목록·릴리스·공지·문제 보고·스킬을 관리합니다.
+**API Manager** 는 런처 오른쪽 화면에 열립니다. 왼쪽 아래 **API Manager** 는 빌드 설정 `MASTER_USERS` 에 적은 계정에만 보입니다 (비우면 아무에게도 안 보임). 서버·앱 목록·릴리스·공지·문제 보고·스킬을 관리합니다.
 런처 설치 폴더의 `server\relay.py` 가 배포된 서버(`%LOCALAPPDATA%\TerminalNotesRelay\relay.py`)보다 새 버전이면, 서버 PC의 마스터가 런처를 켤 때(또는 API Manager 를 열 때) 서버를 바꾸고 SETTINGS(비밀값)는 그대로 옮긴 뒤 다시 시작합니다. 처음 설치는 API Manager 를 열면 됩니다. 데이터는 `C:\ProgramData\TerminalNotesRelayData`에 따로 있습니다.
 
-런처는 빌드 설정 `API_SERVER`(또는 설정 창)로 서버를 알고, 각 앱은 빌드할 때 `UPDATE_GITHUB_API=http://<서버 IP>:2003/api/v3`로 같은 중계를 씁니다.
+런처는 빌드 설정 `API_SERVER`(또는 오른쪽 위 톱니바퀴의 설정)로 서버를 알고, 각 앱은 빌드할 때 `UPDATE_GITHUB_API=http://<서버 IP>:2003/api/v3`로 같은 중계를 씁니다.
 
 ## 아이콘
 

@@ -425,8 +425,12 @@ public sealed class AppInstaller
             {
                 bool inside;
                 try { inside = process.MainModule?.FileName is { } path && IsInside(path, directory); }
-                // 관리자 권한으로 도는 프로세스는 경로를 못 읽음: 같은 이름이면 실행 중으로 봄 (파일을 망가뜨리지 않게)
-                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { inside = true; }
+                // 관리자 권한으로 도는 프로세스는 경로를 못 읽음: 같은 이름이면 실행 중으로 봄 (파일을 망가뜨리지 않게).
+                // 단 Windows 서비스(세션 0)는 등록된 실행 파일이 이 폴더 밖이면 아님 (예: File Shared 서비스 사본)
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    inside = !IsService(process) || ServiceRunsFrom(directory);
+                }
                 if (inside) found.Add(process);
                 else process.Dispose();
             }
@@ -741,6 +745,34 @@ public sealed class AppInstaller
     }
 
     // ───────────────────────── 도우미 ─────────────────────────
+
+    private static bool IsService(Process process)
+    {
+        try { return process.SessionId == 0; }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    /// <summary>등록된 Windows 서비스 중 실행 파일이 이 폴더 안에 있는 것이 있는지</summary>
+    private static bool ServiceRunsFrom(string directory)
+    {
+        using RegistryKey? services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
+        if (services is null) return true;
+        foreach (string name in services.GetSubKeyNames())
+        {
+            try
+            {
+                using RegistryKey? service = services.OpenSubKey(name);
+                if (service?.GetValue("ImagePath") is not string image || image.Length == 0) continue;
+                image = Environment.ExpandEnvironmentVariables(image.Trim());
+                string file = image.StartsWith('"') ? image[1..Math.Max(1, image.IndexOf('"', 1))]
+                    : image.Contains(".exe", StringComparison.OrdinalIgnoreCase) ? image[..(image.IndexOf(".exe", StringComparison.OrdinalIgnoreCase) + 4)]
+                    : image;
+                if (IsInside(file, directory)) return true;
+            }
+            catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { }
+        }
+        return false;
+    }
 
     private static bool IsInside(string path, string folder)
     {

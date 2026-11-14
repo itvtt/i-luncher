@@ -57,7 +57,29 @@ public partial class MainWindow : Window
 
     private void ApiManagerButton_Click(object sender, RoutedEventArgs e)
     {
-        if (IsApiManager) ApiManager.ManagerHost.Open();
+        if (!IsApiManager) return;
+        _filter = "manager";
+        Render();
+    }
+
+    // 오른쪽 화면 전체를 쓰는 화면: API Manager (한 번 만들어 다시 씀, 고치던 내용이 남음), 설정 (열 때마다 새로)
+    private ApiManager.ManagerView? _managerView;
+    private SettingsView? _settingsView;
+    private bool OnPage => _filter is "manager" or "settings";
+
+    /// <summary>앱 목록 또는 오른쪽 화면 (API Manager · 설정)</summary>
+    private void ShowPage()
+    {
+        if (_filter == "manager" && !IsApiManager) _filter = "all";
+        FrameworkElement? page = _filter switch
+        {
+            "manager" => _managerView ??= ApiManager.ManagerHost.CreateView(),
+            "settings" => _settingsView ??= CreateSettingsView(),
+            _ => null
+        };
+        if (!ReferenceEquals(PagePane.Content, page)) PagePane.Content = page;
+        PagePane.Visibility = page is null ? Visibility.Collapsed : Visibility.Visible;
+        StorePane.Visibility = page is null ? Visibility.Visible : Visibility.Collapsed;
     }
     private string IconCacheDirectory => Path.Combine(_settings.DataDirectory, "icons");
 
@@ -690,6 +712,12 @@ public partial class MainWindow : Window
     /// </summary>
     private void Render()
     {
+        ShowPage();
+        if (OnPage)
+        {
+            UpdateCounts();
+            return;
+        }
         bool favorites = _filter == "favorites";
         foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
         AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
@@ -830,7 +858,7 @@ public partial class MainWindow : Window
         }
         int favoriteCount = _favorites.Count(item => !item.IsApp) + _cards.Count(card => card.IsFavorite);
         FavoritesCountText.Text = favoriteCount > 0 ? favoriteCount.ToString() : "";
-        foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites") })
+        foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites"), (ApiManagerButton, "manager") })
         {
             button.Background = _filter == filter ? SelectedNavBrush : Brushes.Transparent;
             button.Foreground = _filter == filter ? (Brush)FindResource("TextBrush") : (Brush)FindResource("MutedTextBrush");
@@ -872,7 +900,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => Render();
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        // 다른 화면에서 검색하면 앱 목록으로
+        if (OnPage && SearchBox.Text.Trim().Length > 0) _filter = "all";
+        Render();
+    }
 
     private void EmptyStateButton_Click(object sender, RoutedEventArgs e)
     {
@@ -893,14 +926,25 @@ public partial class MainWindow : Window
         await CheckLauncherUpdateAsync(automatic: false);
     }
 
-    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _settingsView = null;
+        _filter = "settings";
+        Render();
+    }
+
+    private SettingsView CreateSettingsView()
     {
         // 마스터에게만 "마스터만 보기" (마스터는 숨긴 앱까지 모두 보므로 _cards = 전체 목록)
         bool master = _settings.Build.IsMaster(Environment.UserName);
-        var window = new SettingsWindow(_settings, master ? _cards.Select(card => card.App).ToList() : null) { Owner = this };
-        if (window.ShowDialog() != true) return;
-        var masterOnly = window.MasterOnlyChanges;
-        if (window.SettingsChanged)
+        var view = new SettingsView(_settings, master ? _cards.Select(card => card.App).ToList() : null);
+        view.Saved += async (changed, masterOnly) => await ApplySettingsAsync(changed, masterOnly);
+        return view;
+    }
+
+    private async Task ApplySettingsAsync(bool settingsChanged, Dictionary<string, bool> masterOnly)
+    {
+        if (settingsChanged)
         {
             _settings.SaveUser();
             CreateServices();
@@ -1033,7 +1077,7 @@ public partial class MainWindow : Window
             SearchBox.Text = "";
             e.Handled = true;
         }
-        else if (e.Key == Key.F5)
+        else if (e.Key == Key.F5 && !OnPage)
         {
             RefreshButton_Click(sender, e);
             e.Handled = true;

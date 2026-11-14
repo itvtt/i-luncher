@@ -14,7 +14,7 @@ namespace ApiManager;
 /// 릴리스 화면: 앱 목록(과 서버 설정 LAUNCHER_GITHUB_REPOS)의 저장소마다 마지막 릴리스와 다음 버전(자동)을 보여 주고,
 /// 버전을 고쳐 릴리스함. 서버(relay 2.15+)가 저장소의 .github/workflows/release.yml 을 그 버전으로 실행함.
 /// </summary>
-public partial class ManagerWindow
+public partial class ManagerView
 {
     private List<ReleaseRow> _releases = [];
     // 진행 중인 릴리스가 있을 때만 이 화면을 10초마다 새로 읽음
@@ -45,9 +45,8 @@ public partial class ManagerWindow
                 if (_busy || CurrentSection != "Releases") return;
                 await Run(LoadReleasesAsync, quiet: true);
             };
-            Closed += (_, _) => _releaseTimer.Stop();
         }
-        if (_releases.Any(row => row.Active)) _releaseTimer.Start();
+        if (_releases.Any(row => row.Active) && IsVisible) _releaseTimer.Start();
         else _releaseTimer.Stop();
     }
 
@@ -55,7 +54,7 @@ public partial class ManagerWindow
     {
         if ((sender as FrameworkElement)?.DataContext is not ReleaseRow row || !row.CanRelease) return;
         string version = row.Version.Trim().TrimStart('v', 'V');
-        if (MessageBox.Show(this, $"{row.Name} v{version}을(를) 릴리스할까요?", "API Manager",
+        if (MessageBox.Show(OwnerWindow, $"{row.Name} v{version}을(를) 릴리스할까요?", "API Manager",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         row.Starting = true;
         bool started = await Run(() => Admin.SendAsync(HttpMethod.Post, "admin/api/releases",
