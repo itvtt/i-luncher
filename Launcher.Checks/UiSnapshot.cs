@@ -8,7 +8,7 @@ using ILauncher.Services;
 
 /// <summary>
 /// Launcher.Checks --ui-snapshot &lt;데이터 폴더&gt; &lt;png&gt; [초]: 실제 MainWindow 를 띄워 몇 초 뒤 화면을 PNG 로 저장하고
-/// 카드 상태를 출력. 같은 폴더에 앱 추가 창(-editor.png)과 설정 창(-settings.png)도 저장.
+/// 카드 상태를 출력. 같은 폴더에 즐겨찾기(-favorites.png)와 설정 화면(-settings.png)도 저장.
 /// 원격 세션이 끊겨 있으면 WPF 가 아무것도 그리지 못해 그림은 비고, 출력한 값으로만 확인할 수 있음.
 /// </summary>
 static class UiSnapshot
@@ -82,9 +82,6 @@ static class UiSnapshot
                         Console.WriteLine($"card [{card.Category}] {card.Name}: {card.VersionText} | {card.DescriptionText} | tooltip: {card.VersionToolTip.Replace(Environment.NewLine, " / ")}");
                     Console.WriteLine($"counts: all {window.AllCountText.Text}, installed {window.InstalledCountText.Text}, updates '{window.UpdatesCountText.Text}'");
 
-                    using var github = new GitHubClient(settings.GetToken, "checks");
-                    var manager = new AppManager(github, new AppInstaller(), Path.Combine(dataDirectory, "downloads"), () => settings.DefaultHost);
-                    SaveWindow(new AppEditorWindow(null, manager, settings.DefaultHost, ["도구", "일정", "파일 공유"]), Suffix(output, "-editor"));
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
                     window.FavoritesButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));
@@ -110,7 +107,7 @@ static class UiSnapshot
                         Pump(TimeSpan.FromMilliseconds(500));
                         Console.WriteLine($"home from app page: {window.SectionTitle.Text} · list {window.StorePane.Visibility} · app page {window.DetailPane.Visibility}");
                     }
-                    // API Manager (마스터 계정만 사이드바에 보임, 오른쪽 화면). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
+                    // 관리자 메뉴 (마스터 계정만 사이드바에 보임, 오른쪽 화면). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
                     Console.WriteLine($"api manager: {window.ApiManagerPanel.Visibility}");
                     if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerPanel.Visibility == Visibility.Visible)
                     {
@@ -132,6 +129,14 @@ static class UiSnapshot
                                     PresentationSource.FromVisual(view)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = UIElement.KeyDownEvent });
                                 Pump(TimeSpan.FromSeconds(4));
                                 Save((FrameworkElement)window.Content, Suffix(output, "-manager-runner-add"));
+                            }
+                            // 카드의 "관리자 메뉴에서 편집": 앱 목록에서 그 앱 (분류 칸과 고를 수 있는 분류)
+                            if (window.VisibleCards.LastOrDefault() is { } editCard)
+                            {
+                                view.ShowApp(editCard.App.Id);
+                                Pump(TimeSpan.FromSeconds(2));
+                                Save((FrameworkElement)window.Content, Suffix(output, "-manager-app"));
+                                Console.WriteLine($"admin menu app: {(view.AppsList.SelectedItem as ApiManager.AppRow)?.Title} · chips {view.CategoryChips.Children.Count}");
                             }
                         }
                     }

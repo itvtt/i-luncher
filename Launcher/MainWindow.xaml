@@ -323,11 +323,11 @@
                     <ScrollViewer Grid.Row="7" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="CategoryButtons" />
                     </ScrollViewer>
-                    <!-- API Manager: 마스터 계정만 (빌드 설정 MASTER_USERS) -->
+                    <!-- 관리자 메뉴: 마스터 계정만 (빌드 설정 MASTER_USERS, 비밀번호 없음) -->
                     <StackPanel x:Name="ApiManagerPanel" Grid.Row="8" Visibility="Collapsed">
                         <Border Height="1" Margin="8,8,8,10" Background="#FF2E3036" />
-                        <Button x:Name="ApiManagerButton" Click="ApiManagerButton_Click" Style="{StaticResource SidebarNavButtonStyle}" ToolTip="API 서버 관리">
-                            <TextBlock Text="API Manager" />
+                        <Button x:Name="ApiManagerButton" Click="ApiManagerButton_Click" Style="{StaticResource SidebarNavButtonStyle}" ToolTip="앱 목록 · 릴리스 · 러너 · 공지 · 서버">
+                            <TextBlock Text="관리자 메뉴" />
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -345,8 +345,9 @@
                                 <Ellipse x:Name="NoticeUnreadDot" Width="6" Height="6" Margin="6,0,0,0" Fill="{StaticResource AccentBrush}" Visibility="Collapsed" />
                             </StackPanel>
                         </Button>
-                        <Button x:Name="AddAppButton" Click="AddAppButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="앱 추가" ToolTip="앱 추가">
-                            <TextBlock x:Name="AddAppText" Text="앱 추가" VerticalAlignment="Center" />
+                        <Button x:Name="AddAppButton" Click="AddAppButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="프로그램 추가"
+                                ToolTip="프로그램 추가" Visibility="Collapsed">
+                            <TextBlock Text="프로그램 추가" VerticalAlignment="Center" />
                         </Button>
                         <Button x:Name="SettingsButton" Width="32" Padding="0" Click="SettingsButton_Click" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="설정" ToolTip="설정">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -398,11 +399,10 @@
                                             <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
                                             <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
                                             <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
-                                            <Separator />
-                                            <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" />
+                                            <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
+                                            <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
                                                       Style="{StaticResource DangerMenuItemStyle}" />
-                                            <MenuItem Header="목록에서 삭제…" Icon="&#xE738;" Tag="{Binding}" Click="DeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                         <Border CornerRadius="18" Background="{Binding Art}" Padding="18,14,14,12">
@@ -513,7 +513,7 @@
                 </Border>
             </Grid>
 
-            <!-- API Manager · 설정: 앱 목록 대신 오른쪽 화면 전체 -->
+            <!-- 관리자 메뉴 · 설정: 앱 목록 대신 오른쪽 화면 전체 -->
             <!-- 앱 페이지 (카드를 누르면): 아이콘·이름·버튼, 정보 줄, 스크린샷, 설명, 새로운 기능. 뒤로·Esc·마우스 뒤로 단추로 목록 -->
             <Grid x:Name="DetailPane" Grid.Column="1" Visibility="Collapsed">
                 <ScrollViewer x:Name="DetailScrollViewer" Padding="30,16,22,28" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -556,11 +556,10 @@
                                                 <MenuItem Header="다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
                                                 <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                                 <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
-                                                <Separator />
-                                                <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" />
+                                                <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
+                                                <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                                 <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
                                                           Style="{StaticResource DangerMenuItemStyle}" />
-                                                <MenuItem Header="목록에서 삭제…" Icon="&#xE738;" Tag="{Binding}" Click="DeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                     </Button>

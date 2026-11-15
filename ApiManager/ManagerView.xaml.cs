@@ -11,7 +11,7 @@ using System.Windows.Threading;
 namespace ApiManager;
 
 /// <summary>
-/// API 서버 관리 화면 (i-luncher 오른쪽 화면). 서버(relay.py)를 배포·시작·중지하고, 예전 브라우저 관리 페이지의 일을 함:
+/// 관리자 메뉴 (i-luncher 오른쪽 화면, MASTER_USERS 계정만). 서버(relay.py)를 배포·시작·중지하고, 예전 브라우저 관리 페이지의 일을 함:
 /// i-luncher 앱 목록·런처 공지, Terminal Notes 공지, 문제 보고, 스킬. 관리자 비밀번호는 서버 설정에서 읽어 자동으로 씀.
 /// 런처가 한 번 만들어 두고 다시 씀 (다른 화면으로 가도 고치던 내용이 남음). 보이는 동안만 서버 상태를 확인함.
 /// </summary>
@@ -191,7 +191,7 @@ public partial class ManagerView : UserControl
     {
         if (_python is null || _busy) return;
         if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
-                "API Manager", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                "관리자 메뉴", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         SetBusy(true);
         try
         {
@@ -280,11 +280,12 @@ public partial class ManagerView : UserControl
 
     private async void Nav_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded) return;
+        if (SkillsSection is null) return;  // 화면을 만드는 중 (처음 고른 탭)
         string section = CurrentSection;
         foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Server", ServerSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
                      ("Runners", RunnersSection), ("Notices", NoticesSection), ("Reports", ReportsSection), ("Skills", SkillsSection) })
             panel.Visibility = name == section ? Visibility.Visible : Visibility.Collapsed;
+        if (!IsLoaded) return;
         if (section != "Runners") _runnerTimer?.Stop();
         await LoadSectionAsync(section, force: section is "Server" or "Releases" or "Runners");
     }
@@ -302,7 +303,7 @@ public partial class ManagerView : UserControl
             "Notices" => NoticeDirty(launcher: NoticeKindLauncher.IsChecked == true),
             _ => false,
         };
-        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "API Manager",
+        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "관리자 메뉴",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         if (dirty && section == "Runners") _runnerEnvSaved = RunnerEnvBox.Text.Replace("\r\n", "\n"); // 버린 편집은 서버 내용으로 다시 채움
         await RefreshHealthAsync();
@@ -361,7 +362,7 @@ public partial class ManagerView : UserControl
         if (RunnerEnvDirty) unsaved.Add("러너 .env");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: false)) unsaved.Add("Terminal Notes 공지");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: true)) unsaved.Add("i-luncher 공지");
-        if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "API Manager",
+        if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "관리자 메뉴",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             e.Cancel = true;
     }
@@ -379,8 +380,29 @@ public partial class ManagerView : UserControl
         var ordered = _apps.Select((app, index) => (app, index)).OrderBy(item => (int?)item.app.Data["order"] ?? int.MaxValue).ThenBy(item => item.index).Select(item => item.app).ToList();
         _apps.Clear();
         _apps.AddRange(ordered);
-        RefreshAppsList(select: _apps.FirstOrDefault());
+        RefreshAppsList(select: TakePendingApp() ?? _apps.FirstOrDefault());
         SetAppsDirty(false);
+    }
+
+    private string? _pendingAppId;
+
+    /// <summary>런처 카드의 "관리자 메뉴에서 편집": 앱 목록을 열고 그 앱을 고름 (아직 안 읽었으면 읽은 뒤에)</summary>
+    public void ShowApp(string appId)
+    {
+        _pendingAppId = appId;
+        if (_loaded.Contains("Apps") && TakePendingApp() is { } row)
+        {
+            AppsList.SelectedItem = row;
+            AppsList.ScrollIntoView(row);
+        }
+        Nav.SelectedItem = Nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "Apps");
+    }
+
+    private AppRow? TakePendingApp()
+    {
+        if (_pendingAppId is not { } id) return null;
+        _pendingAppId = null;
+        return _apps.FirstOrDefault(app => string.Equals(Str(app.Data["id"]), id, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshAppsList(AppRow? select)
@@ -409,6 +431,7 @@ public partial class ManagerView : UserControl
         AppRepositoryBox.Text = app is null ? "" : Str(app.Data["repository"]);
         AppIdBox.Text = app is null ? "" : Str(app.Data["id"]);
         AppCategoryBox.Text = app is null ? "" : Str(app.Data["category"]);
+        RenderCategoryChips();
         AppDescriptionBox.Text = app is null ? "" : Str(app.Data["description"]);
         AppDetailsBox.Text = app is null ? "" : Str(app.Data["details"]).Replace("\n", "\r\n");
         ShowScreenshots(app);
@@ -435,6 +458,35 @@ public partial class ManagerView : UserControl
         Put(app.Data, "installName", AppInstallNameBox.Text.Trim());
         app.Changed();
         SetAppsDirty(true);
+        if (sender == AppCategoryBox) RenderCategoryChips();
+    }
+
+    private static readonly Brush ChipOn = Brush("#FF3864D9"), ChipOnEdge = Brush("#FF6C91FA");
+
+    /// <summary>분류 칸 아래: 다른 앱들이 쓰는 분류 (누르면 그 분류로, 지금 분류는 파랑)</summary>
+    private void RenderCategoryChips()
+    {
+        CategoryChips.Children.Clear();
+        if (AppsList.SelectedItem is not AppRow selected) return;
+        string current = AppCategoryBox.Text.Trim();
+        var categories = _apps.Where(app => app != selected).Select(app => Str(app.Data["category"]).Trim()).Where(category => category.Length > 0)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(category => category, StringComparer.CurrentCultureIgnoreCase);
+        foreach (string category in categories)
+        {
+            var chip = new Button { Content = category, Style = (Style)FindResource("ChipButtonStyle") };
+            if (string.Equals(category, current, StringComparison.CurrentCultureIgnoreCase))
+            {
+                chip.Background = ChipOn;
+                chip.BorderBrush = ChipOnEdge;
+                chip.Foreground = Text1;
+            }
+            chip.Click += (_, _) =>
+            {
+                AppCategoryBox.Text = category;
+                AppCategoryBox.CaretIndex = category.Length;
+            };
+            CategoryChips.Children.Add(chip);
+        }
     }
 
     private void AppKind_Checked(object sender, RoutedEventArgs e)
@@ -532,6 +584,7 @@ public partial class ManagerView : UserControl
             var saved = (await Admin.SendAsync(HttpMethod.Put, "launcher/catalog", new JsonObject { ["apps"] = apps, ["revision"] = _catalogRevision })).AsObject();
             _catalogRevision = Str(saved["revision"]);
             await LoadAppsAsync();
+            ManagerHost.RaiseCatalogSaved();
             if (selectedId is not null) AppsList.SelectedItem = _apps.FirstOrDefault(app => Str(app.Data["id"]) == selectedId) ?? AppsList.SelectedItem;
         }, done: "앱 목록을 저장했습니다.");
     }

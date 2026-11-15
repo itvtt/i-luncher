@@ -46,6 +46,9 @@ public partial class MainWindow : Window
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
         ApiManagerPanel.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
+        AppCard.AdminMenus = IsApiManager;
+        // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서)
+        ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: false));
         PreviewMouseUp += Window_PreviewMouseUp;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
@@ -53,23 +56,17 @@ public partial class MainWindow : Window
 
     public static string LauncherVersion => AppUpdater.CurrentVersion;
 
-    /// <summary>API Manager (API 서버 관리): MASTER_USERS 에 이름이 있는 계정만</summary>
+    /// <summary>관리자 메뉴 (앱 목록 · 릴리스 · 러너 · 공지 · 서버): MASTER_USERS 에 이름이 있는 계정만, 비밀번호 없이</summary>
     private bool IsApiManager => _settings.Build.IsListedMaster(Environment.UserName);
 
-    private void ApiManagerButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (!IsApiManager) return;
-        _detail = null;
-        _filter = "manager";
-        Render();
-    }
+    private void ApiManagerButton_Click(object sender, RoutedEventArgs e) => OpenAdminMenu();
 
-    // 오른쪽 화면 전체를 쓰는 화면: API Manager (한 번 만들어 다시 씀, 고치던 내용이 남음), 설정 (열 때마다 새로)
+    // 오른쪽 화면 전체를 쓰는 화면: 관리자 메뉴 (한 번 만들어 다시 씀, 고치던 내용이 남음), 설정 (열 때마다 새로)
     private ApiManager.ManagerView? _managerView;
     private SettingsView? _settingsView;
     private bool OnPage => _filter is "manager" or "settings";
 
-    /// <summary>앱 목록 또는 오른쪽 화면 (API Manager · 설정)</summary>
+    /// <summary>앱 목록 또는 오른쪽 화면 (관리자 메뉴 · 설정)</summary>
     private void ShowPage()
     {
         if (_filter == "manager" && !IsApiManager) _filter = "all";
@@ -97,7 +94,7 @@ public partial class MainWindow : Window
         (_store as IDisposable)?.Dispose();
         _store = _settings.CatalogMode switch
         {
-            LauncherSettings.ModeApi => new ApiCatalogStore(_settings.ApiServerUrl!, () => _settings.User.GetAdminPassword(),
+            LauncherSettings.ModeApi => new ApiCatalogStore(_settings.ApiServerUrl!, () => null,
                 Path.Combine(_settings.DataDirectory, "catalog-cache.json")),
             LauncherSettings.ModeGitHub when _settings.CatalogRepository is { } repository =>
                 new GitHubCatalogStore(_github, repository, _settings.CatalogPath, _settings.CatalogBranch, Path.Combine(_settings.DataDirectory, "catalog-cache.json")),
@@ -532,92 +529,26 @@ public partial class MainWindow : Window
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{installed.Directory}\"") { UseShellExecute = true })?.Dispose();
     }
 
-    // ───────────────────────── 앱 목록 추가 · 수정 · 삭제 ─────────────────────────
+    // ───────────────────────── 앱 목록 고치기 = 관리자 메뉴 ─────────────────────────
 
-    private async void AddAppButton_Click(object sender, RoutedEventArgs e)
+    /// <summary>도구 줄의 추가 버튼: 즐겨찾기 화면에서만 보이는 "프로그램 추가" (앱 추가는 관리자 메뉴 → 앱 목록)</summary>
+    private void AddAppButton_Click(object sender, RoutedEventArgs e) => EditFavorite(null);
+
+    /// <summary>카드 메뉴의 "관리자 메뉴에서 편집" (마스터만): 관리자 메뉴 → 앱 목록에서 그 앱을 엶</summary>
+    private void EditMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (_filter == "favorites") { EditFavorite(null); return; }
-        var editor = new AppEditorWindow(null, _manager, _settings.DefaultHost, Categories()) { Owner = this };
-        if (editor.ShowDialog() != true || editor.Result is not { } app) return;
-        await ChangeCatalogAsync(apps =>
-        {
-            string id = app.Id;
-            for (int i = 2; apps.Any(existing => string.Equals(existing.Id, id, StringComparison.OrdinalIgnoreCase)); i++) id = $"{app.Id}-{i}";
-            app.Id = id;
-            if (app.Order == 0) app.Order = (apps.Count == 0 ? 0 : apps.Max(existing => existing.Order)) + 10;
-            apps.Add(app);
-            return $"i-luncher: {app.Name} 추가";
-        }, $"{app.Name}을(를) 추가했습니다.");
+        if (CardOf(sender) is not { } card || !IsApiManager) return;
+        OpenAdminMenu();
+        _managerView?.ShowApp(card.App.Id);
     }
 
-    private async void EditMenu_Click(object sender, RoutedEventArgs e)
+    private void OpenAdminMenu()
     {
-        if (CardOf(sender) is not { } card) return;
-        var editor = new AppEditorWindow(card.App, _manager, _settings.DefaultHost, Categories()) { Owner = this };
-        if (editor.ShowDialog() != true || editor.Result is not { } app) return;
-        await ChangeCatalogAsync(apps =>
-        {
-            int index = apps.FindIndex(existing => string.Equals(existing.Id, app.Id, StringComparison.OrdinalIgnoreCase));
-            if (index < 0) apps.Add(app); else apps[index] = app;
-            return $"i-luncher: {app.Name} 수정";
-        }, $"{app.Name}을(를) 수정했습니다.");
+        if (!IsApiManager) return;
+        CloseDetail();
+        _filter = "manager";
+        Render();
     }
-
-    private async void DeleteMenu_Click(object sender, RoutedEventArgs e)
-    {
-        if (CardOf(sender) is not { } card) return;
-        string scope = _store is GitHubCatalogStore or ApiCatalogStore ? "공유 앱 목록에서 삭제합니다 (모든 사용자에게 적용)." : "이 PC의 앱 목록에서 삭제합니다.";
-        var confirm = new InstallConfirmationWindow(card.Name, card.Icon, "목록에서 삭제", "이 앱을 목록에서 삭제할까요?",
-            scope + (card.IsInstalled ? "\n이 PC에 설치된 앱은 지우지 않습니다. 먼저 '제거'를 하세요." : ""), "삭제") { Owner = this };
-        if (confirm.ShowDialog() != true) return;
-        string id = card.App.Id, name = card.App.Name;
-        await ChangeCatalogAsync(apps =>
-        {
-            apps.RemoveAll(existing => string.Equals(existing.Id, id, StringComparison.OrdinalIgnoreCase));
-            return $"i-luncher: {name} 삭제";
-        }, $"{name}을(를) 목록에서 삭제했습니다.");
-    }
-
-    private async Task ChangeCatalogAsync(Func<List<AppDefinition>, string> change, string done)
-    {
-        SetCatalogButtons(false);
-        StatusText.Text = "앱 목록 저장 중…";
-        try
-        {
-            var apps = await _store.UpdateAsync(change);
-            MergeCards(apps);
-            await DetectInstallsAsync(_cards.ToList());
-            Render();
-            StatusText.Text = done;
-            HideError();
-            await CheckReleasesAsync(_cards.Where(card => card.CheckedAt is null).ToList());
-            _ = LoadRepositoryIconsAsync(_cards.ToList());
-        }
-        catch (GitHubApiException error) when (error.Status is 401 or 403 or 404 && _store is GitHubCatalogStore store)
-        {
-            StatusText.Text = "앱 목록을 저장하지 못했습니다.";
-            ShowError($"앱 목록을 저장하려면 {store.Repository.FullName}에 쓰기 권한(contents: write)이 있는 토큰이 필요합니다. " +
-                      $"설정에서 {store.Repository.Host} 토큰을 등록하세요. ({error.Message})");
-        }
-        catch (Exception error) when (error is GitHubApiException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
-        {
-            StatusText.Text = "앱 목록을 저장하지 못했습니다.";
-            ShowError("앱 목록을 저장하지 못했습니다: " + error.Message);
-        }
-        finally
-        {
-            SetCatalogButtons(true);
-        }
-    }
-
-    private void SetCatalogButtons(bool enabled)
-    {
-        AddAppButton.IsEnabled = enabled;
-        RefreshButton.IsEnabled = enabled;
-    }
-
-    private IReadOnlyList<string> Categories() =>
-        _cards.Select(card => card.Category).Where(category => category != "기타").Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(category => category).ToList();
 
     // ───────────────────────── 런처 자체 업데이트 ─────────────────────────
 
@@ -721,8 +652,7 @@ public partial class MainWindow : Window
         }
         bool favorites = _filter == "favorites";
         foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
-        AddAppText.Text = favorites ? "프로그램 추가" : "앱 추가";
-        AddAppButton.ToolTip = AddAppText.Text;
+        AddAppButton.Visibility = favorites ? Visibility.Visible : Visibility.Collapsed;
         string search = SearchBox.Text.Trim();
         static List<AppCard> Sorted(IEnumerable<AppCard> cards) =>
             cards.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
@@ -800,10 +730,11 @@ public partial class MainWindow : Window
         }
         else if (_cards.Count == 0 && search.Length == 0)
         {
+            // 앱은 관리자가 관리자 메뉴 → 앱 목록에서 넣음 (버튼은 마스터에게만)
             EmptyStateTitle.Text = "아직 등록된 앱이 없습니다";
-            EmptyStateText.Text = "";
-            EmptyStateButton.Content = "앱 추가";
-            EmptyStateButton.Tag = "add";
+            EmptyStateText.Text = IsApiManager ? "관리자 메뉴 → 앱 목록에서 추가하세요." : "관리자가 앱을 추가하면 여기에 보입니다.";
+            EmptyStateButton.Content = "관리자 메뉴";
+            EmptyStateButton.Tag = "admin";
         }
         else
         {
@@ -812,6 +743,7 @@ public partial class MainWindow : Window
             EmptyStateButton.Content = "전체 앱 보기";
             EmptyStateButton.Tag = "clear";
         }
+        EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "admin" && !IsApiManager ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private StoreSection UpdatesSection(IReadOnlyList<AppCard> updates) =>
@@ -900,7 +832,7 @@ public partial class MainWindow : Window
     private void EmptyStateButton_Click(object sender, RoutedEventArgs e)
     {
         if (EmptyStateButton.Tag as string == "favorite-add") EditFavorite(null);
-        else if (EmptyStateButton.Tag as string == "add") AddAppButton_Click(sender, e);
+        else if (EmptyStateButton.Tag as string == "admin") OpenAdminMenu();
         else
         {
             _filter = "all";
@@ -926,31 +858,19 @@ public partial class MainWindow : Window
 
     private SettingsView CreateSettingsView()
     {
-        // 마스터에게만 "마스터만 보기" (마스터는 숨긴 앱까지 모두 보므로 _cards = 전체 목록)
-        bool master = _settings.Build.IsMaster(Environment.UserName);
-        var view = new SettingsView(_settings, master ? _cards.Select(card => card.App).ToList() : null);
-        view.Saved += async (changed, masterOnly) => await ApplySettingsAsync(changed, masterOnly);
+        var view = new SettingsView(_settings);
+        view.Saved += async () => await ApplySettingsAsync();
         return view;
     }
 
-    private async Task ApplySettingsAsync(bool settingsChanged, Dictionary<string, bool> masterOnly)
+    private async Task ApplySettingsAsync()
     {
-        if (settingsChanged)
-        {
-            _settings.SaveUser();
-            CreateServices();
-            _cards.Clear();
-            await RefreshAsync(checkReleases: true);
-            await RefreshNoticesAsync();
-            await CheckLauncherUpdateAsync(automatic: false);
-        }
-        if (masterOnly.Count > 0)
-            await ChangeCatalogAsync(apps =>
-            {
-                foreach (var app in apps)
-                    if (masterOnly.TryGetValue(app.Id, out bool value)) app.MasterOnly = value;
-                return "i-luncher: 마스터만 보기 변경";
-            }, "마스터만 보기를 바꿨습니다.");
+        _settings.SaveUser();
+        CreateServices();
+        _cards.Clear();
+        await RefreshAsync(checkReleases: true);
+        await RefreshNoticesAsync();
+        await CheckLauncherUpdateAsync(automatic: false);
     }
 
     private void CatalogSourceText_Click(object sender, MouseButtonEventArgs e)

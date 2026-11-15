@@ -249,9 +249,6 @@ try
         Equal("http://10.0.0.5:2003/api/v3", enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!), "GITHUB_HOST via the relay");
         Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://other.example.com/team/x")!) is null, "other hosts are asked directly");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
-        settings.User.SetAdminPassword("secret");
-        Equal("secret", settings.User.GetAdminPassword(), "admin password round-trips");
-        Assert(settings.User.AdminPassword != "secret", "kept encrypted");
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
     });

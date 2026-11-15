@@ -54,7 +54,7 @@ public partial class ManagerView
     {
         if ((sender as FrameworkElement)?.DataContext is not ReleaseRow row || !row.CanRelease) return;
         string version = row.Version.Trim().TrimStart('v', 'V');
-        if (MessageBox.Show(OwnerWindow, $"{row.Name} v{version}을(를) 릴리스할까요?", "API Manager",
+        if (MessageBox.Show(OwnerWindow, $"{row.Name} v{version}을(를) 릴리스할까요?", "관리자 메뉴",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         row.Starting = true;
         bool started = await Run(() => Admin.SendAsync(HttpMethod.Post, "admin/api/releases",

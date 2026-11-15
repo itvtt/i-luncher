@@ -53,7 +53,7 @@ GitHub 중계(GitHub REST API v3와 같은 주소, 읽기만): 앱·런처가 �
     GET  /admin/api/reports/analysis?days=7
 
 GitHub 러너(관리자 비밀번호, 바꾸기는 서버 PC에서만, SETTINGS의 RUNNERS_ROOT): 이 PC의 Actions 러너(폴더마다 하나)를
-API Manager의 러너 화면에서 추가·편집(.env)·시작·중지·삭제합니다. 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다.
+i-luncher 관리자 메뉴의 러너 화면에서 추가·편집(.env)·시작·중지·삭제합니다. 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다.
     GET    /admin/api/runners          {available, task, runners: [{id, name, repository, on, running, busy, github, env}], repositories}
     GET    /admin/api/runners/template?repository=<소유자>/<저장소>   새 러너의 폴더·이름·.env
     POST   /admin/api/runners          {repository, folder, name, env} → GitHub에 등록하고 시작
@@ -140,14 +140,14 @@ SETTINGS = {
     "EQUIPMENT_STATUS_TABLE": "",      #        설비 상태 표(열: line, prc, eqpid, status, Hr, Down_time, view, comment, sdwt)
     "EQUIPMENT_API_KEY": "",           # (선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다
     "EQUIPMENT_REFRESH_SECONDS": 10,   # 설비 상태 DB를 다시 읽는 간격(초)
-    "RUNNERS_ROOT": "",                # (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 API Manager의 러너 화면에서
+    "RUNNERS_ROOT": "",                # (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-luncher 관리자 메뉴의 러너 화면에서
                                        #        추가·편집·시작·중지·삭제하고, 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다
     "RUNNERS_ENV_DIR": "",             #        새 러너가 빌드에 쓰는 설정 파일(<저장소>.env) 폴더. 비우면 환경 변수 APPS_ENV_DIR, 없으면 RUNNERS_ROOT\\env
     "RUNNER_PACKAGE": "",              #        새 러너 파일(actions-runner-win-x64-*.zip). 비우면 RUNNERS_ROOT의 다른 러너 파일을 씁니다
 }
 # ── 설정 끝 ──
 
-VERSION = "2.19.0"
+VERSION = "2.19.1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -403,7 +403,7 @@ class Config:
         self.equipment_table = text("EQUIPMENT_STATUS_TABLE")
         self.equipment_api_key = text("EQUIPMENT_API_KEY")
         self.equipment_refresh_seconds = max(1, number("EQUIPMENT_REFRESH_SECONDS", 10))
-        # GitHub Actions runners of this PC: one folder each under RUNNERS_ROOT, managed from the API Manager's 러너 page.
+        # GitHub Actions runners of this PC: one folder each under RUNNERS_ROOT, managed from the i-luncher admin menu's 러너 page.
         self.runners_root = Path(text("RUNNERS_ROOT")).expanduser() if text("RUNNERS_ROOT") else None
         env_dir = text("RUNNERS_ENV_DIR") or os.environ.get("APPS_ENV_DIR", "").strip()
         self.runners_env_dir = Path(env_dir).expanduser() if env_dir else self.runners_root / "env" if self.runners_root else None
@@ -2387,7 +2387,7 @@ def runners_task_xml(command: str, arguments: str, folder: str, user: str) -> st
     return f"""<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>{esc("켜 둔 GitHub Actions 러너를 시작합니다 (i-luncher API Manager의 러너 화면에서 관리)")}</Description>
+    <Description>{esc("켜 둔 GitHub Actions 러너를 시작합니다 (i-luncher 관리자 메뉴의 러너 화면에서 관리)")}</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -2529,7 +2529,7 @@ class ProcessTable:
 
 class Runners:
     """This PC's GitHub Actions self-hosted runners, one folder each under RUNNERS_ROOT (the runner's own layout: .runner, bin,
-    externals, run.cmd, and its .env of variables for the jobs). The API Manager's 러너 page lists them, adds one (registers
+    externals, run.cmd, and its .env of variables for the jobs). The i-luncher admin menu's 러너 page lists them, adds one (registers
     it with its repository), edits its .env, starts, stops and removes them. One logon task (RUNNERS_TASK) starts every runner
     that is on; a runner stopped here stays off until it is started here again.
 
@@ -3767,7 +3767,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parts == ["runners", "template"] and method == "GET":
             return self._json(200, server.runners.template((self.query.get("repository") or [""])[0]))
         if parts[:1] == ["runners"] and method in ("POST", "PUT", "DELETE"):
-            # They start programs and change Task Scheduler on the server PC: only from that PC (the API Manager there).
+            # They start programs and change Task Scheduler on the server PC: only from that PC (the i-luncher admin menu there).
             self._require_this_pc()
             if parts == ["runners"] and method == "POST":
                 body = body_object()

@@ -133,6 +133,9 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility UpdateMenuVisibility => UpdateAvailable ? Visibility.Visible : Visibility.Collapsed;
     public Visibility InstalledMenuVisibility => IsInstalled ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ReleaseMenuVisibility => Latest is not null ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>카드 메뉴의 "관리자 메뉴에서 편집": 관리자 메뉴를 쓰는 마스터 계정만 (런처가 시작할 때 정함)</summary>
+    public static bool AdminMenus { get; set; }
+    public Visibility AdminMenuVisibility => AdminMenus ? Visibility.Visible : Visibility.Collapsed;
     // 마스터가 API 서버 관리 프로그램의 앱 목록에서 켬
     public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
     // 즐겨찾기 (이 PC 에만, FavoriteStore)

@@ -3,7 +3,7 @@ using System.Windows;
 
 namespace ApiManager;
 
-/// <summary>i-luncher 가 API Manager 를 여는 곳. 마스터 계정 확인은 런처가 함 (MASTER_USERS)</summary>
+/// <summary>i-luncher 가 관리자 메뉴를 여는 곳. 마스터 계정 확인은 런처가 함 (MASTER_USERS, 비밀번호 없이 계정 이름으로)</summary>
 public static class ManagerHost
 {
     private static ResourceDictionary? _resources;
@@ -16,12 +16,17 @@ public static class ManagerHost
     internal static object Resource(string key) =>
         (_resources ??= new ResourceDictionary { Source = new Uri("pack://application:,,,/ApiManager;component/ManagerResources.xaml") })[key];
 
-    /// <summary>런처 오른쪽 화면에 넣을 API Manager. 런처가 하나 만들어 두고 다시 씀</summary>
+    /// <summary>런처 오른쪽 화면에 넣을 관리자 메뉴. 런처가 하나 만들어 두고 다시 씀</summary>
     public static ManagerView CreateView() => new();
+
+    /// <summary>관리자 메뉴에서 앱 목록을 저장함: 런처가 목록을 다시 읽음</summary>
+    public static event Action? CatalogSaved;
+
+    internal static void RaiseCatalogSaved() => CatalogSaved?.Invoke();
 
     /// <summary>
     /// 화면 없이: 이 PC 가 서버 PC 면(relay.py 가 배포돼 있으면) 런처에 든 relay.py 가 더 새 버전일 때 바꾸고, 서버가 꺼져 있으면 시작.
-    /// 서버 PC 가 아니면 아무것도 하지 않음. 실패는 조용히 넘김 (API Manager 화면에서 자세히 보임)
+    /// 서버 PC 가 아니면 아무것도 하지 않음. 실패는 조용히 넘김 (관리자 메뉴에서 자세히 보임)
     /// </summary>
     public static async Task ApplyAsync()
     {

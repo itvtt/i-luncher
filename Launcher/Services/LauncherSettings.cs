@@ -32,7 +32,7 @@ public sealed class BuildSettings
         return MasterUsers.Count == 0 || MasterUsers.Any(master => string.Equals(master, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>MASTER_USERS 에 이름이 있는 계정만 (목록이 비면 아무도 아님): API Manager</summary>
+    /// <summary>MASTER_USERS 에 이름이 있는 계정만 (목록이 비면 아무도 아님): 관리자 메뉴</summary>
     public bool IsListedMaster(string account)
     {
         string name = account[(account.LastIndexOf('\\') + 1)..];
@@ -88,8 +88,6 @@ public sealed class UserSettings
     public string? CatalogMode { get; set; }
     /// <summary>비우면 빌드 설정(launcher.env)의 API_SERVER</summary>
     public string? ApiServer { get; set; }
-    /// <summary>API 서버 관리자 비밀번호 (DPAPI 로 보호한 base64). 앱 목록을 바꿀 때만 씀</summary>
-    public string? AdminPassword { get; set; }
     public bool AutoUpdateLauncher { get; set; } = true;
     /// <summary>호스트 → DPAPI 로 보호한 토큰(base64)</summary>
     public Dictionary<string, string> Tokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -131,16 +129,6 @@ public sealed class UserSettings
             return null;
         }
     }
-
-    public string? GetAdminPassword()
-    {
-        if (string.IsNullOrEmpty(AdminPassword)) return null;
-        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(AdminPassword), Entropy, DataProtectionScope.CurrentUser)); }
-        catch (Exception error) when (error is CryptographicException or FormatException) { return null; }
-    }
-
-    public void SetAdminPassword(string? password) => AdminPassword = string.IsNullOrEmpty(password) ? null
-        : Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(password), Entropy, DataProtectionScope.CurrentUser));
 
     public void SetToken(string host, string? token)
     {

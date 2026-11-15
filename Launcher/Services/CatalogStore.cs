@@ -182,8 +182,8 @@ public sealed class ApiCatalogStore : ICatalogStore, IDisposable
             throw new GitHubApiException(status, status switch
             {
                 401 or 429 => password.Length == 0
-                    ? "앱 목록을 바꾸려면 설정에서 API 서버 관리자 비밀번호를 입력하세요."
-                    : "API 서버 관리자 비밀번호가 맞지 않습니다. 설정에서 확인하세요.",
+                    ? "앱 목록은 관리자 메뉴에서 바꿉니다 (API 서버 관리자 비밀번호가 필요합니다)."
+                    : "API 서버 관리자 비밀번호가 맞지 않습니다.",
                 409 => "다른 사람이 계속 목록을 바꾸고 있습니다. 새로 고친 뒤 다시 시도하세요.",
                 _ => $"API 서버가 목록을 저장하지 않았습니다 ({status}): {text.Trim().Trim('"')}"
             });

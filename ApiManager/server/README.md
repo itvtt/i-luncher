@@ -50,7 +50,7 @@ python relay\relay.py --uninstall-startup
 | `RELAY_TLS_CERT` · `RELAY_TLS_KEY` | 둘 다 쓰면 HTTPS로 받습니다(PEM) |
 | `MASTER_USERS` | (선택) 마스터 계정(앱 .env의 `MASTER_USERS`와 같은 값, 앱 기본 `test_01,test_07,test_08`): 공지 저장, 작성자와 상관없이 모든 스킬 수정(새 버전)·삭제. 작성자는 자기 스킬을 늘 수정·삭제합니다. 쓰면 서버도 다시 확인하고, 비우면 앱의 판단을 믿습니다 |
 | `RELAY_GITHUB_TOKEN` · `RELAY_GITHUB_SYNC_MINUTES` | 깃허브 링크로 공유한 스킬을 읽을 토큰(선택, 비공개·내부 저장소용, 읽기 권한만)과 다시 확인하는 간격(기본 10분). GitHub Enterprise 링크는 `<주소>/api/v3`로 읽습니다 |
-| `RUNNERS_ROOT` | (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 API Manager의 **러너** 화면이 켜집니다 (아래 "러너") |
+| `RUNNERS_ROOT` | (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-luncher 관리자 메뉴의 **러너** 화면이 켜집니다 (아래 "러너") |
 | `RUNNERS_ENV_DIR` · `RUNNER_PACKAGE` | 새 러너의 `.env`가 가리킬 빌드 설정 폴더(비우면 환경 변수 `APPS_ENV_DIR`, 없으면 `RUNNERS_ROOT\env`)와 새 러너 파일 `actions-runner-win-x64-*.zip`(비우면 다른 러너의 파일을 하드 링크로 씀) |
 
 앱은 게시할 때 앱 `.env`(저장소 맨 위, 앱 설정은 이것 하나)의 `RELAY_HOST`·`RELAY_PORT`·`RELAY_INGEST_KEY`만 읽어 `report-relay.json`을 만듭니다. 관리자 비밀번호는 앱에 들어가지 않습니다. 서버를 옮기면 SETTINGS와 앱 `.env`의 `RELAY_HOST`를 바꾸고 앱을 다시 게시하세요.
@@ -63,12 +63,12 @@ python relay\relay.py --uninstall-startup
 
 ### 앱 페이지 (스크린샷·상세 설명)
 
-i-luncher에서 카드를 누르면 열리는 앱 페이지의 상세 설명과 스크린샷은 API Manager → **앱 목록**에서 넣습니다 (앱 목록의 `details`, `screenshots`).
+i-luncher에서 카드를 누르면 열리는 앱 페이지의 상세 설명과 스크린샷은 i-luncher 관리자 메뉴 → **앱 목록**에서 넣습니다 (앱 목록의 `details`, `screenshots`).
 스크린샷은 [+]로 PNG·JPG를 고르거나 이미지를 복사해 앱 칸에서 Ctrl+V 하면 바로 서버에 올라가고(`POST /launcher/media`, 관리자 비밀번호, 8 MB까지, 이름 = 내용의 SHA-256 앞 16자리), [저장]하면 앱 페이지에 보입니다. 앞으로·빼기로 순서를 바꿉니다(12장까지). 런처는 `GET /launcher/media/<이름>`으로 받아 보관합니다. 어느 앱도 쓰지 않는 이미지는 앱 목록을 저장할 때 하루 지난 것부터 지웁니다.
 
 ### 러너
 
-`RUNNERS_ROOT`를 쓰면 API Manager의 **러너** 화면에서 이 PC의 Actions 러너를 관리합니다 (바꾸는 요청은 서버 PC에서 온 것만 받음).
+`RUNNERS_ROOT`를 쓰면 i-luncher 관리자 메뉴의 **러너** 화면에서 이 PC의 Actions 러너를 관리합니다 (바꾸는 요청은 서버 PC에서 온 것만 받음).
 
 - **목록**: 러너마다 상태(실행 중·작업 중·멈춤·꺼짐)와 GitHub 상태(온라인·오프라인), 저장소, 폴더, `.env`.
 - **추가(+)**: 저장소를 고르면 폴더·러너 이름·`.env`(그 저장소 `release.yml`이 읽는 `*_ENV_PATH` 변수 = `<설정 폴더>\<저장소>.env`)가 채워집니다. [등록]하면 서버가 등록 토큰을 받아 `config.cmd`로 등록하고 시작합니다 (토큰에 저장소 관리 권한 필요).
