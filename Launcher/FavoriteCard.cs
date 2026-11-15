@@ -21,6 +21,11 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public double CardOpacity => Exists ? 1.0 : 0.55;
     public string ToolTipText => Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
     public string AutomationId => "Favorite_" + Program.Id;
+    /// <summary>카드 배경: 경로로 정한 그라데이션</summary>
+    public Brush Art => CardArt.Gradient(CardArt.Stable(Program.Path.ToLowerInvariant()));
+    /// <summary>카드 왼쪽 위 작은 글자: 폴더 · 프로그램 · 파일</summary>
+    public string Eyebrow => Directory.Exists(Program.Path) ? "폴더"
+        : Path.GetExtension(Program.Path).ToLowerInvariant() is ".exe" or ".lnk" or ".bat" or ".cmd" ? "프로그램" : "파일";
     // 앱 카드와 같은 오로라 글로우 (아이콘 색, 없으면 차분한 파랑)
     private Color AccentColor => CardColors.Accent(Icon) ?? CardColors.Fallback;
     public Brush AccentGlowBrush => CardColors.Glow(AccentColor);

@@ -420,10 +420,10 @@
                 <Grid Grid.Row="3" Margin="0,6,0,0">
                     <ScrollViewer x:Name="CardScrollViewer" Padding="0,0,8,16" SizeChanged="CardScrollViewer_SizeChanged" ScrollChanged="CardScrollViewer_ScrollChanged" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <ScrollViewer.Resources>
-                            <!-- 앱 한 줄: 아이콘 · 이름(길면 두 줄) · 설명 · 오른쪽 열기/업데이트/받기 -->
+                            <!-- 앱 카드 (홍보 카드와 같은 모양, 크기 고정): 머리글(새 버전 · 새 앱 · 베타 · 분류)과 큰 아이콘, 이름 · 설명, 아래 버전과 열기/업데이트/받기 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid Margin="0,0,12,12">
-                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="Card_Click"
+                                    <Button Style="{StaticResource HeroCardStyle}" Height="216" Tag="{Binding}" Click="Card_Click"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
@@ -442,33 +442,33 @@
                                             <MenuItem Header="목록에서 삭제…" Icon="&#xE738;" Tag="{Binding}" Click="DeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <Grid Height="78">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <Grid Width="56" Height="56" VerticalAlignment="Center">
-                                                <Border CornerRadius="13" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}" />
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
-                                                <Image Width="56" Height="56" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <Border CornerRadius="18" Background="{Binding Art}" Padding="18,16,16,14">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                                <TextBlock Margin="0,2,72,0" VerticalAlignment="Top" FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" TextTrimming="CharacterEllipsis" />
+                                                <Grid Width="60" Height="60" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                                    <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
+                                                    <Border CornerRadius="15" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}">
+                                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
+                                                    </Border>
+                                                    <Image Width="60" Height="60" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                                </Grid>
+                                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="20" FontWeight="Bold" Foreground="White" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding DescriptionText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                                <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,10,0,0">
+                                                    <DockPanel>
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource HeroActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
+                                                                Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
+                                                                AutomationProperties.Name="{Binding StoreButtonText}" />
+                                                        <TextBlock Margin="0,0,10,0" VerticalAlignment="Center" FontSize="12" Foreground="#CCFFFFFF" Text="{Binding VersionText}" ToolTip="{Binding VersionToolTip}" TextTrimming="CharacterEllipsis" />
+                                                    </DockPanel>
+                                                </Border>
                                             </Grid>
-                                            <StackPanel Grid.Column="1" Margin="10,8,8,8" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding TitleBrush}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
-                                                <DockPanel Margin="0,2,0,0">
-                                                    <Border DockPanel.Dock="Left" Style="{StaticResource TagStyle}" Height="17" Padding="5,0" Margin="0,0,5,0" Background="#29E6C07A" Visibility="{Binding BetaVisibility}" AutomationProperties.Name="베타">
-                                                        <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
-                                                    </Border>
-                                                    <Border DockPanel.Dock="Left" Style="{StaticResource TagStyle}" Height="17" Padding="5,0" Margin="0,0,5,0" Background="#293DD68C" Visibility="{Binding NewVisibility}" AutomationProperties.Name="새 앱">
-                                                        <TextBlock VerticalAlignment="Center" FontSize="10" FontWeight="Bold" Foreground="#FF7FE2B0" Text="NEW" />
-                                                    </Border>
-                                                    <TextBlock FontSize="12" Foreground="#FF98989D" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" />
-                                                </DockPanel>
-                                            </StackPanel>
-                                            <Button Grid.Column="2" Style="{StaticResource StoreActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
-                                                    Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
-                                                    AutomationProperties.Name="{Binding StoreButtonText}" />
-                                        </Grid>
+                                        </Border>
                                     </Button>
-                                    <ProgressBar Height="2" Margin="16,0,16,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                    <ProgressBar Height="3" Margin="18,0,18,6" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                  IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding ProgressValue, Mode=OneWay}" Visibility="{Binding BusyVisibility}"
-                                                 Background="Transparent" BorderThickness="0" Foreground="#FF4AA3FF" />
+                                                 Background="#33FFFFFF" BorderThickness="0" Foreground="White" />
                                 </Grid>
                             </DataTemplate>
 
@@ -502,10 +502,10 @@
                                 </Button>
                             </DataTemplate>
 
-                            <!-- 즐겨찾기의 내 PC 프로그램 한 줄 -->
+                            <!-- 즐겨찾기의 내 PC 프로그램 카드 (앱 카드와 같은 모양): 머리글(프로그램 · 폴더 · 파일)과 아이콘, 이름 · 경로, 아래 열기 -->
                             <DataTemplate DataType="{x:Type local:FavoriteCard}">
                                 <Grid Margin="0,0,12,12">
-                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}" Opacity="{Binding CardOpacity}"
+                                    <Button Style="{StaticResource HeroCardStyle}" Height="216" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}" Opacity="{Binding CardOpacity}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
@@ -516,22 +516,23 @@
                                             <MenuItem Header="삭제" Icon="&#xE74D;" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <Grid Height="78">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <Grid Width="56" Height="56" VerticalAlignment="Center">
-                                                <Border CornerRadius="13" Background="#FF2C2D32" Visibility="{Binding InitialsVisibility}">
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
+                                        <Border CornerRadius="18" Background="{Binding Art}" Padding="18,16,16,14">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                                <TextBlock Margin="0,2,72,0" VerticalAlignment="Top" FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" TextTrimming="CharacterEllipsis" />
+                                                <Grid Width="60" Height="60" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                                    <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
+                                                    <Border CornerRadius="15" Background="#33FFFFFF" />
+                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
+                                                    <Image Width="44" Height="44" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                                </Grid>
+                                                <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="20" FontWeight="Bold" Foreground="White" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Row="2" Margin="0,3,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding PathText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                                <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,10,0,0">
+                                                    <Button HorizontalAlignment="Right" Style="{StaticResource HeroActionButtonStyle}" Tag="{Binding}" Click="FavoriteCard_Click" Content="열기" AutomationProperties.Name="열기" />
                                                 </Border>
-                                                <Image Width="48" Height="48" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
-                                            <StackPanel Grid.Column="1" Margin="10,8,8,8" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding PathText}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <Border Grid.Column="2" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32">
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="#FF4AA3FF" Text="열기" />
-                                            </Border>
-                                        </Grid>
+                                        </Border>
                                     </Button>
                                 </Grid>
                             </DataTemplate>

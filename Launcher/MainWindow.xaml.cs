@@ -727,6 +727,10 @@ public partial class MainWindow : Window
         static List<AppCard> Sorted(IEnumerable<AppCard> cards) =>
             cards.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         List<FavoriteCard> Programs() => _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
+        // 카드 색: 분류별 섹션 순서대로 돌려 가며 (같은 분류의 이웃 카드끼리 다른 색, 화면을 바꿔도 앱마다 같은 색)
+        int palette = 0;
+        foreach (var group in Sorted(_cards).GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var card in group) card.Palette = palette++ % CardArt.Count;
 
         var sections = new List<StoreSection>();
         _updatesSection = null;
@@ -767,7 +771,7 @@ public partial class MainWindow : Window
                 // 나란한 카드가 같은 색이면 다음 색으로
                 for (int i = 1; i < picked.Count; i++)
                     while (picked.Take(i).Any(previous => previous.Palette == picked[i].Palette))
-                        picked[i].Palette = (picked[i].Palette + 1) % HeroItem.PaletteCount;
+                        picked[i].Palette = (picked[i].Palette + 1) % CardArt.Count;
                 var heroes = picked.Cast<object>().ToList();
                 if (heroes.Count > 0) sections.Add(new StoreSection("", heroes) { ShowHeader = false });
             }

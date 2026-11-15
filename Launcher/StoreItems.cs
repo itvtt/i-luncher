@@ -3,10 +3,9 @@ using System.Windows.Media;
 
 namespace ILauncher;
 
-/// <summary>스토어형 화면 맨 위의 홍보 카드 (앱 카드와 같은 폭): 작은 머리글과 큰 아이콘, 제목 · 설명, 아래 분류와 버튼</summary>
-public sealed class HeroItem(AppCard card, string eyebrow, string title, string subtitle)
+/// <summary>카드 배경: 맑은 두 색 그라데이션 (아이콘 색을 어둡게 하면 갈색·흙색이 나와서 정해 둔 색만 씀)</summary>
+public static class CardArt
 {
-    // 맑은 두 색 그라데이션 (아이콘 색을 어둡게 하면 갈색·흙색이 나와서 정해 둔 색만 씀)
     private static readonly (Color From, Color To)[] Palettes =
     [
         (Color.FromRgb(0x4F, 0x46, 0xE5), Color.FromRgb(0x93, 0x33, 0xEA)),  // 남색 → 보라
@@ -17,32 +16,36 @@ public sealed class HeroItem(AppCard card, string eyebrow, string title, string 
         (Color.FromRgb(0x05, 0x96, 0x69), Color.FromRgb(0x0E, 0xA5, 0xE9)),  // 초록 → 하늘
     ];
 
-    public AppCard Card { get; } = card;
-    public string Eyebrow { get; } = eyebrow;
-    public string Title { get; } = title;
-    public string Subtitle { get; } = subtitle;
+    public static int Count => Palettes.Length;
 
-    /// <summary>앱마다 정해지는 색 번호 (같은 화면의 카드끼리 겹치지 않게 Render 가 고름)</summary>
-    public int Palette { get; set; } = StableIndex(card.App.Id.Length > 0 ? card.App.Id : card.Name);
-
-    private static int StableIndex(string text)
+    /// <summary>글자로 정하는 색 번호 (같은 글자는 늘 같은 색)</summary>
+    public static int Stable(string text)
     {
         uint hash = 2166136261;
         foreach (char c in text) hash = (hash ^ c) * 16777619;
         return (int)(hash % (uint)Palettes.Length);
     }
 
-    public static int PaletteCount => Palettes.Length;
-
-    /// <summary>카드 배경: 왼쪽 위에서 오른쪽 아래로 맑은 두 색</summary>
-    public Brush Art
+    /// <summary>왼쪽 위에서 오른쪽 아래로 맑은 두 색</summary>
+    public static Brush Gradient(int index)
     {
-        get
-        {
-            var (from, to) = Palettes[Palette % Palettes.Length];
-            var brush = new LinearGradientBrush(from, to, new Point(0, 0), new Point(1, 1));
-            brush.Freeze();
-            return brush;
-        }
+        var (from, to) = Palettes[((index % Palettes.Length) + Palettes.Length) % Palettes.Length];
+        var brush = new LinearGradientBrush(from, to, new Point(0, 0), new Point(1, 1));
+        brush.Freeze();
+        return brush;
     }
+}
+
+/// <summary>스토어형 화면 맨 위의 홍보 카드 (앱 카드와 같은 모양): 머리글이 상태(새 버전 · 새 앱 …), 제목에 새 버전 번호</summary>
+public sealed class HeroItem(AppCard card, string eyebrow, string title, string subtitle)
+{
+    public AppCard Card { get; } = card;
+    public string Eyebrow { get; } = eyebrow;
+    public string Title { get; } = title;
+    public string Subtitle { get; } = subtitle;
+
+    /// <summary>색 번호: 처음엔 앱 카드와 같은 색, 나란한 홍보 카드끼리 겹치면 Render 가 바꿈</summary>
+    public int Palette { get; set; } = card.Palette;
+
+    public Brush Art => CardArt.Gradient(Palette);
 }

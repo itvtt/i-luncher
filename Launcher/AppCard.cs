@@ -104,6 +104,18 @@ public sealed class AppCard : INotifyPropertyChanged
         NotifyAll();
     }
 
+    // ── 카드 배경 (맑은 두 색 그라데이션) ──
+    private int? _palette;
+    /// <summary>색 번호: Render 가 분류 순서대로 돌려 가며 정함 (같은 분류의 이웃 카드끼리 다른 색). 정하기 전에는 id 로</summary>
+    public int Palette
+    {
+        get => _palette ??= CardArt.Stable(App.Id.Length > 0 ? App.Id : App.Name);
+        set { if (_palette == value) return; _palette = value; Notify(); Notify(nameof(Art)); }
+    }
+    public Brush Art => CardArt.Gradient(Palette);
+    /// <summary>카드 왼쪽 위 작은 글자: 새 버전 · 새 앱 · 베타, 아니면 분류</summary>
+    public string Eyebrow => UpdateAvailable ? "새 버전" : App.New ? "새 앱" : App.Beta ? "베타" : Category;
+
     // ── 화면에 보이는 값 ──
     public string Name => App.Name;
     public string EnglishName => App.EnglishName?.Trim() ?? "";
