@@ -35,17 +35,3 @@ public static class CardArt
         return brush;
     }
 }
-
-/// <summary>스토어형 화면 맨 위의 홍보 카드 (앱 카드와 같은 모양): 머리글이 상태(새 버전 · 새 앱 …), 제목에 새 버전 번호</summary>
-public sealed class HeroItem(AppCard card, string eyebrow, string title, string subtitle)
-{
-    public AppCard Card { get; } = card;
-    public string Eyebrow { get; } = eyebrow;
-    public string Title { get; } = title;
-    public string Subtitle { get; } = subtitle;
-
-    /// <summary>색 번호: 처음엔 앱 카드와 같은 색, 나란한 홍보 카드끼리 겹치면 Render 가 바꿈</summary>
-    public int Palette { get; set; } = card.Palette;
-
-    public Brush Art => CardArt.Gradient(Palette);
-}

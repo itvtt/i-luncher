@@ -763,18 +763,6 @@ public partial class MainWindow : Window
             });
             title = _filter switch { "installed" => "설치된 앱", "updates" => "업데이트", _ when category is not null => category, _ => "전체 앱" };
             var updates = scope.Where(card => card.UpdateAvailable).ToList();
-            // 전체 앱: 맨 위 홍보 카드 세 개 (새 버전 → 새 앱 → 아직 안 받은 앱 → 즐겨찾기 순), 아래 앱 카드와 같은 칸·같은 폭.
-            // 크기는 고정이라 최대화해도 그대로, 창이 세 칸보다 좁을 때만 들어가는 만큼
-            if (_filter == "all")
-            {
-                var picked = Heroes(scope).Take(Math.Min(HeroCount, RowColumns)).ToList();
-                // 나란한 카드가 같은 색이면 다음 색으로
-                for (int i = 1; i < picked.Count; i++)
-                    while (picked.Take(i).Any(previous => previous.Palette == picked[i].Palette))
-                        picked[i].Palette = (picked[i].Palette + 1) % CardArt.Count;
-                var heroes = picked.Cast<object>().ToList();
-                if (heroes.Count > 0) sections.Add(new StoreSection("", heroes) { ShowHeader = false });
-            }
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
             if (_filter != "updates")
             {
@@ -785,15 +773,14 @@ public partial class MainWindow : Window
             }
         }
 
-        // 카드는 늘 같은 크기 (창을 키우면 열만 늘어남, 맨 위 홍보 카드도 한 칸씩)
+        // 카드는 늘 같은 크기 (창을 키우면 열만 늘어남)
         foreach (var section in sections)
         {
             section.Columns = RowColumns;
             section.PanelWidth = RowColumns * (CardWidth + RowGap);
         }
         SectionList.ItemsSource = sections;
-        VisibleCards = sections.SelectMany(section => section.Items.Select(item => item is HeroItem hero ? hero.Card : item))
-            .OfType<AppCard>().Distinct().ToList();
+        VisibleCards = sections.SelectMany(section => section.Items).OfType<AppCard>().Distinct().ToList();
         int shown = VisibleCards.Count + sections.SelectMany(section => section.Items.OfType<FavoriteCard>()).Count();
         SectionTitle.Text = title;
         CountText.Text = shown > 0 ? $"{shown}개" : "";
@@ -825,19 +812,6 @@ public partial class MainWindow : Window
             EmptyStateButton.Content = "전체 앱 보기";
             EmptyStateButton.Tag = "clear";
         }
-    }
-
-    /// <summary>홍보 카드 후보: 새 버전 → 새 앱(NEW) → 아직 안 받은 앱 → 즐겨찾기 → 그 밖의 앱</summary>
-    private static IEnumerable<HeroItem> Heroes(IReadOnlyList<AppCard> scope)
-    {
-        var used = new HashSet<AppCard>();
-        IEnumerable<HeroItem> Pick(IEnumerable<AppCard> cards, Func<AppCard, HeroItem> make) =>
-            cards.Where(used.Add).Select(make);
-        return Pick(scope.Where(card => card.UpdateAvailable), card => new HeroItem(card, "새 버전", $"{card.Name} {card.Latest?.Version}", card.DescriptionText))
-            .Concat(Pick(scope.Where(card => card.App.New), card => new HeroItem(card, "새 앱", card.Name, card.DescriptionText)))
-            .Concat(Pick(scope.Where(card => !card.IsInstalled && card.Latest is not null), card => new HeroItem(card, "아직 안 받은 앱", card.Name, card.DescriptionText)))
-            .Concat(Pick(scope.Where(card => card.IsFavorite), card => new HeroItem(card, "즐겨찾기", card.Name, card.DescriptionText)))
-            .Concat(Pick(scope, card => new HeroItem(card, card.Category, card.Name, card.DescriptionText)));
     }
 
     private StoreSection UpdatesSection(IReadOnlyList<AppCard> updates) =>
@@ -1052,7 +1026,6 @@ public partial class MainWindow : Window
 
     // 스토어형 줄: 한 줄이 이 폭 이상이 되게 1~4열 (캔버스 모양: 보통 창에서 3열)
     private const double CardWidth = 260, RowGap = 12;
-    private const int HeroCount = 3;
 
     public static readonly DependencyProperty RowColumnsProperty =
         DependencyProperty.Register(nameof(RowColumns), typeof(int), typeof(MainWindow), new PropertyMetadata(3));
@@ -1077,7 +1050,7 @@ public partial class MainWindow : Window
         int columns = Math.Clamp((int)Math.Floor(available / (CardWidth + RowGap)), 1, 12);
         if (columns == RowColumns) return;
         RowColumns = columns;
-        if (IsLoaded) Render();  // 줄마다 카드 수가 열 수를 따름 (창이 좁으면 홍보 카드도 그만큼)
+        if (IsLoaded) Render();  // 줄마다 카드 수가 열 수를 따름
     }
 
     // ───────────────────────── 창 ─────────────────────────
