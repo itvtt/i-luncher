@@ -54,6 +54,13 @@ static class UiSnapshot
                     string? detailId = Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_DETAIL");
                     if (window.VisibleCards.FirstOrDefault(card => detailId is null || card.App.Id == detailId) is { } detailCard)
                     {
+                        // ILUNCHER_SNAPSHOT_SHOTS=<이름,이름>: 앱 목록은 그대로 두고 이 화면에서만 스크린샷을 넣어 봄
+                        if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_SHOTS") is { Length: > 0 } shots)
+                        {
+                            var app = detailCard.App.Clone();
+                            app.Screenshots = [.. shots.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+                            detailCard.App = app;
+                        }
                         window.ShowDetail(detailCard);
                         Pump(TimeSpan.FromSeconds(4));
                         Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
