@@ -41,6 +41,11 @@ static class UiSnapshot
                         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
                     }
                     Save((FrameworkElement)window.Content, output);
+                    // 아래로 내린 화면 (앱 카드 줄)
+                    window.CardScrollViewer.ScrollToEnd();
+                    Pump(TimeSpan.FromMilliseconds(500));
+                    Save((FrameworkElement)window.Content, Suffix(output, "-scrolled"));
+                    window.CardScrollViewer.ScrollToHome();
                     Console.WriteLine($"title: {window.SectionTitle.Text} · {window.CountText.Text} · status: {window.StatusText.Text}");
                     Console.WriteLine($"catalog: {window.CatalogSourceText.Text}");
                     if (window.ErrorPanel.Visibility == Visibility.Visible) Console.WriteLine($"error: {window.ErrorText.Text}");

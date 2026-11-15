@@ -47,23 +47,37 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-            <!-- 앱 한 줄: 배경 없음, 마우스를 올리면 살짝 밝게 -->
+            <!-- 앱 카드: 옅은 반투명 유리 (위가 조금 밝은 흰 막 + 가는 테두리), 마우스를 올리면 조금 더 밝게 -->
+            <LinearGradientBrush x:Key="GlassCardBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#12FFFFFF" Offset="0" />
+                <GradientStop Color="#08FFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="GlassCardHoverBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#1EFFFFFF" Offset="0" />
+                <GradientStop Color="#10FFFFFF" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="GlassCardEdgeBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#24FFFFFF" Offset="0" />
+                <GradientStop Color="#0CFFFFFF" Offset="1" />
+            </LinearGradientBrush>
             <Style x:Key="StoreRowStyle" TargetType="Button">
-                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Background" Value="{StaticResource GlassCardBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource GlassCardEdgeBrush}" />
                 <Setter Property="Foreground" Value="#FFF5F5F7" />
-                <Setter Property="Padding" Value="6,0" />
+                <Setter Property="Padding" Value="14,2" />
                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Row" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="10">
+                            <Border x:Name="Row" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="1" CornerRadius="14">
                                 <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
                             </Border>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#0FFFFFFF" /></Trigger>
-                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Row" Property="Background" Value="#1AFFFFFF" /></Trigger>
-                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Row" Property="Background" Value="#14FFFFFF" /></Trigger>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource GlassCardHoverBrush}" /><Setter TargetName="Row" Property="BorderBrush" Value="#38FFFFFF" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Row" Property="Background" Value="#0AFFFFFF" /></Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="#FF4AA3FF" /></Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Row" Property="Opacity" Value="0.62" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -292,7 +306,7 @@
                         <ScrollViewer.Resources>
                             <!-- 앱 한 줄: 아이콘 · 이름(길면 두 줄) · 설명 · 오른쪽 열기/업데이트/받기 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
-                                <Grid Margin="0,0,20,0">
+                                <Grid Margin="0,0,12,12">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="Card_Click" IsEnabled="{Binding CanInteract}" ToolTipService.ShowOnDisabled="True"
                                             ToolTip="{Binding RunToolTip}" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -336,8 +350,7 @@
                                             </Border>
                                         </Grid>
                                     </Button>
-                                    <Border Height="1" Margin="66,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
-                                    <ProgressBar Height="2" Margin="66,0,0,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                    <ProgressBar Height="2" Margin="16,0,16,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                  IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding ProgressValue, Mode=OneWay}" Visibility="{Binding BusyVisibility}"
                                                  Background="Transparent" BorderThickness="0" Foreground="#FF4AA3FF" />
                                 </Grid>
@@ -345,7 +358,7 @@
 
                             <!-- 맨 위 큰 홍보 카드: 아이콘 색 그라데이션, 머리글 · 제목 · 설명, 큰 아이콘, 아래 앱 이름과 버튼 -->
                             <DataTemplate DataType="{x:Type local:HeroItem}">
-                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,18,8" Height="232" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}"
+                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,12,12" Height="232" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}"
                                         ToolTip="{Binding Card.RunToolTip}" AutomationProperties.Name="{Binding Card.Name}">
                                     <Border CornerRadius="18" Background="{Binding Art}" Padding="22,20,22,16">
                                         <Grid>
@@ -384,7 +397,7 @@
 
                             <!-- 순위 한 줄 (최근 업데이트): 아이콘 · 번호 · 이름 · 분류와 날짜 · 버튼 -->
                             <DataTemplate DataType="{x:Type local:RankItem}">
-                                <Grid Margin="0,0,20,0">
+                                <Grid Margin="0,0,12,12">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}" ToolTip="{Binding Card.RunToolTip}"
                                             AutomationProperties.Name="{Binding Card.Name}">
                                         <Grid Height="72">
@@ -406,13 +419,12 @@
                                             </Border>
                                         </Grid>
                                     </Button>
-                                    <Border Height="1" Margin="94,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
                                 </Grid>
                             </DataTemplate>
 
                             <!-- 즐겨찾기의 내 PC 프로그램 한 줄 -->
                             <DataTemplate DataType="{x:Type local:FavoriteCard}">
-                                <Grid Margin="0,0,20,0">
+                                <Grid Margin="0,0,12,12">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}" Opacity="{Binding CardOpacity}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -441,7 +453,6 @@
                                             </Border>
                                         </Grid>
                                     </Button>
-                                    <Border Height="1" Margin="66,0,0,0" VerticalAlignment="Bottom" Background="#FF2E3036" IsHitTestVisible="False" />
                                 </Grid>
                             </DataTemplate>
                         </ScrollViewer.Resources>
