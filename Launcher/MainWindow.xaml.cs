@@ -856,22 +856,7 @@ public partial class MainWindow : Window
         Render();
     }
 
-    private SettingsView CreateSettingsView()
-    {
-        var view = new SettingsView(_settings);
-        view.Saved += async () => await ApplySettingsAsync();
-        return view;
-    }
-
-    private async Task ApplySettingsAsync()
-    {
-        _settings.SaveUser();
-        CreateServices();
-        _cards.Clear();
-        await RefreshAsync(checkReleases: true);
-        await RefreshNoticesAsync();
-        await CheckLauncherUpdateAsync(automatic: false);
-    }
+    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser);
 
     private void CatalogSourceText_Click(object sender, MouseButtonEventArgs e)
     {

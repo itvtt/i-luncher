@@ -86,8 +86,6 @@ public sealed class UserSettings
     public bool UseLocalCatalog { get; set; }
     /// <summary>앱 목록 위치: api(API 서버) · github(GitHub 저장소 파일) · local(이 PC). 비우면 빌드 설정에 따라</summary>
     public string? CatalogMode { get; set; }
-    /// <summary>비우면 빌드 설정(launcher.env)의 API_SERVER</summary>
-    public string? ApiServer { get; set; }
     public bool AutoUpdateLauncher { get; set; } = true;
     /// <summary>호스트 → DPAPI 로 보호한 토큰(base64)</summary>
     public Dictionary<string, string> Tokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -174,12 +172,12 @@ public sealed class LauncherSettings
 
     public const string ModeApi = "api", ModeGitHub = "github", ModeLocal = "local";
 
-    /// <summary>API 서버 주소 (끝의 / 없음). 사용자 설정이 먼저, 없으면 빌드 설정</summary>
+    /// <summary>API 서버 주소 (끝의 / 없음): 빌드 설정(launcher.env)의 API_SERVER 만. 사용자가 바꾸지 않음</summary>
     public string? ApiServerUrl
     {
         get
         {
-            string text = !string.IsNullOrWhiteSpace(User.ApiServer) ? User.ApiServer! : Build.ApiServer;
+            string text = Build.ApiServer;
             return Uri.TryCreate(text.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
                 ? uri.GetLeftPart(UriPartial.Authority) : null;
         }
