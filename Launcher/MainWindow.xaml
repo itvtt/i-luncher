@@ -119,14 +119,73 @@
                 <Setter Property="Background" Value="#40FFFFFF" />
                 <Setter Property="Foreground" Value="White" />
             </Style>
-            <!-- 앱 페이지의 큰 버튼: 파란 캡슐 -->
-            <Style x:Key="DetailActionButtonStyle" TargetType="Button" BasedOn="{StaticResource StoreActionButtonStyle}">
-                <Setter Property="Height" Value="34" />
-                <Setter Property="MinWidth" Value="96" />
-                <Setter Property="Padding" Value="24,0" />
-                <Setter Property="Background" Value="#FF3478F6" />
+            <!-- 앱 페이지의 큰 버튼: 둥근 사각, 위가 밝은 파란 그라데이션과 가는 빛 테두리, 아래로 파란 빛. 아이콘 + 글자 -->
+            <Style x:Key="DetailActionButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="38" />
+                <Setter Property="MinWidth" Value="116" />
+                <Setter Property="Padding" Value="22,0" />
                 <Setter Property="Foreground" Value="White" />
                 <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border CornerRadius="10" Background="#FF2F6BEB" Opacity="0.55" Margin="4,6,4,-4">
+                                    <Border.Effect><BlurEffect Radius="14" /></Border.Effect>
+                                </Border>
+                                <Border CornerRadius="10" BorderThickness="1">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#FF5B97FF" Offset="0" />
+                                            <GradientStop Color="#FF2C66E5" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.BorderBrush>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#66FFFFFF" Offset="0" />
+                                            <GradientStop Color="#00FFFFFF" Offset="0.6" />
+                                        </LinearGradientBrush>
+                                    </Border.BorderBrush>
+                                </Border>
+                                <Border x:Name="Shine" CornerRadius="10" Background="#1FFFFFFF" Opacity="0" />
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shine" Property="Background" Value="#29000000" /><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- 큰 버튼 옆 네모 아이콘 버튼 (즐겨찾기 별 · 더 보기): 옅은 유리, 마우스를 올리면 조금 밝게 -->
+            <Style x:Key="DetailIconButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="38" />
+                <Setter Property="Height" Value="38" />
+                <Setter Property="Margin" Value="10,0,0,0" />
+                <Setter Property="Foreground" Value="#FFE5E5EA" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border x:Name="Face" CornerRadius="10" Background="#14FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1" />
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#24FFFFFF" /><Setter TargetName="Face" Property="BorderBrush" Value="#40FFFFFF" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Background" Value="#0DFFFFFF" /></Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Face" Property="BorderBrush" Value="#FF4AA3FF" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <!-- 스크린샷: 누르면 크게 -->
             <Style x:Key="PlainButtonStyle" TargetType="Button">
@@ -364,18 +423,19 @@
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="실행" Tag="{Binding}" Click="LaunchMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
-                                            <MenuItem Header="{Binding FavoriteMenuHeader}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
-                                            <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
-                                            <MenuItem Header="설치 / 다시 설치" Tag="{Binding}" Click="ReinstallMenu_Click" />
-                                            <MenuItem Header="제거" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                            <MenuItem Header="실행" Icon="&#xE768;" Tag="{Binding}" Click="LaunchMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                            <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
+                                            <MenuItem Header="업데이트" Icon="&#xE896;" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
+                                            <MenuItem Header="설치 / 다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
                                             <Separator />
-                                            <MenuItem Header="편집…" Tag="{Binding}" Click="EditMenu_Click" />
-                                            <MenuItem Header="목록에서 삭제…" Tag="{Binding}" Click="DeleteMenu_Click" />
+                                            <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
+                                            <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
+                                            <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                             <Separator />
-                                            <MenuItem Header="저장소 열기" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
-                                            <MenuItem Header="릴리스 노트 보기" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
-                                            <MenuItem Header="설치 폴더 열기" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                            <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" />
+                                            <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                      Style="{StaticResource DangerMenuItemStyle}" />
+                                            <MenuItem Header="목록에서 삭제…" Icon="&#xE738;" Tag="{Binding}" Click="DeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                         <Grid Height="78">
@@ -482,11 +542,11 @@
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="실행" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
-                                            <MenuItem Header="편집…" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
-                                            <MenuItem Header="파일 위치 열기" Tag="{Binding}" Click="FavoriteFolderMenu_Click" />
+                                            <MenuItem Header="실행" Icon="&#xE768;" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
+                                            <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
+                                            <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" />
                                             <Separator />
-                                            <MenuItem Header="삭제" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" />
+                                            <MenuItem Header="삭제" Icon="&#xE74D;" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                         <Grid Height="78">
@@ -576,25 +636,30 @@
                             <StackPanel Grid.Column="1" Margin="24,2,0,0" VerticalAlignment="Center">
                                 <TextBlock FontSize="28" FontWeight="Bold" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="16" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                 <TextBlock Margin="0,6,0,0" FontSize="14" Foreground="#FF98989D" Text="{Binding App.Description}" TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                                     <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
-                                            Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
-                                            AutomationProperties.Name="{Binding StoreButtonText}" />
-                                    <Button x:Name="DetailMoreButton" Width="34" Height="34" Padding="0" Margin="10,0,0,0" Style="{StaticResource RoundedToolbarButtonStyle}" Tag="{Binding}"
+                                            Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" AutomationProperties.Name="{Binding StoreButtonText}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding StoreButtonGlyph}" Visibility="{Binding StoreButtonGlyphVisibility}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                       FontSize="13" Margin="0,1,9,0" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource DetailIconButtonStyle}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" Content="{Binding FavoriteGlyph}"
+                                            Foreground="{Binding FavoriteGlyphBrush}" ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
+                                    <Button x:Name="DetailMoreButton" Style="{StaticResource DetailIconButtonStyle}" Tag="{Binding}" Content="&#xE712;"
                                             Click="DetailMore_Click" ToolTip="더 보기" AutomationProperties.Name="더 보기">
-                                        <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                                <MenuItem Header="{Binding FavoriteMenuHeader}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
-                                                <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
-                                                <MenuItem Header="설치 / 다시 설치" Tag="{Binding}" Click="ReinstallMenu_Click" />
-                                                <MenuItem Header="제거" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                                <MenuItem Header="업데이트" Icon="&#xE896;" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
+                                                <MenuItem Header="다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
+                                                <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                                <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
                                                 <Separator />
-                                                <MenuItem Header="편집…" Tag="{Binding}" Click="EditMenu_Click" />
-                                                <MenuItem Header="목록에서 삭제…" Tag="{Binding}" Click="DeleteMenu_Click" />
-                                                <Separator />
-                                                <MenuItem Header="저장소 열기" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
-                                                <MenuItem Header="설치 폴더 열기" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                                <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" />
+                                                <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                          Style="{StaticResource DangerMenuItemStyle}" />
+                                                <MenuItem Header="목록에서 삭제…" Icon="&#xE738;" Tag="{Binding}" Click="DeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
                                     </Button>

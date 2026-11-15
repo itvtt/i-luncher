@@ -125,7 +125,21 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
     // 즐겨찾기 (이 PC 에만, FavoriteStore)
     private bool _favorite;
-    public bool IsFavorite { get => _favorite; set { if (_favorite == value) return; _favorite = value; Notify(); Notify(nameof(FavoriteMenuHeader)); Notify(nameof(FavoriteVisibility)); } }
+    public bool IsFavorite
+    {
+        get => _favorite;
+        set
+        {
+            if (_favorite == value) return;
+            _favorite = value;
+            Notify(); Notify(nameof(FavoriteMenuHeader)); Notify(nameof(FavoriteVisibility)); Notify(nameof(FavoriteGlyph)); Notify(nameof(FavoriteGlyphBrush));
+        }
+    }
+    /// <summary>즐겨찾기 별 (Segoe Fluent Icons): 채운 금색 별 / 빈 별</summary>
+    public string FavoriteGlyph => IsFavorite ? "\uE735" : "\uE734";
+    private static readonly Brush FavoriteOnBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xFF, 0xD1, 0x5C)));
+    private static readonly Brush FavoriteOffBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE5, 0xE5, 0xEA)));
+    public Brush FavoriteGlyphBrush => IsFavorite ? FavoriteOnBrush : FavoriteOffBrush;
     public string FavoriteMenuHeader => IsFavorite ? "즐겨찾기에서 빼기" : "즐겨찾기에 추가";
     public Visibility FavoriteVisibility => IsFavorite ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NewVisibility => App.New ? Visibility.Visible : Visibility.Collapsed;
@@ -194,6 +208,9 @@ public sealed class AppCard : INotifyPropertyChanged
     /// <summary>스토어형 줄의 오른쪽 버튼: 진행 중 / 업데이트 / 열기 / 받기 (받을 릴리스가 없으면 숨김)</summary>
     public string StoreButtonText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : IsInstalled ? "열기" : Latest is not null ? "받기" : "";
     public Visibility StoreButtonVisibility => StoreButtonText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>앱 페이지 큰 버튼의 아이콘: 열기 ▶, 받기 ↓, 업데이트 ⟳ (진행 중에는 없음)</summary>
+    public string StoreButtonGlyph => IsBusy ? "" : UpdateAvailable ? "\uE72C" : IsInstalled ? "\uE768" : Latest is not null ? "\uE896" : "";
+    public Visibility StoreButtonGlyphVisibility => StoreButtonGlyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Brush ActionBackground => UpdateAvailable ? UpdateBack : GetBack;
     /// <summary>받기·업데이트가 있을 때만. 설치된 최신 앱은 카드를 누르면 열림</summary>
     public Visibility ActionVisibility => !IsBusy && (UpdateAvailable || !IsInstalled && Latest is not null) ? Visibility.Visible : Visibility.Collapsed;

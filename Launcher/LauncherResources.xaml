@@ -406,5 +406,68 @@
         <Setter Property="Padding" Value="7,0" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="IsHitTestVisible" Value="False" />
-    </Style></ResourceDictionary>
+    </Style>
+    <!-- 메뉴 (카드 우클릭 · 앱 페이지 더 보기): 둥근 어두운 판에 그림자, 줄마다 아이콘 + 글자, 마우스를 올린 줄은 둥글게 밝게 -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Foreground" Value="#FFF5F5F7" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontFamily" Value="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Grid Margin="10,4,14,16">
+                        <Border CornerRadius="12" Background="#FF000000" Opacity="0.55">
+                            <Border.Effect><BlurEffect Radius="16" /></Border.Effect>
+                            <Border.RenderTransform><TranslateTransform Y="5" /></Border.RenderTransform>
+                        </Border>
+                        <Border MinWidth="208" Padding="6" CornerRadius="12" Background="#FF26272B" BorderBrush="#FF3A3B42" BorderThickness="1">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="MenuItem">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="#FFF5F5F7" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Row" Height="34" Padding="10,0,16,0" CornerRadius="8" Background="Transparent">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <!-- Icon 에 Segoe Fluent Icons 글자 하나 (예: &#xE768;) -->
+                            <ContentPresenter ContentSource="Icon" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0.8"
+                                              TextElement.FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" TextElement.FontSize="14" />
+                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Row" Property="Background" Value="#1FFFFFFF" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- 지우는 일 (제거 · 목록에서 삭제): 부드러운 빨강 -->
+    <Style x:Key="DangerMenuItemStyle" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+        <Setter Property="Foreground" Value="#FFFF7A70" />
+    </Style>
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Margin="10,5" Background="#24FFFFFF" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>
 

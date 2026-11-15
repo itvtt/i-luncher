@@ -65,6 +65,13 @@ static class UiSnapshot
                         Pump(TimeSpan.FromSeconds(4));
                         Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
                         Console.WriteLine($"detail: {detailCard.Name} · shots {window.DetailShots.Items.Count}");
+                        // 더 보기 메뉴 (따로 뜨는 창이라 메뉴만 그림)
+                        var menu = window.DetailMoreButton.ContextMenu;
+                        menu.PlacementTarget = window.DetailMoreButton;
+                        menu.IsOpen = true;
+                        Pump(TimeSpan.FromSeconds(1));
+                        Save(menu, Suffix(output, "-detail-menu"));
+                        menu.IsOpen = false;
                         window.DetailBackButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     }
                     Console.WriteLine($"title: {window.SectionTitle.Text} · {window.CountText.Text} · status: {window.StatusText.Text}");
