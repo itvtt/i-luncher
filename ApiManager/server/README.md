@@ -50,6 +50,8 @@ python relay\relay.py --uninstall-startup
 | `RELAY_TLS_CERT` · `RELAY_TLS_KEY` | 둘 다 쓰면 HTTPS로 받습니다(PEM) |
 | `MASTER_USERS` | (선택) 마스터 계정(앱 .env의 `MASTER_USERS`와 같은 값, 앱 기본 `test_01,test_07,test_08`): 공지 저장, 작성자와 상관없이 모든 스킬 수정(새 버전)·삭제. 작성자는 자기 스킬을 늘 수정·삭제합니다. 쓰면 서버도 다시 확인하고, 비우면 앱의 판단을 믿습니다 |
 | `RELAY_GITHUB_TOKEN` · `RELAY_GITHUB_SYNC_MINUTES` | 깃허브 링크로 공유한 스킬을 읽을 토큰(선택, 비공개·내부 저장소용, 읽기 권한만)과 다시 확인하는 간격(기본 10분). GitHub Enterprise 링크는 `<주소>/api/v3`로 읽습니다 |
+| `RUNNERS_ROOT` | (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 API Manager의 **러너** 화면이 켜집니다 (아래 "러너") |
+| `RUNNERS_ENV_DIR` · `RUNNER_PACKAGE` | 새 러너의 `.env`가 가리킬 빌드 설정 폴더(비우면 환경 변수 `APPS_ENV_DIR`, 없으면 `RUNNERS_ROOT\env`)와 새 러너 파일 `actions-runner-win-x64-*.zip`(비우면 다른 러너의 파일을 하드 링크로 씀) |
 
 앱은 게시할 때 앱 `.env`(저장소 맨 위, 앱 설정은 이것 하나)의 `RELAY_HOST`·`RELAY_PORT`·`RELAY_INGEST_KEY`만 읽어 `report-relay.json`을 만듭니다. 관리자 비밀번호는 앱에 들어가지 않습니다. 서버를 옮기면 SETTINGS와 앱 `.env`의 `RELAY_HOST`를 바꾸고 앱을 다시 게시하세요.
 
@@ -58,6 +60,17 @@ python relay\relay.py --uninstall-startup
 서버 PC에서는 **API 서버** 프로그램(WPF) 창에서 아래 일을 모두 합니다: 서버 상태·접속한 PC·설정, i-luncher 앱 목록과 런처 공지, Terminal Notes 공지, 문제 보고, 스킬. 비밀번호는 설정(`RELAY_ADMIN_PASSWORD`)에서 읽어 따로 묻지 않습니다. 이 창은 `/admin/api/*`(2.14부터, 관리자 비밀번호, 바꾸는 요청은 JSON만)와 `/launcher/*`를 씁니다.
 
 다른 PC에서는 브라우저로 `http://서버주소:2003/`을 열고 관리자 비밀번호를 입력합니다(아이디는 아무거나).
+
+### 러너
+
+`RUNNERS_ROOT`를 쓰면 API Manager의 **러너** 화면에서 이 PC의 Actions 러너를 관리합니다 (바꾸는 요청은 서버 PC에서 온 것만 받음).
+
+- **목록**: 러너마다 상태(실행 중·작업 중·멈춤·꺼짐)와 GitHub 상태(온라인·오프라인), 저장소, 폴더, `.env`.
+- **추가(+)**: 저장소를 고르면 폴더·러너 이름·`.env`(그 저장소 `release.yml`이 읽는 `*_ENV_PATH` 변수 = `<설정 폴더>\<저장소>.env`)가 채워집니다. [등록]하면 서버가 등록 토큰을 받아 `config.cmd`로 등록하고 시작합니다 (토큰에 저장소 관리 권한 필요).
+- **편집**: `.env`를 고쳐 저장하면 쉬고 있는 러너는 다시 시작해 적용합니다.
+- **시작·멈추기·다시 시작**: 러너는 숨긴 콘솔에서 돌고, 멈추기는 Ctrl+Break로 GitHub 세션을 닫고 끝냅니다. 멈춘 러너는 꺼짐으로 남아 로그온 때도 시작하지 않습니다. 작업 중이면 빌드가 취소된다고 묻습니다.
+- **삭제**: 멈추고 GitHub 등록을 지우고 폴더를 삭제합니다.
+- **로그온 작업 하나**: 예약 작업 `GitHub Runners`(`relay.py --start-runners`)가 로그온 30초 뒤 켜 둔 러너를 모두 시작하고 끝납니다. 예전 러너별 작업(`GitHub runner <이름>`)이 있으면 위쪽 [정리]로 이 작업 하나로 바꿉니다 (예전 작업 XML은 `RUNNERS_ROOT\.backup\tasks`에 남고, 실행 중인 러너는 그대로).
 
 - **문제 보고**: 상태(새 보고·확인 중·해결)와 메모를 남기고, 검색·삭제하며, 로그 ZIP을 받습니다.
 - **스킬**: 스킬마다 버전 기록(올린 시각·작성자·바뀐 점·원문)을 보고, 예전 버전을 새 최신 버전으로 되돌리거나 스토어에서 지웁니다(30일 동안 `skills\.trash`에 남음).

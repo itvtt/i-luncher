@@ -911,6 +911,7 @@ class RelayTest(unittest.TestCase):
             '4343\t"C:\\Python311\\python.exe" "c:\\relay 폴더\\RELAY.PY" --start',
             '5151\t"C:\\Python311\\python.exe" "C:\\Other\\relay.py"',
             '6161\t"C:\\Python311\\python.exe" relay.py --stop',
+            '7171\t"C:\\Python311\\pythonw.exe" "C:\\Relay 폴더\\relay.py" --start-runners',
             'not a pid\tC:\\Relay 폴더\\relay.py', ''])
         self.assertEqual(relay.matching_relays(listing, script, own_pid=4343), [4242])
         self.assertEqual(relay.health_url(self.config), f"http://127.0.0.1:{self.port}/health")
@@ -973,9 +974,19 @@ class FakeGitHub(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"null")
         FakeGitHub.dispatched.append((self.path, body, self.headers.get("Authorization")))
+        if self.path == "/repos/owner1/app/actions/runners/registration-token" and self.headers.get("Authorization") == "Bearer gh-token":
+            return self._json(201, {"token": "REG-TOKEN", "expires_at": "2026-01-01T01:00:00Z"})
         if self.path == "/repos/owner1/app/actions/workflows/release.yml/dispatches":
             if not FakeGitHub.choose_version and "inputs" in body:
                 return self._json(422, {"message": "Unexpected inputs provided: [\"version\"]"})
+            self.send_response(204)
+            self.end_headers()
+            return
+        return self._json(404, {"message": "Not Found"})
+
+    def do_DELETE(self):
+        FakeGitHub.dispatched.append((self.path, None, self.headers.get("Authorization")))
+        if self.path == "/repos/owner1/app/actions/runners/7" and self.headers.get("Authorization") == "Bearer gh-token":
             self.send_response(204)
             self.end_headers()
             return
@@ -1010,7 +1021,11 @@ class FakeGitHub(http.server.BaseHTTPRequestHandler):
             return self._json(200, {"name": self.path.split("/")[-1], "full_name": self.path[7:], "url": f"{base}{self.path}", "default_branch": "main"})
         if self.path == "/repos/owner1/app/contents/.github/workflows/release.yml":
             version_input = "REQUESTED_VERSION: ${{ github.event.inputs.version }}\n" if FakeGitHub.choose_version else ""
-            return self._raw("on:\n  workflow_dispatch:\n" + version_input + "run: build\\Get-NextVersion.ps1 -Project 'App\\App.csproj'\n")
+            return self._raw("on:\n  workflow_dispatch:\n" + version_input + "run: build\\Get-NextVersion.ps1 -Project 'App\\App.csproj'\n"
+                             "run: if ($env:OWNER1_ENV_PATH) { Copy-Item $env:OWNER1_ENV_PATH .env }\n")
+        if self.path == "/repos/owner1/app/actions/runners?per_page=100":
+            return self._json(200, {"total_count": 1, "runners": [{"id": 7, "name": "PC-app", "status": "online", "busy": False,
+                                                                    "labels": [{"name": "self-hosted"}, {"name": "Windows"}]}]})
         if self.path == "/repos/owner1/app/contents/App/App.csproj":
             return self._raw("<Project><PropertyGroup><Version>1.2.0</Version></PropertyGroup></Project>")
         if self.path == "/repos/owner1/app/actions/workflows/release.yml/runs?per_page=1":
@@ -1063,7 +1078,9 @@ class LauncherApiTest(unittest.TestCase):
         self.config = relay.Config(relay.parse_args(sets(
             f"RELAY_PORT={self.port}", f"RELAY_ADMIN_PASSWORD={ADMIN}", f"RELAY_INGEST_KEY={KEY}", f"RELAY_DATA_ROOT={self.root}",
             f"RELAY_LOG_FILE={self.root / 'relay.log'}", "RELAY_GITHUB_TOKEN=gh-token",
-            f"RELAY_GITHUB_API=http://127.0.0.1:{self.github.server_address[1]}") + ["--bind", "127.0.0.1"]))
+            f"RELAY_GITHUB_API=http://127.0.0.1:{self.github.server_address[1]}",
+            f"RUNNERS_ROOT={self.root / 'runners'}", f"RUNNERS_ENV_DIR={self.root / 'profiles'}") + ["--bind", "127.0.0.1"]))
+        (self.root / "runners").mkdir()
         self.server = relay.make_server(self.config)
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.port}"
@@ -1157,6 +1174,146 @@ class LauncherApiTest(unittest.TestCase):
                             {"id": "b", "name": "B", "repository": "https://github.com/owner/b.git"},
                             {"id": "c", "name": "C", "repository": "https://gitlab.example.com/x/c"}], "")
         self.assertEqual(store.repositories(), {"team/app", "owner/b"}, "repositories on the configured GitHub Enterprise host count too")
+
+    # GitHub Actions runners ------------------------------------------------------------------------------
+
+    def runner_folder(self, name, agent, repository):
+        folder = self.root / "runners" / name
+        folder.mkdir(parents=True)
+        (folder / ".runner").write_text(json.dumps({"agentId": 7, "agentName": agent, "gitHubUrl": f"https://github.com/{repository}"}), encoding="utf-8-sig")
+        for file in ("config.cmd", "run.cmd"):
+            (folder / file).write_text("@echo off\r\n")
+        return folder
+
+    def runners(self):
+        status, body, _ = self.call("GET", "/admin/api/runners", admin=True)
+        self.assertEqual(status, 200, body)
+        return json.loads(body)
+
+    def fake(self, *patches):
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    @unittest.skipUnless(os.name == "nt", "the runners are Windows programs")
+    def test_runners_are_listed_edited_started_and_stopped(self):
+        folder = self.runner_folder("app", "PC-app", "owner1/app")
+        (folder / ".env").write_bytes(b"APP_ENV_PATH=C:\\profiles\\app.env\r\n")
+        (self.root / "runners" / "env").mkdir()  # the build settings folder is no runner
+        launched, stopped = [], []
+        self.fake(mock.patch.object(relay, "windows_processes", return_value=[]),
+                  mock.patch.object(relay, "scheduled_tasks", return_value=["\\GitHub runner app", "\\Microsoft\\Windows\\GitHub runner x", "\\Other"]),
+                  mock.patch.object(relay.Runners, "_launch", lambda runners, path: launched.append(path.name)),
+                  mock.patch.object(relay.Runners, "_await", lambda runners, folders, seconds=25: {}),
+                  mock.patch.object(relay.Runners, "_stop", lambda runners, path, force: stopped.append((path.name, force)) or ""))
+        self.assertEqual(self.call("GET", "/admin/api/runners")[0], 401, "admin only")
+        page = self.runners()
+        self.assertTrue(page["available"])
+        self.assertEqual([runner["id"] for runner in page["runners"]], ["app"])
+        runner = page["runners"][0]
+        self.assertEqual((runner["name"], runner["repository"], runner["on"], runner["running"], runner["env"]),
+                         ("PC-app", "owner1/app", True, False, "APP_ENV_PATH=C:\\profiles\\app.env\n"))
+        self.assertEqual((runner["github"]["id"], runner["github"]["status"]), (7, "online"), "its state on GitHub, matched by name")
+        self.assertEqual(page["task"], {"name": relay.RUNNERS_TASK, "exists": False, "current": False, "legacy": ["GitHub runner app"]},
+                         "only the top folder's per-runner tasks count as earlier ones")
+        self.assertEqual(page["repositories"], [], "the app list is empty here")
+        for body, code in (({"env": "not a variable"}, 400), ({"env": 5}, 400)):
+            self.assertEqual(self.call("PUT", "/admin/api/runners/app", body, admin=True)[0], code, body)
+        status, body, _ = self.call("PUT", "/admin/api/runners/app", {"env": "A_ENV_PATH=C:\\x.env\n# note\nDOTNET_CLI_TELEMETRY_OPTOUT=1"}, admin=True)
+        self.assertEqual((status, json.loads(body)["message"]), (200, "저장했습니다."), "not running: nothing to restart")
+        self.assertEqual((folder / ".env").read_bytes(), b"A_ENV_PATH=C:\\x.env\r\n# note\r\nDOTNET_CLI_TELEMETRY_OPTOUT=1\r\n")
+        self.assertEqual(self.call("POST", "/admin/api/runners/app/stop", {}, admin=True)[0], 200)
+        self.assertEqual((stopped, self.runners()["runners"][0]["on"]), ([("app", False)], False), "stopped means off: the logon task leaves it")
+        self.assertEqual(self.call("POST", "/admin/api/runners/app/start", {}, admin=True)[0], 200)
+        self.assertEqual((launched, self.runners()["runners"][0]["on"]), (["app"], True))
+        self.assertEqual(self.call("POST", "/admin/api/runners/app/restart", {"force": True}, admin=True)[0], 200)
+        self.assertEqual(stopped[-1], ("app", True))
+        for path in ("/admin/api/runners/env/start", "/admin/api/runners/..%5Cx/start", "/admin/api/runners/missing/start"):
+            self.assertEqual(self.call("POST", path, {}, admin=True)[0], 404, path)
+        with mock.patch.object(relay, "is_loopback", return_value=False), mock.patch.object(relay, "is_local_address", return_value=False):
+            self.assertEqual(self.call("POST", "/admin/api/runners/app/start", {}, admin=True)[0], 403, "changes only from the server PC")
+            self.assertEqual(self.call("GET", "/admin/api/runners", admin=True)[0], 200, "looking is fine from anywhere")
+        launched.clear()
+        with mock.patch.object(relay.ProcessTable, "under", return_value=[(1, "Runner.Listener.exe")]):
+            self.assertEqual(relay.Runners(self.config).start_on(), [], "the logon task starts nothing that runs already")
+        self.assertEqual(relay.Runners(self.config).start_on(), ["app 시작"])
+        self.assertEqual(launched, ["app"])
+
+    @unittest.skipUnless(os.name == "nt", "the runners are Windows programs")
+    def test_runner_is_added_and_removed(self):
+        self.runner_folder("app", "PC-app", "owner1/app")
+        configured = []
+
+        def prepare(runners, target):
+            target.mkdir()
+            (target / "config.cmd").write_text("")
+            (target / "run.cmd").write_text("")
+
+        def configure(runners, target, url, token, name):
+            configured.append((target.name, url, token, name))
+            (target / ".runner").write_text(json.dumps({"agentName": name, "gitHubUrl": url}), encoding="utf-8")
+
+        self.fake(mock.patch.object(relay, "windows_processes", return_value=[]), mock.patch.object(relay, "scheduled_tasks", return_value=[]),
+                  mock.patch.object(relay.Runners, "_prepare", prepare), mock.patch.object(relay.Runners, "_configure", configure),
+                  mock.patch.object(relay.Runners, "_launch", lambda runners, path: None),
+                  mock.patch.object(relay.Runners, "_await", lambda runners, folders, seconds=25: {}),
+                  mock.patch.dict(os.environ, {"COMPUTERNAME": "PC"}))
+        status, body, _ = self.call("GET", "/admin/api/runners/template?repository=owner1/app", admin=True)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(body), {"repository": "owner1/app", "folder": "app-2", "name": "PC-app-2",
+                                            "env": f"OWNER1_ENV_PATH={self.root / 'profiles' / 'app.env'}\nDOTNET_CLI_TELEMETRY_OPTOUT=1\n"},
+                         "a free folder and name, and the variable the release workflow reads its settings from")
+        new = {"repository": "owner1/app", "folder": "app-2", "name": "PC-app", "env": "X=1"}
+        self.assertEqual(self.call("POST", "/admin/api/runners", new, admin=True)[0], 409, "the name is taken on GitHub")
+        self.assertEqual(self.call("POST", "/admin/api/runners", dict(new, name="PC app"), admin=True)[0], 400)
+        self.assertEqual(self.call("POST", "/admin/api/runners", dict(new, folder="app"), admin=True)[0], 409, "the folder exists")
+        self.assertEqual(self.call("POST", "/admin/api/runners", dict(new, repository="owner1/none"), admin=True)[0], 404)
+        status, body, _ = self.call("POST", "/admin/api/runners", dict(new, name="PC-app-2"), admin=True)
+        self.assertEqual(status, 201, body)
+        self.assertEqual(json.loads(body)["id"], "app-2")
+        self.assertEqual(configured, [("app-2", f"https://{self.config.github_web_host}/owner1/app", "REG-TOKEN", "PC-app-2")],
+                         "registered with a fresh token")
+        self.assertEqual((self.root / "runners" / "app-2" / ".env").read_bytes(), b"X=1\r\n")
+        self.assertEqual([runner["id"] for runner in self.runners()["runners"]], ["app", "app-2"])
+
+        def failing(runners, target, url, token, name):
+            raise relay.RelayError(502, "러너를 등록하지 못했습니다: Http response code: NotFound")
+
+        with mock.patch.object(relay.Runners, "_configure", failing):
+            self.assertEqual(self.call("POST", "/admin/api/runners", dict(new, folder="app-3", name="PC-app-3"), admin=True)[0], 502)
+        self.assertFalse((self.root / "runners" / "app-3").exists(), "a failed registration leaves no folder")
+        with mock.patch.object(relay.Runners, "_stop", lambda runners, path, force: ""):
+            status, body, _ = self.call("DELETE", "/admin/api/runners/app", admin=True)
+        self.assertEqual(status, 200, body)
+        self.assertIn(("/repos/owner1/app/actions/runners/7", None, "Bearer gh-token"), FakeGitHub.dispatched, "removed on GitHub")
+        self.assertFalse((self.root / "runners" / "app").exists())
+
+    @unittest.skipUnless(os.name == "nt", "the runners are Windows programs")
+    def test_one_logon_task_replaces_the_per_runner_tasks(self):
+        self.runner_folder("app", "PC-app", "owner1/app")
+        registered, deleted = [], []
+        self.fake(mock.patch.object(relay, "windows_processes", return_value=[]),
+                  mock.patch.object(relay, "scheduled_tasks", return_value=["\\GitHub runner app", "\\i-luncher build runner", "\\Keep me"]),
+                  mock.patch.object(relay, "task_definition", lambda name: f'<?xml version="1.0" encoding="UTF-16"?><Task><Command>{name}</Command></Task>'),
+                  mock.patch.object(relay, "run_hidden", lambda command, timeout=60: deleted.append(command[3]) or 0),
+                  mock.patch.object(relay, "register_task", lambda name, xml: registered.append((name, xml)) or ""),
+                  mock.patch.object(relay.Runners, "_launch", lambda runners, path: None),
+                  mock.patch.object(relay.Runners, "_await", lambda runners, folders, seconds=25: {}))
+        status, body, _ = self.call("POST", "/admin/api/runners/task", {}, admin=True)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(deleted, ["GitHub runner app", "i-luncher build runner"], "only earlier runner tasks go")
+        backups = sorted(path.name for path in (self.root / "runners" / ".backup" / "tasks").iterdir())
+        self.assertEqual(backups, ["GitHub runner app.xml", "i-luncher build runner.xml"], "their definitions are kept")
+        self.assertEqual(len(registered), 1)
+        name, text = registered[0]
+        import xml.etree.ElementTree as tree
+        task = tree.fromstring(text.split("?>", 1)[1])
+        spaces = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+        self.assertEqual(name, relay.RUNNERS_TASK)
+        self.assertEqual(task.find("t:Actions/t:Exec/t:Arguments", spaces).text,
+                         f'"{Path(relay.__file__).resolve()}" --start-runners' + "".join(f' --set "{item}"' for item in self.config.set_args))
+        self.assertIsNotNone(task.find("t:Triggers/t:LogonTrigger", spaces))
+        self.assertEqual(task.find("t:Settings/t:ExecutionTimeLimit", spaces).text, "PT0S", "it never ends what it started")
 
     def releases(self):
         status, body, _ = self.call("GET", "/admin/api/releases", admin=True)

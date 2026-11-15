@@ -24,7 +24,8 @@ internal sealed class AdminClient : IDisposable
     public AdminClient(string baseUrl, string password)
     {
         var handler = new HttpClientHandler { UseProxy = false, ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
-        _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
+        // 기다리는 시간은 요청마다 (러너 등록·멈추기는 몇십 초 걸림)
+        _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"), Timeout = Timeout.InfiniteTimeSpan };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("ApiServerManager/" + ManagerHost.LauncherVersion);
         if (password.Length > 0)
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:" + password)));
@@ -32,11 +33,12 @@ internal sealed class AdminClient : IDisposable
 
     public Task<JsonNode> GetAsync(string path) => SendAsync(HttpMethod.Get, path, null);
 
-    public async Task<JsonNode> SendAsync(HttpMethod method, string path, JsonNode? body)
+    public async Task<JsonNode> SendAsync(HttpMethod method, string path, JsonNode? body, TimeSpan? timeout = null)
     {
         using var request = new HttpRequestMessage(method, path.TrimStart('/'));
         if (body is not null) request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-        using var response = await _http.SendAsync(request);
+        using var cancel = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
+        using var response = await _http.SendAsync(request, cancel.Token);
         string text = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode) throw new AdminException(ErrorText(response.StatusCode, text), response.StatusCode);
         return JsonNode.Parse(text.Length == 0 ? "null" : text) ?? new JsonObject();
@@ -44,7 +46,8 @@ internal sealed class AdminClient : IDisposable
 
     public async Task<byte[]> GetBytesAsync(string path)
     {
-        using var response = await _http.GetAsync(path.TrimStart('/'));
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        using var response = await _http.GetAsync(path.TrimStart('/'), cancel.Token);
         if (!response.IsSuccessStatusCode) throw new AdminException(ErrorText(response.StatusCode, await response.Content.ReadAsStringAsync()), response.StatusCode);
         return await response.Content.ReadAsByteArrayAsync();
     }

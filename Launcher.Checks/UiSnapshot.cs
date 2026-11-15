@@ -74,12 +74,22 @@ static class UiSnapshot
                         Pump(TimeSpan.FromSeconds(6));
                         Save((FrameworkElement)window.Content, Suffix(output, "-manager"));
                         if (window.PagePane.Content is ApiManager.ManagerView view)
-                            foreach (var (tab, name) in new[] { (2, "-manager-releases"), (1, "-manager-apps") })
+                        {
+                            foreach (var (tab, name) in new[] { (2, "-manager-releases"), (3, "-manager-runners"), (1, "-manager-apps") })
                             {
                                 view.Nav.SelectedIndex = tab;
-                                Pump(TimeSpan.FromSeconds(3));
+                                Pump(TimeSpan.FromSeconds(tab == 3 ? 8 : 3));
                                 Save((FrameworkElement)window.Content, Suffix(output, name));
+                                if (tab != 3) continue;
+                                // 러너 추가 칸 (저장소를 고르면 서버가 폴더·이름·.env 를 채움)
+                                view.AddRunnerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                                view.NewRunnerRepositoryBox.Text = Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_RUNNER_REPOSITORY") ?? "";
+                                view.NewRunnerRepositoryBox.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+                                    PresentationSource.FromVisual(view)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = UIElement.KeyDownEvent });
+                                Pump(TimeSpan.FromSeconds(4));
+                                Save((FrameworkElement)window.Content, Suffix(output, "-manager-runner-add"));
                             }
+                        }
                     }
                     result = 0;
                 }

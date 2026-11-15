@@ -58,7 +58,7 @@ public partial class ManagerView : UserControl
             {
                 _host = host;
                 host.Closing += Host_Closing;
-                host.Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _releaseTimer?.Stop(); _admin?.Dispose(); };
+                host.Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _releaseTimer?.Stop(); _runnerTimer?.Stop(); _admin?.Dispose(); };
             }
             if (_started) return;
             _started = true;
@@ -67,11 +67,11 @@ public partial class ManagerView : UserControl
         // 다른 화면으로 가면 서버 확인을 멈추고, 돌아오면 바로 다시 확인
         IsVisibleChanged += async (_, _) =>
         {
-            if (!IsVisible) { _timer.Stop(); _releaseTimer?.Stop(); return; }
+            if (!IsVisible) { _timer.Stop(); _releaseTimer?.Stop(); _runnerTimer?.Stop(); return; }
             if (_admin is null) return;
             _timer.Start();
             await RefreshHealthAsync();
-            if (CurrentSection is "Server" or "Releases") await LoadSectionAsync(CurrentSection, force: true);
+            if (CurrentSection is "Server" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
         };
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
     }
@@ -283,9 +283,10 @@ public partial class ManagerView : UserControl
         if (!IsLoaded) return;
         string section = CurrentSection;
         foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Server", ServerSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
-                     ("Notices", NoticesSection), ("Reports", ReportsSection), ("Skills", SkillsSection) })
+                     ("Runners", RunnersSection), ("Notices", NoticesSection), ("Reports", ReportsSection), ("Skills", SkillsSection) })
             panel.Visibility = name == section ? Visibility.Visible : Visibility.Collapsed;
-        await LoadSectionAsync(section, force: section is "Server" or "Releases");
+        if (section != "Runners") _runnerTimer?.Stop();
+        await LoadSectionAsync(section, force: section is "Server" or "Releases" or "Runners");
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await RefreshCurrentAsync();
@@ -297,11 +298,13 @@ public partial class ManagerView : UserControl
         bool dirty = section switch
         {
             "Apps" => _appsDirty,
+            "Runners" => RunnerEnvDirty,
             "Notices" => NoticeDirty(launcher: NoticeKindLauncher.IsChecked == true),
             _ => false,
         };
         if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "API Manager",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        if (dirty && section == "Runners") _runnerEnvSaved = RunnerEnvBox.Text.Replace("\r\n", "\n"); // 버린 편집은 서버 내용으로 다시 채움
         await RefreshHealthAsync();
         if (section == "Notices")
         {
@@ -322,6 +325,7 @@ public partial class ManagerView : UserControl
                 case "Server": await LoadStatusAsync(); break;
                 case "Apps": await LoadAppsAsync(); break;
                 case "Releases": await LoadReleasesAsync(); break;
+                case "Runners": await LoadRunnersAsync(); break;
                 case "Notices": await LoadAnnouncementAsync(); await LoadLauncherNoticesAsync(); break;
                 case "Reports": await LoadReportsAsync(); break;
                 case "Skills": await LoadSkillsAsync(); break;
@@ -354,6 +358,7 @@ public partial class ManagerView : UserControl
         if (e.Cancel) return;
         var unsaved = new List<string>();
         if (_appsDirty) unsaved.Add("앱 목록");
+        if (RunnerEnvDirty) unsaved.Add("러너 .env");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: false)) unsaved.Add("Terminal Notes 공지");
         if (_loaded.Contains("Notices") && NoticeDirty(launcher: true)) unsaved.Add("i-luncher 공지");
         if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "API Manager",

@@ -36,6 +36,7 @@
             <ListBoxItem Content="서버" Tag="Server" IsSelected="True" />
             <ListBoxItem Content="앱 목록" Tag="Apps" />
             <ListBoxItem Content="릴리스" Tag="Releases" />
+            <ListBoxItem Content="러너" Tag="Runners" />
             <ListBoxItem Content="공지" Tag="Notices" />
             <ListBoxItem x:Name="ReportsNavItem" Content="문제 보고" Tag="Reports" />
             <ListBoxItem Content="스킬" Tag="Skills" />
@@ -250,6 +251,139 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+            </Grid>
+
+            <!-- 러너: 이 PC의 GitHub Actions 러너 (추가·.env 편집·시작·멈추기·삭제), 로그온 작업 하나가 켜 둔 러너를 시작 -->
+            <Grid x:Name="RunnersSection" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel x:Name="RunnerTaskBar" Orientation="Horizontal" Visibility="Collapsed">
+                    <TextBlock x:Name="RunnerTaskText" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
+                    <Button x:Name="RunnerTaskButton" Content="정리" Style="{StaticResource LinkButtonStyle}" Margin="10,0,0,0" VerticalAlignment="Center"
+                            ToolTip="로그온 작업을 GitHub Runners 하나로" Click="RunnerTaskButton_Click" />
+                </StackPanel>
+                <TextBlock x:Name="RunnersMessageText" Grid.Row="1" Style="{StaticResource HintStyle}" Visibility="Collapsed" />
+                <Grid x:Name="RunnersBody" Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="280" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ListBox x:Name="RunnersList" SelectionChanged="RunnersList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Ellipse Width="8" Height="8" Fill="{Binding DotBrush}" Margin="1,0,11,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Id}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource HintStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button x:Name="AddRunnerButton" Style="{StaticResource IconButtonStyle}" Content="&#xE710;" ToolTip="러너 추가" AutomationProperties.Name="러너 추가"
+                                    Click="AddRunnerButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 고른 러너 -->
+                    <ScrollViewer x:Name="RunnerDetail" Grid.Column="1" Margin="22,0,0,0" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel MaxWidth="620" HorizontalAlignment="Left" MinWidth="340">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE74D;" ToolTip="러너 삭제" AutomationProperties.Name="러너 삭제"
+                                        Click="DeleteRunnerButton_Click" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="StartRunnerButton" Content="시작" Click="StartRunnerButton_Click" />
+                                    <Button x:Name="StopRunnerButton" Content="멈추기" Click="StopRunnerButton_Click" />
+                                    <Button x:Name="RestartRunnerButton" Content="다시 시작" Click="RestartRunnerButton_Click" />
+                                </StackPanel>
+                            </DockPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                <Ellipse x:Name="RunnerStateDot" Width="9" Height="9" Margin="0,1,8,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="RunnerStateText" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="RunnerGitHubText" FontSize="12.5" Foreground="{StaticResource MutedTextBrush}" Margin="12,1,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="저장소" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
+                                <Button x:Name="RunnerRepositoryLink" Grid.Column="1" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,3"
+                                        ToolTip="GitHub에서 열기" Click="RunnerRepositoryLink_Click" />
+                                <TextBlock Grid.Row="1" Text="이름" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="RunnerNameText" Grid.Row="1" Grid.Column="1" FontSize="12.5" Margin="0,5" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Text="폴더" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
+                                <Button x:Name="RunnerFolderLink" Grid.Row="2" Grid.Column="1" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,3"
+                                        ToolTip="폴더 열기" Click="RunnerFolderLink_Click" />
+                            </Grid>
+                            <DockPanel Margin="0,18,0,6">
+                                <Button x:Name="SaveRunnerEnvButton" DockPanel.Dock="Right" Content="저장" Style="{StaticResource PrimaryButtonStyle}" Margin="0" IsEnabled="False"
+                                        Click="SaveRunnerEnvButton_Click" VerticalAlignment="Bottom" />
+                                <TextBlock Text=".env" Style="{StaticResource SubheadingStyle}" Margin="0" VerticalAlignment="Bottom"
+                                           ToolTip="러너가 작업에 넘기는 환경 변수 (이름=값). 저장하면 쉬는 러너는 다시 시작" />
+                            </DockPanel>
+                            <TextBox x:Name="RunnerEnvBox" Style="{StaticResource DocumentBoxStyle}" Height="150" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
+                                     Tag="이름=값" TextChanged="RunnerEnvBox_TextChanged" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 새 러너 -->
+                    <ScrollViewer x:Name="RunnerAddForm" Grid.Column="1" Margin="22,0,0,0" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel MaxWidth="620" HorizontalAlignment="Left" MinWidth="340">
+                            <TextBlock Text="저장소" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,4" />
+                            <DockPanel>
+                                <Button x:Name="RunnerRepositoryMenuButton" DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE70D;" Margin="6,0,0,0"
+                                        ToolTip="앱 목록의 저장소" AutomationProperties.Name="저장소 고르기" Click="RunnerRepositoryMenuButton_Click">
+                                    <Button.ContextMenu>
+                                        <ContextMenu x:Name="RunnerRepositoryMenu" />
+                                    </Button.ContextMenu>
+                                </Button>
+                                <TextBox x:Name="NewRunnerRepositoryBox" Tag="소유자/저장소" LostKeyboardFocus="NewRunnerRepositoryBox_LostKeyboardFocus"
+                                         KeyDown="NewRunnerRepositoryBox_KeyDown" />
+                            </DockPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="폴더" Style="{StaticResource FieldLabelStyle}" />
+                                    <TextBox x:Name="NewRunnerFolderBox" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="러너 이름" Style="{StaticResource FieldLabelStyle}" />
+                                    <TextBox x:Name="NewRunnerNameBox" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text=".env" Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox x:Name="NewRunnerEnvBox" Style="{StaticResource DocumentBoxStyle}" Height="120" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
+                                     Tag="이름=값" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button x:Name="RegisterRunnerButton" Content="등록" Style="{StaticResource PrimaryButtonStyle}" Click="RegisterRunnerButton_Click" />
+                                <Button Content="취소" Click="CancelRunnerButton_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
 
             <!-- 공지: Terminal Notes 공지와 i-luncher 공지를 한 곳에서 -->

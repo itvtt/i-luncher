@@ -5,7 +5,8 @@ GitHub에 프로젝트별로 릴리스된 앱을 한곳에서 설치·업데이�
 - 앱은 **GitHub 저장소 주소**로 추가합니다. 런처가 그 저장소의 **최신 릴리스 태그를 버전으로** 보여 줍니다.
 - 카드를 누르면 설치되지 않은 앱은 설치하고, **설치된 버전보다 높은 릴리스가 있으면 자동으로 업데이트한 뒤** 실행합니다.
 - 설치된 앱은 런처 없이 **따로 실행해도 스스로 업데이트**합니다 (각 앱의 자체 업데이터: [AppKit](AppKit/README.md), DeskCal·Terminal Notes는 자체 구현).
-- 앱 목록은 **API 서버**(이 저장소의 `ApiManager\serverelay.py`, 예: `http://<서버 IP>:2003`)가 관리합니다. 런처는 누구나 목록을 읽고, 추가·수정·삭제는 서버 관리자 비밀번호로 저장합니다. API 서버가 없으면 i-luncher 저장소의 [`catalog/apps.json`](catalog/apps.json)을 GitHub API로 고치는 방식도 쓸 수 있습니다.
+- 앱 목록은 **API 서버**(이 저장소의 `ApiManager\server
+elay.py`, 예: `http://<서버 IP>:2003`)가 관리합니다. 런처는 누구나 목록을 읽고, 추가·수정·삭제는 서버 관리자 비밀번호로 저장합니다. API 서버가 없으면 i-luncher 저장소의 [`catalog/apps.json`](catalog/apps.json)을 GitHub API로 고치는 방식도 쓸 수 있습니다.
 - 앱 저장소는 비공개라도 됩니다. API 서버의 **GitHub 중계**가 서버 PC의 GitHub 자격 증명으로 릴리스를 대신 받아 주므로 사용자 PC와 앱에 GitHub 토큰을 넣지 않습니다.
 - i-luncher 자신도 이 저장소의 **Actions 러너가 릴리스**하고, 설치된 런처는 시작할 때 **스스로 업데이트**합니다.
 
@@ -104,7 +105,7 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `%LOCALAPPDATA%
 | `/api/v3/repos/<소유자>/<저장소>/…` | GitHub 중계: 런처와 각 앱이 비공개 저장소의 릴리스·아이콘을 토큰 없이 받음 (읽기만, 토큰 계정·앱 목록의 저장소만) |
 | `/`, `/apps`, `/status` … | 관리 페이지 (관리자 비밀번호) |
 
-**API Manager** 는 런처 오른쪽 화면에 열립니다. 왼쪽 아래 **API Manager** 는 빌드 설정 `MASTER_USERS` 에 적은 계정에만 보입니다 (비우면 아무에게도 안 보임). 서버·앱 목록·릴리스·공지·문제 보고·스킬을 관리합니다.
+**API Manager** 는 런처 오른쪽 화면에 열립니다. 왼쪽 아래 **API Manager** 는 빌드 설정 `MASTER_USERS` 에 적은 계정에만 보입니다 (비우면 아무에게도 안 보임). 서버·앱 목록·릴리스·러너(이 PC의 Actions 러너, 서버 SETTINGS `RUNNERS_ROOT`)·공지·문제 보고·스킬을 관리합니다.
 런처 설치 폴더의 `server\relay.py` 가 배포된 서버(`%LOCALAPPDATA%\TerminalNotesRelay\relay.py`)보다 새 버전이면, 서버 PC의 마스터가 런처를 켤 때(또는 API Manager 를 열 때) 서버를 바꾸고 SETTINGS(비밀값)는 그대로 옮긴 뒤 다시 시작합니다. 처음 설치는 API Manager 를 열면 됩니다. 데이터는 `C:\ProgramData\TerminalNotesRelayData`에 따로 있습니다.
 
 런처는 빌드 설정 `API_SERVER`(또는 오른쪽 위 톱니바퀴의 설정)로 서버를 알고, 각 앱은 빌드할 때 `UPDATE_GITHUB_API=http://<서버 IP>:2003/api/v3`로 같은 중계를 씁니다.
@@ -137,7 +138,7 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `%LOCALAPPDATA%
 ### i-luncher 저장소
 
 1. 이 폴더를 GitHub 저장소(비공개도 됨)로 올립니다. 앱들은 각자 저장소(`<소유자>/<앱>`)로 따로 관리합니다.
-2. **Settings → Actions → Runners**에 Windows x64 self-hosted 러너를 등록합니다 (레이블 `self-hosted`, `windows`, .NET 10 SDK 필요).
+2. Windows x64 self-hosted 러너를 등록합니다 (레이블 `self-hosted`, `windows`, .NET 10 SDK 필요). 서버 PC에서는 API Manager의 **러너** 화면에서 [+]로 등록하고, 로그온 작업 하나(`GitHub Runners`)가 켜 둔 러너를 시작합니다 ([server/README.md](ApiManager/server/README.md#러너)).
 3. 비공개·internal 저장소면 **Settings → Secrets → Actions**에 `ILUNCHER_ENV`를 만들고 [`.env.sample`](.env.sample)을 참고해 최소 `LAUNCHER_TOKEN=<읽기 전용 토큰>`을 넣습니다. 러너 PC에 `.env`를 두고 러너 환경 변수 `ILUNCHER_ENV_PATH`로 알려 줘도 됩니다. `LAUNCHER_REPOSITORY`는 비워 두면 그 저장소가 됩니다.
 4. `main`에 푸시하면 [release.yml](.github/workflows/release.yml)이 확인(`Launcher.Checks`) → 빌드 → `vX.Y.Z` 릴리스(`i-luncher-Setup.exe`, `i-luncher-win-x64.zip`)를 만듭니다. 초안으로 파일을 모두 올린 뒤 공개하므로 파일이 빠진 릴리스가 최신으로 보이지 않습니다.
 5. 사용자에게 `i-luncher-Setup.exe`를 한 번 나눠 주면 이후는 런처가 스스로 업데이트합니다 (설정에서 끌 수 있음).

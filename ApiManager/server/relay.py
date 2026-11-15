@@ -50,12 +50,24 @@ GitHub 중계(GitHub REST API v3와 같은 주소, 읽기만): 앱·런처가 �
 최근 며칠 단위로 모아 셉니다: 자동·직접, 문제 종류(문제: 줄), 문제 이벤트(문제 이벤트: 줄), 앱 버전, PC, 날짜별.
     GET  /admin/api/reports/analysis?days=7
 
+GitHub 러너(관리자 비밀번호, 바꾸기는 서버 PC에서만, SETTINGS의 RUNNERS_ROOT): 이 PC의 Actions 러너(폴더마다 하나)를
+API Manager의 러너 화면에서 추가·편집(.env)·시작·중지·삭제합니다. 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다.
+    GET    /admin/api/runners          {available, task, runners: [{id, name, repository, on, running, busy, github, env}], repositories}
+    GET    /admin/api/runners/template?repository=<소유자>/<저장소>   새 러너의 폴더·이름·.env
+    POST   /admin/api/runners          {repository, folder, name, env} → GitHub에 등록하고 시작
+    PUT    /admin/api/runners/<폴더>    {env} → .env 저장(쉬는 중이면 다시 시작)
+    POST   /admin/api/runners/<폴더>/start|stop|restart  {force}   멈춘 러너는 꺼짐(로그온 때도 시작하지 않음)
+    DELETE /admin/api/runners/<폴더>[?force=1]   멈추고 GitHub에서 지우고 폴더 삭제
+    POST   /admin/api/runners/task     로그온 작업 하나로 정리(예전 러너별 작업은 XML을 남기고 지움)
+    python relay.py --start-runners    켜 둔 러너를 시작하고 끝냄(로그온 작업이 씀)
+
 관리 페이지(관리자 비밀번호): /  /reports  /skills  /announcements  /apps(i-luncher 앱 목록·공지)  /status(접속한 PC 목록·방화벽)
 """
 from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import hmac
 import html
@@ -71,6 +83,7 @@ import shutil
 import socket
 import socketserver
 import ssl
+import stat
 import struct
 import subprocess
 import sys
@@ -125,10 +138,14 @@ SETTINGS = {
     "EQUIPMENT_STATUS_TABLE": "",      #        설비 상태 표(열: line, prc, eqpid, status, Hr, Down_time, view, comment, sdwt)
     "EQUIPMENT_API_KEY": "",           # (선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다
     "EQUIPMENT_REFRESH_SECONDS": 10,   # 설비 상태 DB를 다시 읽는 간격(초)
+    "RUNNERS_ROOT": "",                # (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 API Manager의 러너 화면에서
+                                       #        추가·편집·시작·중지·삭제하고, 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다
+    "RUNNERS_ENV_DIR": "",             #        새 러너가 빌드에 쓰는 설정 파일(<저장소>.env) 폴더. 비우면 환경 변수 APPS_ENV_DIR, 없으면 RUNNERS_ROOT\\env
+    "RUNNER_PACKAGE": "",              #        새 러너 파일(actions-runner-win-x64-*.zip). 비우면 RUNNERS_ROOT의 다른 러너 파일을 씁니다
 }
 # ── 설정 끝 ──
 
-VERSION = "2.17.0"
+VERSION = "2.18.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -384,6 +401,11 @@ class Config:
         self.equipment_table = text("EQUIPMENT_STATUS_TABLE")
         self.equipment_api_key = text("EQUIPMENT_API_KEY")
         self.equipment_refresh_seconds = max(1, number("EQUIPMENT_REFRESH_SECONDS", 10))
+        # GitHub Actions runners of this PC: one folder each under RUNNERS_ROOT, managed from the API Manager's 러너 page.
+        self.runners_root = Path(text("RUNNERS_ROOT")).expanduser() if text("RUNNERS_ROOT") else None
+        env_dir = text("RUNNERS_ENV_DIR") or os.environ.get("APPS_ENV_DIR", "").strip()
+        self.runners_env_dir = Path(env_dir).expanduser() if env_dir else self.runners_root / "env" if self.runners_root else None
+        self.runner_package = Path(text("RUNNER_PACKAGE")).expanduser() if text("RUNNER_PACKAGE") else None
 
     def validate(self) -> None:
         # Nothing is required: without a key the relay takes any app that reaches its IP, without a password its pages are open,
@@ -441,6 +463,8 @@ class Config:
                 f"{self.equipment_db_host}:{self.equipment_db_port}/{self.equipment_db_name} · 표 {self.equipment_table or '(없음)'} · "
                 f"{self.equipment_refresh_seconds}초마다 읽음 · 앱 키 {'확인' if self.equipment_api_key else '없음'}"
                 if self.equipment_db_host else "꺼짐(SETTINGS의 EQUIPMENT_DB_HOST가 비어 있음)"),
+            "GitHub 러너: " + (f"{self.runners_root} · 설정 파일 {self.runners_env_dir} · 로그온 작업 {RUNNERS_TASK}" if self.runners_root
+                               else "꺼짐(SETTINGS의 RUNNERS_ROOT가 비어 있음)"),
             f"알림 웹훅: {'설정됨 · 링크 ' + self.public_url if self.webhook_url else '없음'}",
             f"로그: {self.log_file}",
         ]
@@ -2096,6 +2120,913 @@ def git_credential_token(host: str) -> str:
     return ""
 
 
+# ── GitHub Actions 러너 ─────────────────────────────────────────────────────────────────────────────
+
+RUNNERS_TASK = "GitHub Runners"
+# Earlier setups started each runner with a logon task of its own; the runner page puts RUNNERS_TASK in their place.
+LEGACY_RUNNER_TASK = re.compile(r"^(GitHub runner .+|i-luncher build runner)$", re.IGNORECASE)
+RUNNER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+RUNNER_ENV_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+RUNNER_STATE = "runners.json"
+RUNNER_ENV_MAX = 16_384
+RUNNER_GITHUB_TTL = 30
+RUNNER_SKIP = {"run-helper.cmd", "update.finished", RUNNER_STATE}  # a runner's own files, not part of a new runner's copy
+RUNNER_SESSION_LEFT = ("session for this runner already exists", "session conflict")
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+# Run by a short helper process: attaching to another console is for a whole process, and the relay serves requests meanwhile.
+# Ctrl+Break (unlike Ctrl+C) reaches a process even when it was started to ignore Ctrl+C; the runner answers both by closing
+# its GitHub session and exiting.
+CTRL_BREAK_HELPER = (
+    "import ctypes, sys, time\n"
+    "kernel = ctypes.WinDLL('kernel32')\n"
+    "keep = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)(lambda event: 1)\n"
+    "kernel.FreeConsole()\n"
+    "if not kernel.AttachConsole(int(sys.argv[1])):\n"
+    "    sys.exit(2)\n"
+    "kernel.SetConsoleCtrlHandler(keep, 1)\n"
+    "sent = kernel.GenerateConsoleCtrlEvent(1, 0)\n"
+    "time.sleep(0.5)\n"
+    "kernel.FreeConsole()\n"
+    "sys.exit(0 if sent else 3)\n")
+
+_KERNEL = None
+
+
+def _kernel():
+    global _KERNEL
+    if _KERNEL is None:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        _KERNEL = kernel
+    return _KERNEL
+
+
+def windows_processes() -> list:
+    """[(pid, parent pid, program file name)] of this PC's processes; empty off Windows."""
+    if os.name != "nt":
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+
+    kernel = _kernel()
+    snapshot = kernel.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    if not snapshot or snapshot == ctypes.c_void_p(-1).value:
+        return []
+    found = []
+    try:
+        entry = Entry()
+        entry.dwSize = ctypes.sizeof(Entry)
+        more = kernel.Process32FirstW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+        while more:
+            found.append((entry.th32ProcessID, entry.th32ParentProcessID, entry.szExeFile))
+            more = kernel.Process32NextW(wintypes.HANDLE(snapshot), ctypes.byref(entry))
+    finally:
+        kernel.CloseHandle(snapshot)
+    return found
+
+
+def process_image(pid: int) -> str:
+    """The program file a process runs (junctions resolved); "" when Windows does not tell."""
+    if os.name != "nt":
+        return ""
+    import ctypes
+    from ctypes import wintypes
+    kernel = _kernel()
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        size = wintypes.DWORD(32768)
+        return buffer.value if kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)) else ""
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def kill_process(pid: int) -> bool:
+    if os.name != "nt":
+        return False
+    kernel = _kernel()
+    handle = kernel.OpenProcess(0x0001, False, pid)  # PROCESS_TERMINATE
+    if not handle:
+        return False
+    try:
+        return bool(kernel.TerminateProcess(handle, 1))
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def send_ctrl_break(pid: int) -> bool:
+    """Ctrl+Break to the (hidden) console a process runs in."""
+    try:
+        return subprocess.run([sys.executable, "-I", "-c", CTRL_BREAK_HELPER, str(pid)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def user_environment() -> dict:
+    """This account's environment as a new logon gets it (variables set since the relay started count), for the runners;
+    the relay's own when Windows cannot build it."""
+    if os.name != "nt":
+        return dict(os.environ)
+    import ctypes
+    from ctypes import wintypes
+    userenv = ctypes.WinDLL("userenv", use_last_error=True)
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    advapi.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    userenv.CreateEnvironmentBlock.argtypes = [ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.BOOL]
+    userenv.DestroyEnvironmentBlock.argtypes = [ctypes.c_void_p]
+    kernel = _kernel()
+    token = wintypes.HANDLE()
+    if not advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):  # TOKEN_QUERY
+        return dict(os.environ)
+    block = ctypes.c_void_p()
+    try:
+        if not userenv.CreateEnvironmentBlock(ctypes.byref(block), token, False):
+            return dict(os.environ)
+        environment, offset = {}, 0
+        try:
+            while True:
+                entry = ctypes.wstring_at(block.value + offset)
+                if not entry:
+                    break
+                offset += (len(entry) + 1) * 2
+                key, separator, value = entry.partition("=")
+                if separator and key:
+                    environment[key] = value
+        finally:
+            userenv.DestroyEnvironmentBlock(block)
+        return environment if environment else dict(os.environ)
+    finally:
+        kernel.CloseHandle(token)
+
+
+def console_text(data: bytes) -> str:
+    """Output of a Windows console program (schtasks, config.cmd): UTF-8, else the console's or Windows' code page."""
+    for encoding in ("utf-8", "oem", "mbcs"):
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", "replace")
+
+
+def scheduled_tasks() -> list:
+    """This PC's Task Scheduler tasks by full name (\\GitHub Runners); empty off Windows or when schtasks fails."""
+    if os.name != "nt":
+        return []
+    import csv
+    import io
+    try:
+        result = subprocess.run(["schtasks", "/Query", "/FO", "CSV", "/NH"], stdin=subprocess.DEVNULL, capture_output=True, timeout=60,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return []
+    names = []
+    for row in csv.reader(io.StringIO(console_text(result.stdout))):
+        if row and row[0].startswith("\\") and row[0] not in names:
+            names.append(row[0])
+    return names
+
+
+def task_definition(name: str) -> str:
+    """A task's XML ("" when it does not exist)."""
+    if os.name != "nt":
+        return ""
+    try:
+        result = subprocess.run(["schtasks", "/Query", "/TN", name, "/XML"], stdin=subprocess.DEVNULL, capture_output=True, timeout=60,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return console_text(result.stdout) if result.returncode == 0 else ""
+
+
+def runners_task_xml(command: str, arguments: str, folder: str, user: str) -> str:
+    """The one logon task: starts the runners that are on, shortly after this account logs on, and ends."""
+    esc = html.escape
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{esc("켜 둔 GitHub Actions 러너를 시작합니다 (i-luncher API Manager의 러너 화면에서 관리)")}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{esc(user)}</UserId>
+      <Delay>PT30S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{esc(user)}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{esc(command)}</Command>
+      <Arguments>{esc(arguments)}</Arguments>
+      <WorkingDirectory>{esc(folder)}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def register_task(name: str, xml: str) -> str:
+    """Creates or replaces a task of this account (no administrator rights needed); "" or why it failed."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "task.xml"
+        path.write_text(xml, encoding="utf-16")
+        try:
+            result = subprocess.run(["schtasks", "/Create", "/TN", name, "/XML", str(path), "/F"], stdin=subprocess.DEVNULL, capture_output=True,
+                                    timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.SubprocessError) as error:
+            return str(error)
+    return "" if result.returncode == 0 else console_text(result.stdout + result.stderr).strip()[:300] or f"종료 코드 {result.returncode}"
+
+
+def xml_value(xml: str, tag: str) -> str:
+    match = re.search(f"<{tag}>(.*?)</{tag}>", xml, re.DOTALL)
+    return html.unescape(match.group(1)).strip() if match else ""
+
+
+def runner_version(folder: Path) -> str:
+    """The runner's version: its bin is a junction to bin.<version> once the runner has updated itself."""
+    try:
+        target = os.readlink(folder / "bin")
+    except (OSError, ValueError, NotImplementedError):
+        return ""
+    match = re.search(r"bin\.(\d+\.\d+\.\d+)$", target.rstrip("\\/"))
+    return match.group(1) if match else ""
+
+
+def is_link(path: Path) -> bool:
+    """A symbolic link or a directory junction (its target is not inside it)."""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return path.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def remove_tree(folder: Path) -> None:
+    """Deletes a runner folder; its junctions (bin, externals) go as links, never through to what they point at."""
+    def retry(function, path, _):
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+
+    for root, folders, _ in os.walk(folder):
+        for name in list(folders):
+            path = Path(root) / name
+            if is_link(path):
+                os.rmdir(path)
+                folders.remove(name)
+    shutil.rmtree(folder, onerror=retry)
+
+
+def link_tree(source: Path, target: Path) -> int:
+    """Copies a folder as hard links (no extra disk space; a file is copied where linking fails). Returns the file count."""
+    count = 0
+    for root, folders, files in os.walk(source):
+        here = target / Path(root).relative_to(source)
+        here.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            try:
+                os.link(Path(root) / name, here / name)
+            except OSError:
+                shutil.copy2(Path(root) / name, here / name)
+            count += 1
+    return count
+
+
+class ProcessTable:
+    """One look at this PC's processes; program files are asked once each, when needed."""
+
+    def __init__(self):
+        self.entries = {pid: (parent, name) for pid, parent, name in windows_processes()}
+        self._paths: dict = {}
+
+    def name(self, pid: int) -> str:
+        return self.entries.get(pid, (0, ""))[1]
+
+    def parent(self, pid: int) -> int:
+        return self.entries.get(pid, (0, ""))[0]
+
+    def path(self, pid: int) -> str:
+        if pid not in self._paths:
+            self._paths[pid] = process_image(pid)
+        return self._paths[pid]
+
+    def under(self, folder: Path) -> list:
+        """[(pid, program name)] whose program file is in the folder: a runner's listener, its worker, the node it runs steps with."""
+        prefixes = {str(folder).rstrip("\\/").lower() + os.sep}
+        try:
+            prefixes.add(str(folder.resolve()).rstrip("\\/").lower() + os.sep)
+        except OSError:
+            pass
+        return [(pid, name) for pid, (_, name) in self.entries.items() if pid and self.path(pid).lower().startswith(tuple(prefixes))]
+
+    def descendants(self, roots: set) -> set:
+        found, queue = set(), list(roots)
+        while queue:
+            pid = queue.pop()
+            for child, (parent, _) in self.entries.items():
+                if parent == pid and child not in found and child not in roots:
+                    found.add(child)
+                    queue.append(child)
+        return found
+
+
+class Runners:
+    """This PC's GitHub Actions self-hosted runners, one folder each under RUNNERS_ROOT (the runner's own layout: .runner, bin,
+    externals, run.cmd, and its .env of variables for the jobs). The API Manager's 러너 page lists them, adds one (registers
+    it with its repository), edits its .env, starts, stops and removes them. One logon task (RUNNERS_TASK) starts every runner
+    that is on; a runner stopped here stays off until it is started here again.
+
+    A runner runs hidden in a console of its own. Stopping sends that console Ctrl+Break: the runner closes its GitHub session
+    and exits. A runner that is killed instead leaves its session on GitHub for about two minutes, and a start within that time
+    ends at once ("A session for this runner already exists")."""
+
+    def __init__(self, config: Config, github: "GitHubProxy | None" = None, releases: "Releases | None" = None):
+        self.config = config
+        self.github = github
+        self.releases = releases
+        self.root = config.runners_root
+        self._lock = threading.Lock()
+        self._tasks: tuple = (None, 0.0)
+
+    # Where and what ------------------------------------------------------------------------------------
+
+    def available(self) -> str:
+        """Why the runner page cannot work on this PC, or "" when it can."""
+        if os.name != "nt":
+            return "러너 관리는 Windows에서만 합니다."
+        if not self.root:
+            return "러너 폴더가 정해지지 않았습니다 (relay.py SETTINGS의 RUNNERS_ROOT)."
+        if not self.root.is_dir():
+            return f"러너 폴더가 없습니다: {self.root}"
+        return ""
+
+    def _require(self) -> None:
+        problem = self.available()
+        if problem:
+            raise RelayError(503, problem)
+
+    @staticmethod
+    def _is_runner(path: Path) -> bool:
+        return path.is_dir() and bool(RUNNER_ID.match(path.name)) and ((path / ".runner").is_file() or (path / "config.cmd").is_file())
+
+    def folders(self) -> list:
+        try:
+            return sorted((path for path in self.root.iterdir() if self._is_runner(path)), key=lambda path: path.name.lower())
+        except OSError:
+            return []
+
+    def folder(self, runner_id) -> Path:
+        self._require()
+        path = self.root / runner_id if isinstance(runner_id, str) and RUNNER_ID.match(runner_id) else None
+        if path is None or not self._is_runner(path):
+            raise RelayError(404, f"러너를 찾지 못했습니다: {runner_id}")
+        return path
+
+    def _off(self) -> set:
+        value = read_json(self.root / RUNNER_STATE)
+        off = value.get("off") if isinstance(value, dict) else None
+        return {str(item).lower() for item in off if isinstance(item, str)} if isinstance(off, list) else set()
+
+    def _set_on(self, runner_id: str, on: bool) -> None:
+        off = sorted({item for item in self._off() if item != runner_id.lower()} | (set() if on else {runner_id.lower()}))
+        write_json(self.root / RUNNER_STATE, {"off": off})
+
+    @staticmethod
+    def _registration(folder: Path) -> dict:
+        info = read_json(folder / ".runner")
+        return info if isinstance(info, dict) else {}
+
+    @staticmethod
+    def _repository(url: str) -> str:
+        parts = [part for part in urllib.parse.urlsplit(url).path.split("/") if part]
+        return "/".join(parts[:2]) if len(parts) >= 2 else ""
+
+    def _local(self, folder: Path, table: ProcessTable, off: set) -> dict:
+        info = self._registration(folder)
+        url = str(info.get("gitHubUrl") or "")
+        processes = table.under(folder)
+        names = [name.lower() for _, name in processes]
+        try:
+            env = (folder / ".env").read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+        except OSError:
+            env = ""
+        return {"id": folder.name, "folder": str(folder), "name": str(info.get("agentName") or ""), "registered": bool(info),
+                "repository": self._repository(url), "url": url, "on": folder.name.lower() not in off, "running": bool(processes),
+                "busy": "runner.worker.exe" in names, "pid": next((pid for pid, name in processes if name.lower() == "runner.listener.exe"), 0),
+                "version": runner_version(folder), "env": env, "github": None, "githubError": ""}
+
+    # GitHub ---------------------------------------------------------------------------------------------
+
+    def _get(self, path: str, ttl: int, raw: bool = False) -> tuple:
+        if self.releases is None:
+            raise RelayError(503, "GitHub에 연결하지 않았습니다.")
+        return self.releases._get(path, ttl, raw)
+
+    def _canonical(self, repository) -> str:
+        """owner/name as GitHub has it now (a renamed repository answers under its new name)."""
+        if not isinstance(repository, str) or not repository.strip():
+            raise RelayError(400, "저장소(소유자/이름)가 필요합니다.")
+        full = repository.strip()
+        if full.lower().startswith(("http://", "https://")):
+            full = self._repository(full)
+        full = full[:-4] if full.lower().endswith(".git") else full
+        status, answer = self._get(Releases._base(full), ttl=300)
+        if status == 200 and isinstance(answer, dict) and answer.get("full_name"):
+            return str(answer["full_name"])
+        if status == 404:
+            raise RelayError(404, f"GitHub에 {full} 저장소가 없거나 이 서버의 토큰으로 열 수 없습니다.")
+        raise RelayError(502, Releases._problem(status, answer))
+
+    def _github_runners(self, full: str, ttl: int = RUNNER_GITHUB_TTL) -> list:
+        status, answer = self._get(f"{Releases._base(full)}/actions/runners?per_page=100", ttl)
+        if status != 200 or not isinstance(answer, dict):
+            hint = " (토큰에 저장소 관리 권한이 있어야 합니다)" if status in (401, 403, 404) else ""
+            raise RelayError(502, Releases._problem(status, answer) + hint)
+        return [item for item in answer.get("runners") or [] if isinstance(item, dict)]
+
+    def _github_call(self, method: str, path: str) -> tuple:
+        """One GitHub call that changes something (a registration token, a removal), never cached."""
+        token = self.github.token() if self.github else ""
+        if not token:
+            raise RelayError(503, "GitHub 토큰이 없습니다 (RELAY_GITHUB_TOKEN 또는 이 PC의 git 자격 증명).")
+        request = urllib.request.Request(self.config.github_api + path, data=b"" if method == "POST" else None, method=method,
+                                         headers=self.github._headers("application/vnd.github+json", token))
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                status, body = response.status, response.read()
+        except urllib.error.HTTPError as error:
+            status, body = error.code, error.read(65536)
+        except (urllib.error.URLError, OSError, ValueError) as error:
+            raise RelayError(502, f"GitHub에 연결하지 못했습니다: {getattr(error, 'reason', error)}")
+        try:
+            return status, json.loads(body.decode("utf-8")) if body else None
+        except ValueError:
+            return status, None
+
+    def _web_url(self, full: str) -> str:
+        return f"https://{self.config.github_web_host}/{full}"
+
+    def _add_github(self, entry: dict) -> None:
+        if not entry["registered"] or not entry["repository"]:
+            return
+        try:
+            full = self._canonical(entry["repository"])
+            entry["repository"], entry["url"] = full, self._web_url(full)
+            match = next((item for item in self._github_runners(full) if str(item.get("name") or "").lower() == entry["name"].lower()), None)
+            entry["github"] = ({"id": match.get("id"), "status": str(match.get("status") or ""), "busy": bool(match.get("busy")),
+                                "labels": [str(label.get("name")) for label in match.get("labels") or [] if isinstance(label, dict)]}
+                               if match else {"id": None, "status": "missing", "busy": False, "labels": []})
+        except RelayError as error:
+            entry["githubError"] = error.message
+
+    # The page --------------------------------------------------------------------------------------------
+
+    def list(self) -> dict:
+        problem = self.available()
+        answer = {"available": not problem, "message": problem, "root": str(self.root or ""), "task": None, "runners": [], "repositories": []}
+        if problem:
+            return answer
+        table, off = ProcessTable(), self._off()
+        runners = [self._local(folder, table, off) for folder in self.folders()]
+        if runners and self.releases is not None:
+            with ThreadPoolExecutor(max_workers=min(8, len(runners))) as pool:
+                list(pool.map(self._add_github, runners))
+        answer["runners"] = runners
+        answer["task"] = self.task_info()
+        answer["repositories"] = [{"repository": full, "name": name} for full, name in self.releases.projects()] if self.releases else []
+        return answer
+
+    def template(self, repository) -> dict:
+        """What the page fills in for a new runner of a repository: folder, runner name and .env (the variable the repository's
+        release workflow reads its build settings from, pointing at <설정 폴더>\\<저장소>.env)."""
+        self._require()
+        full = self._canonical(repository)
+        name = full.split("/", 1)[1]
+        folder, number = name, 2
+        while (self.root / folder).exists():
+            folder, number = f"{name}-{number}", number + 1
+        computer = re.sub(r"[^A-Za-z0-9._-]", "-", os.environ.get("COMPUTERNAME") or socket.gethostname() or "PC")
+        taken = set()
+        try:
+            taken = {str(item.get("name") or "").lower() for item in self._github_runners(full, ttl=0)}
+        except RelayError:
+            pass
+        runner, number = f"{computer}-{name}"[:64], 2
+        while runner.lower() in taken:
+            runner, number = f"{computer}-{name}-{number}"[:64], number + 1
+        status, workflow = self._get(f"{Releases._base(full)}/contents/.github/workflows/{RELEASE_WORKFLOW}", ttl=60, raw=True)
+        variable = re.search(r"\$env:([A-Z][A-Z0-9_]*_ENV_PATH)\b", workflow) if status == 200 else None
+        lines = []
+        if self.config.runners_env_dir:
+            lines.append(f"{variable.group(1) if variable else 'RELEASE_ENV_PATH'}={self.config.runners_env_dir / (name + '.env')}")
+        lines.append("DOTNET_CLI_TELEMETRY_OPTOUT=1")
+        return {"repository": full, "folder": folder, "name": runner, "env": "\n".join(lines) + "\n"}
+
+    # Changes ----------------------------------------------------------------------------------------------
+
+    @contextlib.contextmanager
+    def _changing(self):
+        """One change at a time, also against the logon task's start (another process)."""
+        import msvcrt
+        with self._lock:
+            with open(self.root / ".runners.lock", "a+b") as handle:
+                deadline = time.monotonic() + 120
+                while True:
+                    try:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            raise RelayError(409, "다른 곳에서 러너를 바꾸는 중입니다. 잠시 뒤에 다시 하세요.")
+                        time.sleep(0.5)
+                try:
+                    yield
+                finally:
+                    try:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+
+    @staticmethod
+    def _env_text(env) -> str:
+        if not isinstance(env, str) or len(env.encode("utf-8")) > RUNNER_ENV_MAX:
+            raise RelayError(400, ".env 내용이 없거나 너무 깁니다.")
+        lines = [line.strip() for line in env.replace("\r\n", "\n").split("\n")]
+        for number, line in enumerate(lines, 1):
+            if line and not line.startswith("#") and not RUNNER_ENV_LINE.match(line):
+                raise RelayError(400, f".env {number}번째 줄은 이름=값 이어야 합니다: {line[:60]}")
+        text = "\r\n".join(lines).strip()
+        return text + "\r\n" if text else ""
+
+    def _launch(self, folder: Path) -> None:
+        """run.cmd, hidden in a console of its own, with this account's current environment, apart from the relay's job when
+        Windows allows (the job of the logon task, for one, does not). Its output goes to _diag\\run.log."""
+        run = folder / "run.cmd"
+        if not run.is_file():
+            raise RelayError(409, f"{folder.name}: run.cmd가 없습니다.")
+        diag = folder / "_diag"
+        diag.mkdir(exist_ok=True)
+        output = diag / "run.log"
+        try:
+            large = output.stat().st_size > 1_048_576
+        except OSError:
+            large = False
+        info = subprocess.STARTUPINFO()
+        info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        info.wShowWindow = 0
+        environment = user_environment()
+        with open(output, "wb" if large else "ab") as stream:
+            stream.write(f"\r\n== {datetime.now():%Y-%m-%d %H:%M:%S} start (API server {VERSION}) ==\r\n".encode("utf-8"))
+            stream.flush()
+            for extra in (CREATE_BREAKAWAY_FROM_JOB, 0):
+                try:
+                    subprocess.Popen(["cmd.exe", "/d", "/c", str(run)], cwd=str(folder), env=environment, startupinfo=info,
+                                     creationflags=subprocess.CREATE_NEW_CONSOLE | extra, stdin=subprocess.DEVNULL, stdout=stream,
+                                     stderr=subprocess.STDOUT, close_fds=True)
+                    return
+                except OSError as error:
+                    if not extra:
+                        raise RelayError(500, f"{folder.name}을(를) 시작하지 못했습니다: {error}")
+
+    @staticmethod
+    def _exit_reason(folder: Path) -> str:
+        try:
+            lines = [line.strip() for line in console_text((folder / "_diag" / "run.log").read_bytes()[-8192:]).splitlines() if line.strip()]
+        except OSError:
+            return ""
+        # Only what this start wrote (each start begins with a "== ... start" line).
+        lines = lines[max((index for index, line in enumerate(lines) if line.startswith("== ")), default=-1) + 1:]
+        if any(text in line.lower() for line in lines for text in RUNNER_SESSION_LEFT):
+            return "GitHub에 이전 세션이 남아 있습니다. 2분쯤 뒤에 다시 시작하세요."
+        return lines[-1].strip('"')[:200] if lines else ""
+
+    def _await(self, folders: list, seconds: float = 25) -> dict:
+        """Waits until each runner's listener has run a few seconds; {folder: why not} for the ones that did not."""
+        seen = {folder: 0.0 for folder in folders}
+        problems = {}
+        deadline = time.monotonic() + seconds
+        while seen and time.monotonic() < deadline:
+            time.sleep(0.5)
+            table = ProcessTable()
+            for folder in list(seen):
+                listening = any(name.lower() == "runner.listener.exe" for _, name in table.under(folder))
+                if listening and not seen[folder]:
+                    seen[folder] = time.monotonic()
+                elif listening and time.monotonic() - seen[folder] >= 4:
+                    del seen[folder]
+                elif not listening and seen[folder]:
+                    problems[folder] = self._exit_reason(folder) or "시작한 뒤 바로 끝났습니다."
+                    del seen[folder]
+        for folder, since in seen.items():
+            if not since:
+                problems[folder] = self._exit_reason(folder) or "시작하지 않았습니다."
+        return problems
+
+    def _start(self, folder: Path) -> str:
+        if ProcessTable().under(folder):
+            return f"{folder.name}은(는) 이미 실행 중입니다."
+        if not (folder / ".runner").is_file():
+            raise RelayError(409, f"{folder.name}은(는) 등록되지 않은 러너입니다.")
+        self._launch(folder)
+        problem = self._await([folder]).get(folder)
+        if problem:
+            raise RelayError(502, f"{folder.name}: {problem}")
+        log.info("runner %s started", folder.name)
+        return f"{folder.name}을(를) 시작했습니다."
+
+    def _stop(self, folder: Path, force: bool) -> str:
+        """Ctrl+Break to the runner's console, then ends what is left (run.cmd's cmd.exe, a job's programs). A running job is
+        refused unless force. "" when it was not running."""
+        table = ProcessTable()
+        mine = table.under(folder)
+        if not mine:
+            return ""
+        if not force and any(name.lower() == "runner.worker.exe" for _, name in mine):
+            raise RelayError(409, f"{folder.name}이(가) 작업 중입니다. 멈추면 그 빌드가 취소됩니다.")
+        shells = set()
+        for pid, _ in mine:
+            parent = table.parent(pid)
+            while parent and table.name(parent).lower() == "cmd.exe" and parent not in shells:  # run.cmd
+                shells.add(parent)
+                parent = table.parent(parent)
+        listener = next((pid for pid, name in mine if name.lower() == "runner.listener.exe"), mine[0][0])
+        send_ctrl_break(listener)
+        deadline = time.monotonic() + 20
+        while True:
+            table = ProcessTable()
+            left = table.under(folder)
+            if not any(name.lower() == "runner.listener.exe" for _, name in left) or time.monotonic() > deadline:
+                break
+            time.sleep(0.5)
+        killed = any(name.lower() == "runner.listener.exe" for _, name in left)
+        targets = {pid for pid, _ in left} | {pid for pid in shells if table.name(pid).lower() == "cmd.exe"}
+        for pid in targets | table.descendants(targets):
+            kill_process(pid)
+        log.info("runner %s stopped%s", folder.name, " (killed)" if killed else "")
+        return (f"{folder.name}을(를) 강제로 멈췄습니다. GitHub에 세션이 2분쯤 남아 그동안은 다시 시작되지 않습니다." if killed
+                else f"{folder.name}을(를) 멈췄습니다.")
+
+    def start(self, runner_id, force: bool = False) -> dict:
+        folder = self.folder(runner_id)
+        with self._changing():
+            self._set_on(folder.name, True)
+            return {"message": self._start(folder)}
+
+    def stop(self, runner_id, force: bool = False) -> dict:
+        folder = self.folder(runner_id)
+        with self._changing():
+            message = self._stop(folder, force)
+            self._set_on(folder.name, False)
+            return {"message": message or f"{folder.name}을(를) 껐습니다."}
+
+    def restart(self, runner_id, force: bool = False) -> dict:
+        folder = self.folder(runner_id)
+        with self._changing():
+            self._stop(folder, force)
+            self._set_on(folder.name, True)
+            return {"message": self._start(folder).replace("시작했습니다", "다시 시작했습니다")}
+
+    def save(self, runner_id, env) -> dict:
+        """Writes the runner's .env (variables for its jobs) and restarts it when it runs idle, so the jobs see them."""
+        folder = self.folder(runner_id)
+        text = self._env_text(env)
+        with self._changing():
+            atomic_write(folder / ".env", text.encode("utf-8"))
+            mine = ProcessTable().under(folder)
+            if not mine:
+                return {"message": "저장했습니다."}
+            if any(name.lower() == "runner.worker.exe" for _, name in mine):
+                return {"message": "저장했습니다. 작업이 끝난 뒤 다시 시작하면 적용됩니다."}
+            self._stop(folder, False)
+            self._start(folder)
+            return {"message": "저장하고 다시 시작했습니다."}
+
+    def _template_runner(self) -> Path | None:
+        """A runner whose files a new one is made from (hard links: no extra space): the newest version."""
+        found = [folder for folder in self.folders()
+                 if (folder / "bin" / "Runner.Listener.exe").is_file() and (folder / "externals").is_dir() and (folder / "config.cmd").is_file()]
+        return max(found, key=lambda folder: tuple(int(part) for part in (runner_version(folder) or "0.0.0").split(".")), default=None)
+
+    def _prepare(self, target: Path) -> None:
+        package = self.config.runner_package
+        if package:
+            import zipfile
+            if not package.is_file():
+                raise RelayError(409, f"러너 파일이 없습니다: {package} (SETTINGS의 RUNNER_PACKAGE)")
+            with zipfile.ZipFile(package) as archive:
+                for member in archive.infolist():
+                    relative = Path(member.filename)
+                    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+                        continue
+                    destination = target / relative
+                    if member.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(member) as data, open(destination, "wb") as out:
+                        shutil.copyfileobj(data, out)
+            return
+        template = self._template_runner()
+        if template is None:
+            raise RelayError(409, "새 러너를 만들 러너 파일이 없습니다. SETTINGS의 RUNNER_PACKAGE에 actions-runner-win-x64-*.zip 경로를 쓰세요.")
+        target.mkdir(parents=True)
+        for item in template.iterdir():
+            if item.is_file() and not item.name.startswith(".") and item.name not in RUNNER_SKIP and item.suffix.lower() != ".log":
+                shutil.copy2(item, target / item.name)
+        for name in ("bin", "externals"):
+            link_tree((template / name).resolve(), target / name)
+
+    def _configure(self, target: Path, url: str, token: str, name: str) -> None:
+        command = ["cmd.exe", "/d", "/c", str(target / "config.cmd"), "--unattended", "--url", url, "--token", token, "--name", name, "--work", "_work"]
+        try:
+            result = subprocess.run(command, cwd=str(target), env=user_environment(), stdin=subprocess.DEVNULL, capture_output=True, timeout=300,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RelayError(502, f"러너를 등록하지 못했습니다: {error}")
+        if result.returncode != 0 or not (target / ".runner").is_file():
+            lines = [line.strip() for line in console_text(result.stdout + result.stderr).splitlines()
+                     if line.strip() and token not in line and not set(line.strip()) <= set("-|_ ")]
+            raise RelayError(502, "러너를 등록하지 못했습니다: " + (" / ".join(lines[-3:]) or f"종료 코드 {result.returncode}"))
+
+    def add(self, repository, folder_name, name, env) -> dict:
+        """A new runner for a repository: its files, its registration on GitHub (a token the relay asks for), its .env; then on."""
+        self._require()
+        full = self._canonical(repository)
+        repo = full.split("/", 1)[1]
+        folder_name = (folder_name or repo).strip() if isinstance(folder_name, str) or folder_name is None else ""
+        name = (name or "").strip() if isinstance(name, str) or name is None else ""
+        if not RUNNER_ID.match(folder_name) or folder_name.lower() == "env":
+            raise RelayError(400, "폴더 이름은 영문·숫자·.-_ 로 64자까지 씁니다.")
+        if not RUNNER_ID.match(name):
+            raise RelayError(400, "러너 이름은 영문·숫자·.-_ 로 64자까지 씁니다.")
+        text = self._env_text(env if env is not None else "")
+        target = self.root / folder_name
+        if target.exists():
+            raise RelayError(409, f"{target} 폴더가 이미 있습니다.")
+        if any(str(item.get("name") or "").lower() == name.lower() for item in self._github_runners(full, ttl=0)):
+            raise RelayError(409, f"{full}에 이미 {name} 러너가 있습니다. 다른 이름을 쓰세요.")
+        with self._changing():
+            try:
+                self._prepare(target)
+                status, answer = self._github_call("POST", f"{Releases._base(full)}/actions/runners/registration-token")
+                token = answer.get("token") if isinstance(answer, dict) else None
+                if status != 201 or not token:
+                    raise RelayError(502, "GitHub이 러너 등록 토큰을 주지 않았습니다. " + Releases._problem(status, answer))
+                self._configure(target, self._web_url(full), str(token), name)
+                atomic_write(target / ".env", text.encode("utf-8"))
+            except BaseException:
+                if target.exists():
+                    remove_tree(target)
+                raise
+            log.info("runner %s registered for %s as %s", folder_name, full, name)
+            self._set_on(folder_name, True)
+            try:
+                self._start(target)
+                message = f"{name}을(를) 등록하고 시작했습니다."
+            except RelayError as error:
+                message = f"{name}을(를) 등록했지만 시작하지 못했습니다: {error.message}"
+        return {"id": folder_name, "message": message}
+
+    def remove(self, runner_id, force: bool = False) -> dict:
+        """Stops the runner, removes it from its repository on GitHub and deletes its folder."""
+        folder = self.folder(runner_id)
+        info = self._registration(folder)
+        with self._changing():
+            self._stop(folder, force)
+            repository, name = self._repository(str(info.get("gitHubUrl") or "")), str(info.get("agentName") or "")
+            if repository and name:
+                full = self._canonical(repository)
+                match = next((item for item in self._github_runners(full, ttl=0) if str(item.get("name") or "").lower() == name.lower()), None)
+                if match and match.get("id") is not None:
+                    status, answer = self._github_call("DELETE", f"{Releases._base(full)}/actions/runners/{int(match['id'])}")
+                    if status not in (204, 404):
+                        raise RelayError(502, "GitHub에서 러너를 지우지 못했습니다. " + Releases._problem(status, answer))
+            remove_tree(folder)
+            self._set_on(folder.name, True)
+        log.info("runner %s removed", folder.name)
+        return {"message": f"{folder.name}을(를) 지웠습니다."}
+
+    def start_on(self) -> list:
+        """Starts every registered runner that is on and not running (the logon task): all at once, then waits for them."""
+        with self._changing():
+            table, off = ProcessTable(), self._off()
+            started = [folder for folder in self.folders()
+                       if (folder / ".runner").is_file() and folder.name.lower() not in off and not table.under(folder)]
+            lines = []
+            for folder in list(started):
+                try:
+                    self._launch(folder)
+                except RelayError as error:
+                    lines.append(error.message)
+                    started.remove(folder)
+            problems = self._await(started) if started else {}
+            lines += [f"{folder.name}: {problems[folder]}" if folder in problems else f"{folder.name} 시작" for folder in started]
+            return lines
+
+    # The logon task --------------------------------------------------------------------------------------------
+
+    def _task_command(self) -> tuple:
+        python = Path(sys.executable).with_name("pythonw.exe")
+        command = str(python if python.is_file() else Path(sys.executable))
+        arguments = f'"{Path(__file__).resolve()}" --start-runners' + "".join(f' --set "{item}"' for item in self.config.set_args)
+        return command, arguments
+
+    def task_info(self, fresh: bool = False) -> dict:
+        names, until = self._tasks
+        if fresh or names is None or time.monotonic() > until:
+            names = scheduled_tasks()
+            self._tasks = (names, time.monotonic() + 60)
+        exists = f"\\{RUNNERS_TASK}".lower() in (name.lower() for name in names)
+        current = False
+        if exists:
+            xml = task_definition(RUNNERS_TASK)
+            command, arguments = self._task_command()
+            current = xml_value(xml, "Command").lower() == command.lower() and xml_value(xml, "Arguments").lower() == arguments.lower()
+        legacy = [name[1:] for name in names if name.count("\\") == 1 and LEGACY_RUNNER_TASK.match(name[1:])]
+        return {"name": RUNNERS_TASK, "exists": exists, "current": current, "legacy": legacy}
+
+    def install_task(self) -> dict:
+        """Puts the one logon task in place (pointing at this relay.py) and removes the per-runner tasks of earlier setups (their
+        XML kept in RUNNERS_ROOT\\.backup\\tasks). Deleting a task leaves what it started running; runners that are on but not
+        running are started."""
+        self._require()
+        info = self.task_info(fresh=True)
+        with self._changing():
+            backups = self.root / ".backup" / "tasks"
+            for name in info["legacy"]:
+                xml = task_definition(name)
+                if xml:
+                    backups.mkdir(parents=True, exist_ok=True)
+                    (backups / (re.sub(r"[^A-Za-z0-9 ._-]", "_", name) + ".xml")).write_text(xml, encoding="utf-16")
+                if run_hidden(["schtasks", "/Delete", "/TN", name, "/F"], 60) != 0:
+                    raise RelayError(500, f"예전 작업 {name}을(를) 지우지 못했습니다.")
+                log.info("legacy runner task %s removed (backup in %s)", name, backups)
+            command, arguments = self._task_command()
+            user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+            user = f"{os.environ['USERDOMAIN']}\\{user}" if os.environ.get("USERDOMAIN") else user
+            problem = register_task(RUNNERS_TASK, runners_task_xml(command, arguments, str(SCRIPT_DIR), user))
+            if problem:
+                raise RelayError(500, "로그온 작업을 만들지 못했습니다: " + problem)
+            log.info("logon task %s set: %s %s", RUNNERS_TASK, command, arguments)
+        lines = self.start_on()
+        self._tasks = (None, 0.0)
+        removed = f" · 예전 작업 {len(info['legacy'])}개 삭제" if info["legacy"] else ""
+        started = f" · {len(lines)}개 시작" if lines else ""
+        return {"message": f"로그온 작업 {RUNNERS_TASK} 하나로 러너를 시작합니다{removed}{started}.", "details": lines}
+
+
+def start_runners_at_logon(config: Config) -> int:
+    """--start-runners (the logon task RUNNERS_TASK): starts the runners that are on, then ends."""
+    setup_logging(config, True)
+    runners = Runners(config)
+    problem = runners.available()
+    if problem:
+        log.warning("runners not started: %s", problem)
+        return 1
+    try:
+        for line in runners.start_on():
+            log.info("logon task: %s", line)
+    except RelayError as error:
+        log.warning("logon task: %s", error.message)
+        return 1
+    return 0
+
+
 # ── EQ Status 설비 상태 ─────────────────────────────────────────────────────────────────────────────
 
 class MySqlError(Exception):
@@ -2353,6 +3284,7 @@ class RelayServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.github = GitHubProxy(config, self.launcher)
         self.releases = Releases(config, self.launcher, self.github)
         self.equipment = EquipmentStatus(config)
+        self.runners = Runners(config, self.github, self.releases)
         self.limiter = RateLimiter()
         self.notifier = Notifier(config.webhook_url)
         self.clients = Clients()
@@ -2757,6 +3689,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if method == "POST":
                 body = body_object()
                 return self._json(202, server.releases.release(body.get("repository"), body.get("version")))
+        if parts == ["runners"] and method == "GET":
+            return self._json(200, server.runners.list())
+        if parts == ["runners", "template"] and method == "GET":
+            return self._json(200, server.runners.template((self.query.get("repository") or [""])[0]))
+        if parts[:1] == ["runners"] and method in ("POST", "PUT", "DELETE"):
+            # They start programs and change Task Scheduler on the server PC: only from that PC (the API Manager there).
+            self._require_this_pc()
+            if parts == ["runners"] and method == "POST":
+                body = body_object()
+                return self._json(201, server.runners.add(body.get("repository"), body.get("folder"), body.get("name"), body.get("env")))
+            if parts == ["runners", "task"] and method == "POST":
+                return self._json(200, server.runners.install_task())
+            if len(parts) == 2 and method == "PUT":
+                return self._json(200, server.runners.save(parts[1], body_object().get("env")))
+            if len(parts) == 2 and method == "DELETE":
+                return self._json(200, server.runners.remove(parts[1], self.query.get("force") == ["1"]))
+            if len(parts) == 3 and parts[2] in ("start", "stop", "restart") and method == "POST":
+                force = body_object().get("force") is True
+                return self._json(200, getattr(server.runners, parts[2])(parts[1], force))
         raise RelayError(404, "찾을 수 없는 주소입니다.")
 
     # Checks -------------------------------------------------------------------------------------------
@@ -2792,6 +3743,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
         raise _Handled()
+
+    def _require_this_pc(self) -> None:
+        address = self.client_address[0]
+        if not (is_loopback(address) or is_local_address(address)):
+            raise RelayError(403, "러너는 서버 PC에서만 바꿀 수 있습니다.")
 
     def _require_same_origin(self) -> None:
         # A form post from another site would carry the browser's saved admin login: accept this page's own origin only.
@@ -3217,12 +4173,13 @@ def uninstall_startup(only_this: bool = False) -> None:
 
 
 def matching_relays(listing: str, script: Path, own_pid: int) -> list:
-    """The process IDs in 'pid<TAB>command line' lines whose command line names this relay.py by its full path."""
+    """The process IDs in 'pid<TAB>command line' lines whose command line names this relay.py by its full path (not the logon
+    task's short --start-runners run, which is no server)."""
     target = str(script).lower()
     found = []
     for line in listing.splitlines():
         pid, _, command = line.partition("\t")
-        if pid.strip().isdigit() and int(pid) != own_pid and target in command.lower():
+        if pid.strip().isdigit() and int(pid) != own_pid and target in command.lower() and "--start-runners" not in command.lower():
             found.append(int(pid))
     return found
 
@@ -3591,6 +4548,7 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
     parser.add_argument("--restart", action="store_true", help="실행 중이면 멈추고 창 없이 다시 시작(자동 실행·방화벽은 그대로, ApiServer 프로그램이 씀)")
     parser.add_argument("--halt", action="store_true", help="실행 중인 이 서버만 멈춤(자동 실행 등록은 그대로)")
     parser.add_argument("--version", action="store_true", help="버전만 출력")
+    parser.add_argument("--start-runners", action="store_true", help="켜 둔 GitHub 러너를 시작하고 끝냄(로그온 작업 GitHub Runners가 씀)")
     parser.add_argument("--backup", action="store_true", help="스킬·플러그인·공지를 지금 백업(ZIP)하고 끝냄")
     parser.add_argument("--restore-backup", nargs="?", const="", metavar="ZIP",
                         help="백업에서 비어 있거나 없는 스킬·플러그인·공지 폴더를 되살림(ZIP 생략 시 가장 최근 백업, 서버를 멈춘 뒤)")
@@ -3625,6 +4583,9 @@ def main(argv: list | None = None) -> int:
         print("중계 서버를 멈췄습니다." if stopped else "실행 중인 중계 서버가 없습니다.")
         return 0
     config = Config(args)
+    if args.start_runners:
+        # Before the address check: right after logon the network may not be up yet, and runners need none of it.
+        return start_runners_at_logon(config)
     if args.allow_firewall:
         return 0 if allow_firewall(config.port) else 1
     if args.backup:
