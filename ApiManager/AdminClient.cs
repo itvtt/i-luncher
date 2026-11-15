@@ -44,6 +44,18 @@ internal sealed class AdminClient : IDisposable
         return JsonNode.Parse(text.Length == 0 ? "null" : text) ?? new JsonObject();
     }
 
+    /// <summary>파일 그대로 올림 (스크린샷 이미지)</summary>
+    public async Task<JsonNode> PostBytesAsync(string path, byte[] data, string contentType)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path.TrimStart('/')) { Content = new ByteArrayContent(data) };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var response = await _http.SendAsync(request, cancel.Token);
+        string text = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode) throw new AdminException(ErrorText(response.StatusCode, text), response.StatusCode);
+        return JsonNode.Parse(text.Length == 0 ? "null" : text) ?? new JsonObject();
+    }
+
     public async Task<byte[]> GetBytesAsync(string path)
     {
         using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(120));

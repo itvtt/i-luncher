@@ -410,6 +410,8 @@ public partial class ManagerView : UserControl
         AppIdBox.Text = app is null ? "" : Str(app.Data["id"]);
         AppCategoryBox.Text = app is null ? "" : Str(app.Data["category"]);
         AppDescriptionBox.Text = app is null ? "" : Str(app.Data["description"]);
+        AppDetailsBox.Text = app is null ? "" : Str(app.Data["details"]).Replace("\n", "\r\n");
+        ShowScreenshots(app);
         AppInstallNameBox.Text = app is null ? "" : Str(app.Data["installName"]);
         bool setup = app is not null && Str(app.Data["kind"]).Equals("setup", StringComparison.OrdinalIgnoreCase);
         AppKindSetup.IsChecked = setup;
@@ -429,6 +431,7 @@ public partial class ManagerView : UserControl
         Put(app.Data, "id", AppIdBox.Text.Trim(), keepEmpty: true);
         Put(app.Data, "category", AppCategoryBox.Text.Trim());
         Put(app.Data, "description", AppDescriptionBox.Text.Trim());
+        Put(app.Data, "details", AppDetailsBox.Text.Replace("\r\n", "\n").Trim());
         Put(app.Data, "installName", AppInstallNameBox.Text.Trim());
         app.Changed();
         SetAppsDirty(true);

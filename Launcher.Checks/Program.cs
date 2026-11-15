@@ -159,6 +159,18 @@ try
         Equal(1, apps.Count, "count");
         Equal("folder-compare", apps[0].Id, "generated id");
     });
+    await CheckSync("app page: details and screenshots come from the app list, release notes read as plain text", () =>
+    {
+        var apps = CatalogSerializer.Parse("""
+            [ { "id": "a", "name": "A", "repository": "o/a", "details": "긴 설명", "screenshots": [ "0123456789abcdef.png", "https://example.com/s.png" ] } ]
+            """);
+        Equal("긴 설명", apps[0].Details, "details");
+        Equal(2, apps[0].Screenshots?.Count ?? 0, "screenshots");
+        Equal("새 기능\n• 하나\n• 둘\n\n고침", ILauncher.MainWindow.ReleaseNotes("## 새 기능\r\n- **하나**\r\n* `둘`\r\n\r\n\r\n\r\n고침\r\n"), "notes");
+        var shots = new ScreenshotService(Path.Combine(root, "shots"), () => "http://server:2003/");
+        Equal("http://server:2003/launcher/media/0123456789abcdef.png", shots.Address("0123456789abcdef.png")?.ToString(), "uploaded image address");
+        Equal("https://example.com/s.png", shots.Address("https://example.com/s.png")?.ToString(), "an address as it is");
+    });
 
     var github = new FakeGitHub();
     using var client = new GitHubClient(host => host == "ghe.test" ? "secret-token" : null, "checks", github);

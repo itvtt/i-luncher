@@ -168,13 +168,42 @@
                         </StackPanel>
                     </Grid>
                     <ScrollViewer Grid.Column="1" Margin="22,0,0,0" VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="AppForm" IsEnabled="False" MaxWidth="560" HorizontalAlignment="Left" Width="Auto" MinWidth="320">
+                        <StackPanel x:Name="AppForm" IsEnabled="False" MaxWidth="560" HorizontalAlignment="Left" Width="Auto" MinWidth="320" PreviewKeyDown="AppForm_PreviewKeyDown">
                             <TextBlock Text="이름" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,4" />
                             <TextBox x:Name="AppNameBox" TextChanged="AppField_TextChanged" />
                             <TextBlock Text="GitHub 저장소" Style="{StaticResource FieldLabelStyle}" />
                             <TextBox x:Name="AppRepositoryBox" Tag="https://github.com/소유자/저장소" TextChanged="AppField_TextChanged" />
                             <TextBlock Text="설명" Style="{StaticResource FieldLabelStyle}" />
                             <TextBox x:Name="AppDescriptionBox" TextChanged="AppField_TextChanged" />
+                            <TextBlock Text="상세 설명" Style="{StaticResource FieldLabelStyle}" ToolTip="i-luncher 앱 페이지의 긴 설명" />
+                            <TextBox x:Name="AppDetailsBox" Style="{StaticResource DocumentBoxStyle}" Height="110" FontFamily="Segoe UI, Malgun Gothic" FontSize="13"
+                                     TextChanged="AppField_TextChanged" />
+                            <!-- 앱 페이지 스크린샷: + (파일) 또는 이미지를 복사해 Ctrl+V. 이 순서대로 보임 -->
+                            <DockPanel Margin="0,10,0,4">
+                                <Button x:Name="AddScreenshotButton" DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE710;" Height="26" Width="30"
+                                        ToolTip="스크린샷 추가 (PNG·JPG, 이미지를 복사해 Ctrl+V 도 됨)" AutomationProperties.Name="스크린샷 추가" Click="AddScreenshotButton_Click" />
+                                <TextBlock Text="스크린샷" Style="{StaticResource FieldLabelStyle}" Margin="0" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ItemsControl x:Name="ScreenshotStrip" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Width="132" Height="82" Margin="0,0,8,8" ToolTip="{Binding Name}">
+                                            <Border CornerRadius="7" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="{StaticResource SurfaceBrush}">
+                                                <Border CornerRadius="6">
+                                                    <Border.Background><ImageBrush ImageSource="{Binding Image}" Stretch="UniformToFill" /></Border.Background>
+                                                </Border>
+                                            </Border>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0">
+                                                <Button Style="{StaticResource IconButtonStyle}" Width="24" Height="22" Background="#CC1C1C1E" FontSize="10" Content="&#xE76B;" Tag="{Binding Name}"
+                                                        ToolTip="앞으로" AutomationProperties.Name="앞으로" Click="MoveScreenshotButton_Click" />
+                                                <Button Style="{StaticResource IconButtonStyle}" Width="24" Height="22" Margin="3,0,0,0" Background="#CC1C1C1E" FontSize="10" Content="&#xE711;"
+                                                        Tag="{Binding Name}" ToolTip="빼기" AutomationProperties.Name="스크린샷 빼기" Click="RemoveScreenshotButton_Click" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

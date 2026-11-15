@@ -30,6 +30,8 @@ i-luncher가 쓰는 API(키 없이 읽고, 고칠 때만 관리자 비밀번호 
     PUT  /launcher/catalog         앱 목록 저장 {apps, revision} (다른 곳에서 먼저 고쳤으면 409)
     GET  /launcher/notices         런처 공지 {text, revision}
     PUT  /launcher/notices         런처 공지 저장 {text, revision}
+    GET  /launcher/media/<이름>     앱 페이지 스크린샷(PNG·JPG, 이름 = 내용의 SHA-256 앞 16자리). 앱 목록의 screenshots가 이 이름을 씀
+    POST /launcher/media           이미지 올리기(본문 = PNG·JPG, 8 MB까지) → {name}. 어느 앱도 쓰지 않는 이미지는 하루 뒤 지움
 
 EQ Status가 쓰는 API(앱에 내장된 키 X-EQStatus-API-Key, SETTINGS의 EQUIPMENT_API_KEY를 쓸 때만 확인)
     GET  /api/v1/equipment-status  설비 상태 {items: [{line, sdwt, process, equipmentId, status, hours, downTime, comment}], updatedAt}
@@ -145,7 +147,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.18.0"
+VERSION = "2.19.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -1621,6 +1623,14 @@ class Announcements:
 LAUNCHER_CATALOG_MAX = 1_048_576
 LAUNCHER_HISTORY_KEEP = 50
 LAUNCHER_APP_ID = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+# Screenshots of the launcher's app pages: PNG or JPG kept under launcher\media, named by their content (SHA-256, 16 hex) so
+# a name never changes meaning and the launcher caches it for good. The app list names them per app (screenshots).
+LAUNCHER_MEDIA_NAME = re.compile(r"^[a-f0-9]{16}\.(png|jpg)$")
+LAUNCHER_MEDIA_MAX = 8 * 1024 * 1024
+LAUNCHER_MEDIA_TYPES = {"png": "image/png", "jpg": "image/jpeg"}
+LAUNCHER_MEDIA_KEEP_UNUSED = 86400  # seconds an image no app names is kept (uploaded before the app list is saved)
+LAUNCHER_SCREENSHOTS_MAX = 12
+LAUNCHER_DETAILS_MAX = 20_000
 GITHUB_HOSTS = ("github.com", "www.github.com")
 
 
@@ -1690,6 +1700,13 @@ class LauncherStore:
                 raise RelayError(400, f"{app_id}: 이름이 비었거나 너무 깁니다.")
             if not repository or len(repository) > 512:
                 raise RelayError(400, f"{app_id}: 저장소 주소가 비었거나 너무 깁니다.")
+            details = app.get("details")
+            if details is not None and (not isinstance(details, str) or len(details) > LAUNCHER_DETAILS_MAX):
+                raise RelayError(400, f"{app_id}: 상세 설명은 {LAUNCHER_DETAILS_MAX}자까지 씁니다.")
+            shots = app.get("screenshots")
+            if shots is not None and (not isinstance(shots, list) or len(shots) > LAUNCHER_SCREENSHOTS_MAX or not all(
+                    isinstance(shot, str) and (LAUNCHER_MEDIA_NAME.match(shot) or re.match(r"^https?://\S{1,500}$", shot)) for shot in shots)):
+                raise RelayError(400, f"{app_id}: 스크린샷은 {LAUNCHER_SCREENSHOTS_MAX}장까지, 올린 이미지 이름이나 http(s) 주소로 씁니다.")
         return apps
 
     def save_catalog(self, apps, expected_revision: str) -> dict:
@@ -1697,7 +1714,54 @@ class LauncherStore:
         if len(data) > LAUNCHER_CATALOG_MAX:
             raise RelayError(400, "앱 목록이 너무 큽니다(1 MB까지).")
         self._save("catalog.json", data, expected_revision)
+        self.clean_media()
         return self.catalog()
+
+    # Screenshots ------------------------------------------------------------------------------------------
+
+    @property
+    def media_directory(self) -> Path:
+        return self.directory / "media"
+
+    def media_file(self, name: str) -> Path:
+        path = self.media_directory / name
+        if not LAUNCHER_MEDIA_NAME.match(name) or not path.is_file():
+            raise RelayError(404, "이미지를 찾지 못했습니다.")
+        return path
+
+    def add_media(self, data: bytes) -> str:
+        """Keeps an uploaded PNG or JPG; its name is the first 16 hex of its SHA-256 (the same image twice is one file)."""
+        if not data:
+            raise RelayError(400, "이미지가 비어 있습니다.")
+        if len(data) > LAUNCHER_MEDIA_MAX:
+            raise RelayError(413, "이미지는 8 MB까지 올릴 수 있습니다.")
+        kind = "png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "jpg" if data.startswith(b"\xff\xd8\xff") else ""
+        if not kind:
+            raise RelayError(415, "PNG나 JPG 이미지만 올릴 수 있습니다.")
+        name = f"{sha256_hex(data)[:16].lower()}.{kind}"
+        path = self.media_directory / name
+        if path.is_file():
+            os.utime(path)  # counts as new: kept until an app list names it
+        else:
+            atomic_write(path, data)
+        return name
+
+    def clean_media(self) -> int:
+        """Deletes images no app names any more, once they are a day old (an upload waits for its app list save)."""
+        named = {shot for app in self.catalog()["apps"] for shot in (app.get("screenshots") or []) if isinstance(shot, str)}
+        removed = 0
+        try:
+            files = [path for path in self.media_directory.iterdir() if path.is_file()]
+        except OSError:
+            return 0
+        for path in files:
+            try:
+                if path.name not in named and time.time() - path.stat().st_mtime > LAUNCHER_MEDIA_KEEP_UNUSED:
+                    path.unlink()
+                    removed += 1
+            except OSError:
+                pass
+        return removed
 
     def notices(self) -> dict:
         data, revision = self._read("notices.txt")
@@ -3526,6 +3590,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json(200, catalog, {"ETag": etag})
         if parts == ["notices"] and method == "GET":
             return self._json(200, store.notices())
+        if len(parts) == 2 and parts[0] == "media" and method == "GET":
+            # The app pages' screenshots: open like the app list, named by content (never changes).
+            path = store.media_file(parts[1])
+            return self._send(200, path.read_bytes(), LAUNCHER_MEDIA_TYPES[path.suffix[1:]], {"ETag": f'"{path.stem}"'})
+        if parts == ["media"] and method == "POST":
+            self._require_admin()
+            name = store.add_media(self._body())
+            log.info("launcher image %s uploaded from %s", name, self.client_address[0])
+            return self._json(201, {"name": name})
         if parts in (["catalog"], ["notices"]) and method == "PUT":
             self._require_admin()
             body = self._json_body()
@@ -3537,7 +3610,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 log.info("launcher catalog saved from %s: %d apps", self.client_address[0], len(saved["apps"]))
                 return self._json(200, saved)
             return self._json(200, store.save_notices(body.get("text"), revision))
-        raise RelayError(404 if parts not in (["catalog"], ["notices"]) else 405, "찾을 수 없는 주소입니다.")
+        raise RelayError(404 if parts not in (["catalog"], ["notices"], ["media"]) else 405, "찾을 수 없는 주소입니다.")
 
     def public_base(self) -> str:
         """How the client reached this server (scheme and Host): GitHub relay answers point back the same way."""

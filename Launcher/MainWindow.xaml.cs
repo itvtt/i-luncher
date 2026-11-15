@@ -46,6 +46,7 @@ public partial class MainWindow : Window
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
         ApiManagerPanel.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
+        PreviewMouseUp += Window_PreviewMouseUp;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
     }
@@ -58,6 +59,7 @@ public partial class MainWindow : Window
     private void ApiManagerButton_Click(object sender, RoutedEventArgs e)
     {
         if (!IsApiManager) return;
+        _detail = null;
         _filter = "manager";
         Render();
     }
@@ -79,7 +81,10 @@ public partial class MainWindow : Window
         };
         if (!ReferenceEquals(PagePane.Content, page)) PagePane.Content = page;
         PagePane.Visibility = page is null ? Visibility.Collapsed : Visibility.Visible;
-        StorePane.Visibility = page is null ? Visibility.Visible : Visibility.Collapsed;
+        // 앱 페이지는 목록 위에 (목록의 스크롤 위치는 그대로 남음)
+        bool detail = page is null && _detail is not null;
+        DetailPane.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
+        StorePane.Visibility = page is null && !detail ? Visibility.Visible : Visibility.Collapsed;
     }
     private string IconCacheDirectory => Path.Combine(_settings.DataDirectory, "icons");
 
@@ -262,11 +267,6 @@ public partial class MainWindow : Window
     }
 
     // ───────────────────────── 카드 동작 ─────────────────────────
-
-    private async void Card_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is AppCard card) await OpenAsync(card);
-    }
 
     /// <summary>
     /// 카드 클릭: 미설치면 설치 여부를 묻고 설치한 뒤 실행. 설치돼 있으면 최신 릴리스를 확인해
@@ -712,6 +712,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void Render()
     {
+        if (_detail is not null && !_cards.Contains(_detail)) CloseDetail();  // 목록에서 빠진 앱
         ShowPage();
         if (OnPage)
         {
@@ -899,6 +900,7 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.Tag is string filter)
         {
+            CloseDetail();
             _filter = filter;
             Render();
         }
@@ -908,6 +910,7 @@ public partial class MainWindow : Window
     {
         // 다른 화면에서 검색하면 앱 목록으로
         if (OnPage && SearchBox.Text.Trim().Length > 0) _filter = "all";
+        if (SearchBox.Text.Trim().Length > 0) CloseDetail();
         Render();
     }
 
@@ -933,6 +936,7 @@ public partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         _settingsView = null;
+        _detail = null;
         _filter = "settings";
         Render();
     }
@@ -1070,6 +1074,11 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (HandleDetailKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
         {
             SearchBox.Focus();

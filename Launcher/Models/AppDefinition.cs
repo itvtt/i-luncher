@@ -22,6 +22,10 @@ public sealed partial class AppDefinition
     /// <summary>GitHub 저장소 주소 (https://github.example.com/team/DeskCal)</summary>
     public string Repository { get; set; } = "";
     public string Description { get; set; } = "";
+    /// <summary>앱 페이지의 긴 설명 (여러 줄). 비우면 Description</summary>
+    public string? Details { get; set; }
+    /// <summary>앱 페이지의 스크린샷: API 서버에 올린 이미지 이름(/launcher/media/&lt;이름&gt;) 또는 http(s) 주소, 보이는 순서대로</summary>
+    public List<string>? Screenshots { get; set; }
     public string Category { get; set; } = "";
     /// <summary>zip(기본) 또는 setup</summary>
     public string? Kind { get; set; }

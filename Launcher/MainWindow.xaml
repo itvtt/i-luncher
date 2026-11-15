@@ -84,6 +84,59 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <!-- 카드 오른쪽 버튼 (열기·받기·업데이트): 누르면 바로 실행·설치 (카드의 나머지는 앱 페이지). 회색 캡슐에 파란 굵은 글자 -->
+            <Style x:Key="StoreActionButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="28" />
+                <Setter Property="MinWidth" Value="52" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Background" Value="#FF2C2D32" />
+                <Setter Property="Foreground" Value="#FF4AA3FF" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Border Background="{TemplateBinding Background}" CornerRadius="999" />
+                                <Border x:Name="Shine" Background="#1FFFFFFF" CornerRadius="999" Opacity="0" />
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shine" Property="Background" Value="#26000000" /></Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.6" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="HeroActionButtonStyle" TargetType="Button" BasedOn="{StaticResource StoreActionButtonStyle}">
+                <Setter Property="Padding" Value="14,0" />
+                <Setter Property="Background" Value="#40FFFFFF" />
+                <Setter Property="Foreground" Value="White" />
+            </Style>
+            <!-- 앱 페이지의 큰 버튼: 파란 캡슐 -->
+            <Style x:Key="DetailActionButtonStyle" TargetType="Button" BasedOn="{StaticResource StoreActionButtonStyle}">
+                <Setter Property="Height" Value="34" />
+                <Setter Property="MinWidth" Value="96" />
+                <Setter Property="Padding" Value="24,0" />
+                <Setter Property="Background" Value="#FF3478F6" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontSize" Value="14" />
+            </Style>
+            <!-- 스크린샷: 누르면 크게 -->
+            <Style x:Key="PlainButtonStyle" TargetType="Button">
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button"><ContentPresenter /></ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <!-- 홍보 카드: 내용(그라데이션 카드) 그대로, 마우스를 올리면 살짝 밝게 -->
             <Style x:Key="HeroCardStyle" TargetType="Button">
                 <Setter Property="Cursor" Value="Hand" />
@@ -307,8 +360,8 @@
                             <!-- 앱 한 줄: 아이콘 · 이름(길면 두 줄) · 설명 · 오른쪽 열기/업데이트/받기 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid Margin="0,0,12,12">
-                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="Card_Click" IsEnabled="{Binding CanInteract}" ToolTipService.ShowOnDisabled="True"
-                                            ToolTip="{Binding RunToolTip}" AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
+                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding}" Click="Card_Click"
+                                            AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="실행" Tag="{Binding}" Click="LaunchMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
@@ -344,10 +397,9 @@
                                                     <TextBlock FontSize="12" Foreground="#FF98989D" Text="{Binding DescriptionText}" ToolTip="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" />
                                                 </DockPanel>
                                             </StackPanel>
-                                            <Border Grid.Column="2" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding StoreButtonVisibility}"
-                                                    ToolTip="{Binding VersionToolTip}">
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="#FF4AA3FF" Text="{Binding StoreButtonText}" />
-                                            </Border>
+                                            <Button Grid.Column="2" Style="{StaticResource StoreActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
+                                                    Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
+                                                    AutomationProperties.Name="{Binding StoreButtonText}" />
                                         </Grid>
                                     </Button>
                                     <ProgressBar Height="2" Margin="16,0,16,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
@@ -358,8 +410,8 @@
 
                             <!-- 맨 위 큰 홍보 카드: 아이콘 색 그라데이션, 머리글 · 제목 · 설명, 큰 아이콘, 아래 앱 이름과 버튼 -->
                             <DataTemplate DataType="{x:Type local:HeroItem}">
-                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,12,12" Height="232" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}"
-                                        ToolTip="{Binding Card.RunToolTip}" AutomationProperties.Name="{Binding Card.Name}">
+                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,12,12" Height="232" Tag="{Binding Card}" Click="Card_Click"
+                                        AutomationProperties.Name="{Binding Card.Name}">
                                     <Border CornerRadius="18" Background="{Binding Art}" Padding="22,20,22,16">
                                         <Grid>
                                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -375,9 +427,9 @@
                                             </Grid>
                                             <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,12,0,0">
                                                 <DockPanel>
-                                                    <Border DockPanel.Dock="Right" Height="28" MinWidth="52" Padding="14,0" CornerRadius="14" Background="#40FFFFFF" VerticalAlignment="Center" Visibility="{Binding Card.StoreButtonVisibility}">
-                                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="White" Text="{Binding Card.StoreButtonText}" />
-                                                    </Border>
+                                                    <Button DockPanel.Dock="Right" Style="{StaticResource HeroActionButtonStyle}" Tag="{Binding Card}" Click="StoreAction_Click" IsEnabled="{Binding Card.CanInteract}"
+                                                            Visibility="{Binding Card.StoreButtonVisibility}" ToolTip="{Binding Card.RunToolTip}" Content="{Binding Card.StoreButtonText}"
+                                                            AutomationProperties.Name="{Binding Card.StoreButtonText}" />
                                                     <Grid Width="34" Height="34" DockPanel.Dock="Left">
                                                         <Border CornerRadius="9" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
                                                             <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
@@ -398,8 +450,7 @@
                             <!-- 순위 한 줄 (최근 업데이트): 아이콘 · 번호 · 이름 · 분류와 날짜 · 버튼 -->
                             <DataTemplate DataType="{x:Type local:RankItem}">
                                 <Grid Margin="0,0,12,12">
-                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}" ToolTip="{Binding Card.RunToolTip}"
-                                            AutomationProperties.Name="{Binding Card.Name}">
+                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" AutomationProperties.Name="{Binding Card.Name}">
                                         <Grid Height="78">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <Grid Width="48" Height="48" VerticalAlignment="Center">
@@ -413,12 +464,14 @@
                                                 <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" ToolTip="{Binding Card.FullName}" TextWrapping="Wrap"><Run Text="{Binding Card.Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding Card.EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                                 <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <Border Grid.Column="3" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding Card.StoreButtonVisibility}"
-                                                    ToolTip="{Binding Card.VersionToolTip}">
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Foreground="#FF4AA3FF" Text="{Binding Card.StoreButtonText}" />
-                                            </Border>
+                                            <Button Grid.Column="3" Style="{StaticResource StoreActionButtonStyle}" Tag="{Binding Card}" Click="StoreAction_Click" IsEnabled="{Binding Card.CanInteract}"
+                                                    Visibility="{Binding Card.StoreButtonVisibility}" ToolTip="{Binding Card.RunToolTip}" Content="{Binding Card.StoreButtonText}"
+                                                    AutomationProperties.Name="{Binding Card.StoreButtonText}" />
                                         </Grid>
                                     </Button>
+                                    <ProgressBar Height="2" Margin="16,0,16,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                                 IsIndeterminate="{Binding Card.IsIndeterminate}" Value="{Binding Card.ProgressValue, Mode=OneWay}" Visibility="{Binding Card.BusyVisibility}"
+                                                 Background="Transparent" BorderThickness="0" Foreground="#FF4AA3FF" />
                                 </Grid>
                             </DataTemplate>
 
@@ -500,6 +553,122 @@
             </Grid>
 
             <!-- API Manager · 설정: 앱 목록 대신 오른쪽 화면 전체 -->
+            <!-- 앱 페이지 (카드를 누르면): 아이콘·이름·버튼, 정보 줄, 스크린샷, 설명, 새로운 기능. 뒤로·Esc·마우스 뒤로 단추로 목록 -->
+            <Grid x:Name="DetailPane" Grid.Column="1" Visibility="Collapsed">
+                <ScrollViewer x:Name="DetailScrollViewer" Padding="30,16,22,28" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel MaxWidth="1100" HorizontalAlignment="Stretch">
+                        <Button x:Name="DetailBackButton" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" VerticalAlignment="Top" Click="DetailBack_Click"
+                                AutomationProperties.Name="뒤로" ToolTip="뒤로 (Esc)">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,1,6,0" VerticalAlignment="Center" />
+                                <TextBlock x:Name="DetailBackText" Text="전체 앱" />
+                            </StackPanel>
+                        </Button>
+
+                        <Grid Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="128" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid Width="128" Height="128" VerticalAlignment="Top">
+                                <Border CornerRadius="28" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}">
+                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="46" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
+                                </Border>
+                                <Image Width="128" Height="128" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                            </Grid>
+                            <StackPanel Grid.Column="1" Margin="24,2,0,0" VerticalAlignment="Center">
+                                <TextBlock FontSize="28" FontWeight="Bold" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="16" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,6,0,0" FontSize="14" Foreground="#FF98989D" Text="{Binding App.Description}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                    <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
+                                            Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
+                                            AutomationProperties.Name="{Binding StoreButtonText}" />
+                                    <Button x:Name="DetailMoreButton" Width="34" Height="34" Padding="0" Margin="10,0,0,0" Style="{StaticResource RoundedToolbarButtonStyle}" Tag="{Binding}"
+                                            Click="DetailMore_Click" ToolTip="더 보기" AutomationProperties.Name="더 보기">
+                                        <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Button.ContextMenu>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem Header="{Binding FavoriteMenuHeader}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
+                                                <MenuItem Header="업데이트" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
+                                                <MenuItem Header="설치 / 다시 설치" Tag="{Binding}" Click="ReinstallMenu_Click" />
+                                                <MenuItem Header="제거" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                                <Separator />
+                                                <MenuItem Header="편집…" Tag="{Binding}" Click="EditMenu_Click" />
+                                                <MenuItem Header="목록에서 삭제…" Tag="{Binding}" Click="DeleteMenu_Click" />
+                                                <Separator />
+                                                <MenuItem Header="저장소 열기" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
+                                                <MenuItem Header="설치 폴더 열기" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
+                                    <Border Style="{StaticResource TagStyle}" Height="20" Margin="12,0,0,0" VerticalAlignment="Center" Background="#29E6C07A" Visibility="{Binding BetaVisibility}">
+                                        <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
+                                    </Border>
+                                    <Border Style="{StaticResource TagStyle}" Height="20" Margin="8,0,0,0" VerticalAlignment="Center" Background="#293DD68C" Visibility="{Binding NewVisibility}">
+                                        <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FF7FE2B0" Text="NEW" />
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Margin="0,12,0,0" MaxWidth="360" HorizontalAlignment="Left" Visibility="{Binding BusyVisibility}">
+                                    <TextBlock FontSize="12" Foreground="#FF98989D" Text="{Binding BusyText}" TextTrimming="CharacterEllipsis" />
+                                    <ProgressBar Height="3" Margin="0,6,0,0" Minimum="0" Maximum="100" IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding ProgressValue, Mode=OneWay}"
+                                                 Background="#FF2C2D32" BorderThickness="0" Foreground="#FF4AA3FF" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 정보 줄: 버전 · 출시 · 분류 · 크기 -->
+                        <Border Margin="0,26,0,0" BorderBrush="#FF2E3036" BorderThickness="0,1,0,1" Padding="0,14">
+                            <ItemsControl x:Name="DetailFacts" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock HorizontalAlignment="Center" FontSize="11" Foreground="#FF8E8E93" Text="{Binding Label}" />
+                                            <TextBlock HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="17" FontWeight="Bold" Foreground="#FFE5E5EA" Text="{Binding Value}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="11" Foreground="#FF8E8E93" Text="{Binding Note}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+
+                        <!-- 스크린샷: 옆으로 넘김 (Shift+휠), 누르면 크게 -->
+                        <StackPanel x:Name="DetailShotsSection" Margin="0,24,0,0" Visibility="Collapsed">
+                            <TextBlock Text="미리 보기" FontSize="20" FontWeight="Bold" Margin="0,0,0,12" />
+                            <ScrollViewer x:Name="DetailShotsScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Padding="0,0,0,10"
+                                          PreviewMouseWheel="DetailShots_PreviewMouseWheel">
+                                <ItemsControl x:Name="DetailShots" Focusable="False">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource PlainButtonStyle}" Margin="0,0,14,0" Tag="{Binding Shot}" Click="Shot_Click" ToolTip="크게 보기">
+                                                <Border Width="{Binding Width}" Height="{Binding Height}" CornerRadius="12" BorderBrush="#26FFFFFF" BorderThickness="1">
+                                                    <Border.Background><ImageBrush ImageSource="{Binding Image}" Stretch="UniformToFill" /></Border.Background>
+                                                </Border>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+
+                        <!-- 설명 (앱 목록의 상세 설명) -->
+                        <TextBlock x:Name="DetailDescription" Margin="0,24,0,0" FontSize="14" LineHeight="23" TextWrapping="Wrap" Foreground="#FFE5E5EA" Visibility="Collapsed" />
+
+                        <!-- 새로운 기능 (최신 릴리스) -->
+                        <StackPanel x:Name="DetailNewsSection" Margin="0,28,0,0" Visibility="Collapsed">
+                            <DockPanel>
+                                <TextBlock x:Name="DetailNewsWhen" DockPanel.Dock="Right" VerticalAlignment="Bottom" FontSize="12.5" Foreground="#FF8E8E93" />
+                                <TextBlock Text="새로운 기능" FontSize="20" FontWeight="Bold" />
+                            </DockPanel>
+                            <TextBlock x:Name="DetailNewsVersion" Margin="0,4,0,0" FontSize="12.5" Foreground="#FF8E8E93" />
+                            <TextBlock x:Name="DetailNews" Margin="0,10,0,0" FontSize="13.5" LineHeight="22" TextWrapping="Wrap" Foreground="#FFD1D1D6" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- 스크린샷 크게 보기 (누르거나 Esc 로 닫음) -->
+                <Grid x:Name="ShotViewer" Background="#F2111113" Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="ShotViewer_MouseLeftButtonUp">
+                    <Image x:Name="ShotViewerImage" Margin="36" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                </Grid>
+            </Grid>
             <ContentControl x:Name="PagePane" Grid.Column="1" Visibility="Collapsed" Focusable="False" />
         </Grid>
 

@@ -50,6 +50,16 @@ static class UiSnapshot
                     Pump(TimeSpan.FromMilliseconds(500));
                     Save((FrameworkElement)window.Content, Suffix(output, "-scrolled"));
                     window.CardScrollViewer.ScrollToHome();
+                    // 앱 페이지 (카드를 누르면): ILUNCHER_SNAPSHOT_DETAIL=<앱 id> 이면 그 앱, 없으면 처음 카드. 스크린샷을 받을 때까지 잠시 기다림
+                    string? detailId = Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_DETAIL");
+                    if (window.VisibleCards.FirstOrDefault(card => detailId is null || card.App.Id == detailId) is { } detailCard)
+                    {
+                        window.ShowDetail(detailCard);
+                        Pump(TimeSpan.FromSeconds(4));
+                        Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
+                        Console.WriteLine($"detail: {detailCard.Name} · shots {window.DetailShots.Items.Count}");
+                        window.DetailBackButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    }
                     Console.WriteLine($"title: {window.SectionTitle.Text} · {window.CountText.Text} · status: {window.StatusText.Text}");
                     Console.WriteLine($"catalog: {window.CatalogSourceText.Text}");
                     if (window.ErrorPanel.Visibility == Visibility.Visible) Console.WriteLine($"error: {window.ErrorText.Text}");

@@ -61,6 +61,11 @@ python relay\relay.py --uninstall-startup
 
 다른 PC에서는 브라우저로 `http://서버주소:2003/`을 열고 관리자 비밀번호를 입력합니다(아이디는 아무거나).
 
+### 앱 페이지 (스크린샷·상세 설명)
+
+i-luncher에서 카드를 누르면 열리는 앱 페이지의 상세 설명과 스크린샷은 API Manager → **앱 목록**에서 넣습니다 (앱 목록의 `details`, `screenshots`).
+스크린샷은 [+]로 PNG·JPG를 고르거나 이미지를 복사해 앱 칸에서 Ctrl+V 하면 바로 서버에 올라가고(`POST /launcher/media`, 관리자 비밀번호, 8 MB까지, 이름 = 내용의 SHA-256 앞 16자리), [저장]하면 앱 페이지에 보입니다. 앞으로·빼기로 순서를 바꿉니다(12장까지). 런처는 `GET /launcher/media/<이름>`으로 받아 보관합니다. 어느 앱도 쓰지 않는 이미지는 앱 목록을 저장할 때 하루 지난 것부터 지웁니다.
+
 ### 러너
 
 `RUNNERS_ROOT`를 쓰면 API Manager의 **러너** 화면에서 이 PC의 Actions 러너를 관리합니다 (바꾸는 요청은 서버 PC에서 온 것만 받음).

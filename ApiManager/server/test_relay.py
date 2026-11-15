@@ -1135,6 +1135,50 @@ class LauncherApiTest(unittest.TestCase):
         self.assertEqual((served[0]["beta"], served[0]["new"]), (True, True))
         self.assertNotIn("beta", served[1], "off means not written")
 
+    def test_app_page_screenshots_and_details(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"pixels" * 10
+        upload = urllib.request.Request(self.base + "/launcher/media", data=png, method="POST", headers={"Content-Type": "image/png"})
+        with self.assertRaises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(upload, timeout=10)
+        self.assertEqual(refused.exception.code, 401, "uploading needs the admin password")
+
+        def post(data):
+            request = urllib.request.Request(self.base + "/launcher/media", data=data, method="POST",
+                                             headers={"Authorization": "Basic " + base64.b64encode(f"admin:{ADMIN}".encode()).decode()})
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status, json.loads(response.read())
+            except urllib.error.HTTPError as error:
+                return error.code, None
+
+        self.assertEqual(post(b"GIF89a....")[0], 415, "PNG and JPG only")
+        status, answer = post(png)
+        self.assertEqual(status, 201)
+        name = answer["name"]
+        self.assertRegex(name, r"^[a-f0-9]{16}\.png$")
+        self.assertEqual(post(png)[1]["name"], name, "the same image is one file")
+        status, body, headers = self.call("GET", "/launcher/media/" + name)
+        self.assertEqual((status, body, headers["Content-Type"]), (200, png, "image/png"), "read without a password, like the app list")
+        self.assertEqual(self.call("GET", "/launcher/media/../catalog.json")[0], 404)
+        app = {"id": "app", "name": "App", "repository": "https://github.com/owner1/app", "details": "긴 설명\n둘째 줄",
+               "screenshots": [name, "https://example.com/shot.png"]}
+        for bad in (dict(app, screenshots=["../x.png"]), dict(app, screenshots=[name] * 13), dict(app, details=5)):
+            self.assertEqual(self.call("PUT", "/launcher/catalog", {"apps": [bad], "revision": ""}, admin=True)[0], 400, bad)
+        status, body, _ = self.call("PUT", "/launcher/catalog", {"apps": [app], "revision": ""}, admin=True)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(self.call("GET", "/launcher/catalog")[1])["apps"][0]["screenshots"], [name, "https://example.com/shot.png"])
+        # An image no app names goes once it is a day old; a named one stays.
+        status, answer = post(b"\xff\xd8\xff" + b"jpeg" * 10)
+        unused = self.root / "launcher" / "media" / answer["name"]
+        store = self.server.launcher
+        self.assertEqual(store.clean_media(), 0, "a fresh upload waits for its app list")
+        old = time.time() - 2 * 86400
+        for path in (unused, self.root / "launcher" / "media" / name):
+            os.utime(path, (old, old))
+        self.assertEqual(store.clean_media(), 1)
+        self.assertFalse(unused.exists())
+        self.assertTrue((self.root / "launcher" / "media" / name).exists())
+
     def test_notices(self):
         self.assertEqual(json.loads(self.call("GET", "/launcher/notices")[1]), {"text": "", "revision": ""})
         status, body, _ = self.call("PUT", "/launcher/notices", {"text": "제목\r\n본문", "revision": ""}, admin=True)
