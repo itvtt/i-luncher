@@ -400,7 +400,7 @@
                                 <Grid Margin="0,0,12,12">
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}" ToolTip="{Binding Card.RunToolTip}"
                                             AutomationProperties.Name="{Binding Card.Name}">
-                                        <Grid Height="72">
+                                        <Grid Height="78">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <Grid Width="48" Height="48" VerticalAlignment="Center">
                                                 <Border CornerRadius="11" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
