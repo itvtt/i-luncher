@@ -3,7 +3,7 @@ using System.Windows.Media;
 
 namespace ILauncher;
 
-/// <summary>스토어형 화면 맨 위의 큰 홍보 카드: 작은 머리글 · 제목 · 설명, 큰 아이콘, 아래 앱 이름과 버튼</summary>
+/// <summary>스토어형 화면 맨 위의 홍보 카드 (앱 카드와 같은 폭): 작은 머리글과 큰 아이콘, 제목 · 설명, 아래 분류와 버튼</summary>
 public sealed class HeroItem(AppCard card, string eyebrow, string title, string subtitle)
 {
     // 맑은 두 색 그라데이션 (아이콘 색을 어둡게 하면 갈색·흙색이 나와서 정해 둔 색만 씀)
@@ -44,19 +44,5 @@ public sealed class HeroItem(AppCard card, string eyebrow, string title, string 
             brush.Freeze();
             return brush;
         }
-    }
-}
-
-/// <summary>순위 목록 한 줄 (최근 업데이트): 번호, 앱, 분류 · 언제</summary>
-public sealed class RankItem(AppCard card, int rank, string subtitle)
-{
-    public AppCard Card { get; } = card;
-    public int Rank { get; } = rank;
-    public string Subtitle { get; } = subtitle;
-
-    public static string When(DateTimeOffset published)
-    {
-        int days = (DateTime.Today - published.ToLocalTime().Date).Days;
-        return days <= 0 ? "오늘" : days == 1 ? "어제" : days < 7 ? $"{days}일 전" : published.ToLocalTime().ToString("M월 d일");
     }
 }

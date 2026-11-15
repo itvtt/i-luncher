@@ -282,8 +282,12 @@
             <Grid Margin="18,0,8,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Width="28" Height="28" Margin="0,0,10,0" Source="Assets/ILauncher.png" Stretch="Uniform" />
-                    <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Foreground="#FFE8ECF4" Text="i-luncher" />
+                    <Button x:Name="HomeButton" AutomationProperties.Name="홈" Click="HomeButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource PlainButtonStyle}" ToolTip="홈">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Image Width="28" Height="28" Margin="0,0,10,0" Source="Assets/ILauncher.png" Stretch="Uniform" />
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Foreground="#FFE8ECF4" Text="i-luncher" />
+                        </StackPanel>
+                    </Button>
                     <TextBlock x:Name="TitleVersionText" Margin="8,1,0,0" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -468,71 +472,34 @@
                                 </Grid>
                             </DataTemplate>
 
-                            <!-- 맨 위 큰 홍보 카드: 아이콘 색 그라데이션, 머리글 · 제목 · 설명, 큰 아이콘, 아래 앱 이름과 버튼 -->
+                            <!-- 맨 위 홍보 카드 (아래 앱 카드와 같은 폭, 크기 고정): 머리글과 큰 아이콘, 제목 · 설명, 아래 분류와 버튼 -->
                             <DataTemplate DataType="{x:Type local:HeroItem}">
-                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,12,12" Height="232" Tag="{Binding Card}" Click="Card_Click"
+                                <Button Style="{StaticResource HeroCardStyle}" Margin="0,6,12,12" Height="216" Tag="{Binding Card}" Click="Card_Click"
                                         AutomationProperties.Name="{Binding Card.Name}">
-                                    <Border CornerRadius="18" Background="{Binding Art}" Padding="22,20,22,16">
+                                    <Border CornerRadius="18" Background="{Binding Art}" Padding="18,16,16,14">
                                         <Grid>
                                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                                            <TextBlock FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" />
-                                            <TextBlock Grid.Row="1" Margin="0,4,118,0" FontSize="23" FontWeight="Bold" Foreground="White" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Row="2" Margin="0,4,118,0" MaxHeight="40" FontSize="13.5" LineHeight="19" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
-                                            <Grid Grid.RowSpan="4" Width="100" Height="100" Margin="0,22,0,0" HorizontalAlignment="Right" VerticalAlignment="Top">
-                                                <Grid.Effect><DropShadowEffect BlurRadius="24" ShadowDepth="8" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
-                                                <Border CornerRadius="24" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="38" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
+                                            <TextBlock Margin="0,2,72,0" VerticalAlignment="Top" FontSize="12" FontWeight="Bold" Foreground="#D9FFFFFF" Text="{Binding Eyebrow}" TextTrimming="CharacterEllipsis" />
+                                            <Grid Width="60" Height="60" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                                <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
+                                                <Border CornerRadius="15" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
+                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
                                                 </Border>
-                                                <Image Width="100" Height="100" Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                                <Image Width="60" Height="60" Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
-                                            <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                                            <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="20" FontWeight="Bold" Foreground="White" Text="{Binding Title}" ToolTip="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Row="2" Margin="0,3,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding Subtitle}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,10,0,0">
                                                 <DockPanel>
                                                     <Button DockPanel.Dock="Right" Style="{StaticResource HeroActionButtonStyle}" Tag="{Binding Card}" Click="StoreAction_Click" IsEnabled="{Binding Card.CanInteract}"
                                                             Visibility="{Binding Card.StoreButtonVisibility}" ToolTip="{Binding Card.RunToolTip}" Content="{Binding Card.StoreButtonText}"
                                                             AutomationProperties.Name="{Binding Card.StoreButtonText}" />
-                                                    <Grid Width="34" Height="34" DockPanel.Dock="Left">
-                                                        <Border CornerRadius="9" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
-                                                            <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
-                                                        </Border>
-                                                        <Image Width="34" Height="34" Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
-                                                    </Grid>
-                                                    <StackPanel Margin="10,0,10,0" VerticalAlignment="Center">
-                                                        <TextBlock FontSize="13.5" FontWeight="Bold" Foreground="White" Text="{Binding Card.Name}" TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock FontSize="11.5" Foreground="#CCFFFFFF" Text="{Binding Card.Category}" TextTrimming="CharacterEllipsis" />
-                                                    </StackPanel>
+                                                    <TextBlock Margin="0,0,10,0" VerticalAlignment="Center" FontSize="12" Foreground="#CCFFFFFF" Text="{Binding Card.Category}" TextTrimming="CharacterEllipsis" />
                                                 </DockPanel>
                                             </Border>
                                         </Grid>
                                     </Border>
                                 </Button>
-                            </DataTemplate>
-
-                            <!-- 순위 한 줄 (최근 업데이트): 아이콘 · 번호 · 이름 · 분류와 날짜 · 버튼 -->
-                            <DataTemplate DataType="{x:Type local:RankItem}">
-                                <Grid Margin="0,0,12,12">
-                                    <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" AutomationProperties.Name="{Binding Card.Name}">
-                                        <Grid Height="78">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <Grid Width="48" Height="48" VerticalAlignment="Center">
-                                                <Border CornerRadius="11" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="19" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
-                                                </Border>
-                                                <Image Width="48" Height="48" Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
-                                            </Grid>
-                                            <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="Bold" Foreground="#FFF5F5F7" Text="{Binding Rank}" />
-                                            <StackPanel Grid.Column="2" Margin="4,0,8,0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" ToolTip="{Binding Card.FullName}" TextWrapping="Wrap"><Run Text="{Binding Card.Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding Card.EnglishSuffix, Mode=OneWay}" /></TextBlock>
-                                                <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <Button Grid.Column="3" Style="{StaticResource StoreActionButtonStyle}" Tag="{Binding Card}" Click="StoreAction_Click" IsEnabled="{Binding Card.CanInteract}"
-                                                    Visibility="{Binding Card.StoreButtonVisibility}" ToolTip="{Binding Card.RunToolTip}" Content="{Binding Card.StoreButtonText}"
-                                                    AutomationProperties.Name="{Binding Card.StoreButtonText}" />
-                                        </Grid>
-                                    </Button>
-                                    <ProgressBar Height="2" Margin="16,0,16,1" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
-                                                 IsIndeterminate="{Binding Card.IsIndeterminate}" Value="{Binding Card.ProgressValue, Mode=OneWay}" Visibility="{Binding Card.BusyVisibility}"
-                                                 Background="Transparent" BorderThickness="0" Foreground="#FF4AA3FF" />
-                                </Grid>
                             </DataTemplate>
 
                             <!-- 즐겨찾기의 내 PC 프로그램 한 줄 -->

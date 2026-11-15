@@ -26,7 +26,7 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
         set { _actionEnabled = value; Changed(nameof(ActionEnabled)); }
     }
 
-    /// <summary>열 수 (줄 목록은 창 폭에 맞춰, 홍보 카드·순위는 2열)</summary>
+    /// <summary>열 수 (창 폭에 맞춰, 카드 한 칸은 늘 같은 크기)</summary>
     public int Columns { get; set; } = 1;
 
     /// <summary>목록 폭: 열 수 × 카드 한 칸 (창을 키워도 카드는 같은 크기, 열만 늘어남)</summary>

@@ -99,6 +99,17 @@ static class UiSnapshot
                     window.SettingsButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));
                     Save((FrameworkElement)window.Content, Suffix(output, "-settings"));
+                    // 제목줄의 로고·이름 = 홈: 설정 화면에서도, 앱 페이지에서도 전체 앱으로
+                    window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    Pump(TimeSpan.FromMilliseconds(500));
+                    Console.WriteLine($"home from settings: {window.SectionTitle.Text} · list {window.StorePane.Visibility} · page {window.PagePane.Visibility}");
+                    if (window.VisibleCards.FirstOrDefault() is { } homeCard)
+                    {
+                        window.ShowDetail(homeCard);
+                        window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                        Pump(TimeSpan.FromMilliseconds(500));
+                        Console.WriteLine($"home from app page: {window.SectionTitle.Text} · list {window.StorePane.Visibility} · app page {window.DetailPane.Visibility}");
+                    }
                     // API Manager (마스터 계정만 사이드바에 보임, 오른쪽 화면). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
                     Console.WriteLine($"api manager: {window.ApiManagerPanel.Visibility}");
                     if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerPanel.Visibility == Visibility.Visible)
