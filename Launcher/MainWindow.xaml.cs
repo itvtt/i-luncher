@@ -773,9 +773,11 @@ public partial class MainWindow : Window
             // 전체 앱: 최근 업데이트 순위 (릴리스 날짜순 번호 목록)
             if (_filter == "all")
             {
-                var recent = scope.Where(card => card.Latest?.PublishedAt is not null).OrderByDescending(card => card.Latest!.PublishedAt).Take(6)
+                // 아래 앱 줄과 같은 열 (최대화해도 카드가 늘어지지 않게), 줄을 채우는 수만큼: 4열이면 한 줄, 그보다 좁으면 두 줄
+                var recent = scope.Where(card => card.Latest?.PublishedAt is not null).OrderByDescending(card => card.Latest!.PublishedAt)
+                    .Take(RowColumns * (RowColumns >= 4 ? 1 : 2))
                     .Select((card, index) => (object)new RankItem(card, index + 1, $"{card.Category} · {RankItem.When(card.Latest!.PublishedAt!.Value)}")).ToList();
-                if (recent.Count > 0) sections.Add(new StoreSection("최근 업데이트", recent) { Columns = Math.Min(2, RowColumns) });
+                if (recent.Count > 0) sections.Add(new StoreSection("최근 업데이트", recent) { Columns = RowColumns });
             }
             if (_filter != "updates")
             {
@@ -787,6 +789,8 @@ public partial class MainWindow : Window
         }
 
         foreach (var section in sections.Where(section => section.Items.Count > 0 && section.Items[0] is AppCard or FavoriteCard)) section.Columns = RowColumns;
+        // 카드는 늘 같은 크기 (창을 키우면 열만 늘어남), 맨 위 큰 카드만 그 폭 안에서 커짐
+        foreach (var section in sections) section.PanelWidth = RowColumns * (CardWidth + RowGap);
         SectionList.ItemsSource = sections;
         VisibleCards = sections.SelectMany(section => section.Items.Select(item => item switch { HeroItem hero => hero.Card, RankItem rank => rank.Card, _ => item }))
             .OfType<AppCard>().Distinct().ToList();
@@ -1034,7 +1038,7 @@ public partial class MainWindow : Window
     // ───────────────────────── 줄 목록 열 수 ─────────────────────────
 
     // 스토어형 줄: 한 줄이 이 폭 이상이 되게 1~4열 (캔버스 모양: 보통 창에서 3열)
-    private const double MinRowWidth = 240, RowGap = 12;
+    private const double CardWidth = 260, RowGap = 12;
 
     public static readonly DependencyProperty RowColumnsProperty =
         DependencyProperty.Register(nameof(RowColumns), typeof(int), typeof(MainWindow), new PropertyMetadata(3));
@@ -1056,10 +1060,10 @@ public partial class MainWindow : Window
     {
         double available = CardScrollViewer.ViewportWidth > 0 ? CardScrollViewer.ViewportWidth : CardScrollViewer.ActualWidth - 14;
         if (available <= 0) return;
-        int columns = Math.Clamp((int)Math.Floor((available + RowGap) / (MinRowWidth + RowGap)), 1, 4);
+        int columns = Math.Clamp((int)Math.Floor(available / (CardWidth + RowGap)), 1, 12);
         if (columns == RowColumns) return;
         RowColumns = columns;
-        if (IsLoaded) Render();  // 섹션마다 열 수가 다름 (홍보 카드·순위는 2열)
+        if (IsLoaded) Render();  // 홍보 카드 수·최근 업데이트 수가 열 수를 따름
     }
 
     // ───────────────────────── 창 ─────────────────────────

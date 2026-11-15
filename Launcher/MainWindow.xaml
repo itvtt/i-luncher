@@ -401,7 +401,7 @@
                                     <Button Style="{StaticResource StoreRowStyle}" Tag="{Binding Card}" Click="Card_Click" IsEnabled="{Binding Card.CanInteract}" ToolTip="{Binding Card.RunToolTip}"
                                             AutomationProperties.Name="{Binding Card.Name}">
                                         <Grid Height="72">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="34" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="48" /><ColumnDefinition Width="30" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <Grid Width="48" Height="48" VerticalAlignment="Center">
                                                 <Border CornerRadius="11" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
                                                     <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="19" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
@@ -410,7 +410,7 @@
                                             </Grid>
                                             <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="18" FontWeight="Bold" Foreground="#FFF5F5F7" Text="{Binding Rank}" />
                                             <StackPanel Grid.Column="2" Margin="4,0,8,0" VerticalAlignment="Center">
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis"><Run Text="{Binding Card.Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding Card.EnglishSuffix, Mode=OneWay}" /></TextBlock>
+                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="{Binding Card.TitleBrush}" ToolTip="{Binding Card.FullName}" TextWrapping="Wrap"><Run Text="{Binding Card.Name, Mode=OneWay}" /><Run FontSize="12" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding Card.EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                                 <TextBlock Margin="0,2,0,0" FontSize="12" Foreground="#FF98989D" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                             <Border Grid.Column="3" Height="28" MinWidth="52" Padding="12,0" CornerRadius="14" VerticalAlignment="Center" Background="#FF2C2D32" Visibility="{Binding Card.StoreButtonVisibility}"
@@ -472,7 +472,7 @@
                                                 </StackPanel>
                                             </DockPanel>
                                         </Border>
-                                        <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                                        <ItemsControl ItemsSource="{Binding Items}" Focusable="False" Width="{Binding PanelWidth}" HorizontalAlignment="Left">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate><UniformGrid Columns="{Binding Columns}" /></ItemsPanelTemplate>
                                             </ItemsControl.ItemsPanel>

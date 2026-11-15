@@ -21,6 +21,10 @@ static class UiSnapshot
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             var settings = LauncherSettings.Load(dataDirectory);
             var window = new MainWindow(settings) { ShowActivated = false, Left = -4000, Top = 0 };
+            // ILUNCHER_SNAPSHOT_SIZE=1920x1040: 넓은 창(최대화)으로 그림
+            if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_SIZE")?.Split('x') is [var width, var height]
+                && double.TryParse(width, out double w) && double.TryParse(height, out double h))
+                (window.Width, window.Height) = (w, h);
             window.Show();
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(seconds) };
             timer.Tick += (_, _) =>
