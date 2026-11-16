@@ -158,6 +158,7 @@ public partial class MainWindow : Window
             CatalogSnapshot snapshot = await _store.LoadAsync();
             if (generation != _refreshGeneration) return;
             if (snapshot.Warning is { } warning) ShowError(warning); else HideError();
+            MigrateFavorites(snapshot.Apps);
             MergeCards(snapshot.Apps);
             await DetectInstallsAsync(_cards.ToList());
             Render();

@@ -18,6 +18,20 @@ public partial class MainWindow
         SaveFavorites(removed ? $"{card.Name} 즐겨찾기에서 뺌" : $"{card.Name} 즐겨찾기에 추가", switchView: false);
     }
 
+    /// <summary>이름을 바꾼 앱(FormerIds): 예전 id 로 된 즐겨찾기를 새 id 로 옮겨 저장</summary>
+    private void MigrateFavorites(IReadOnlyList<Models.AppDefinition> apps)
+    {
+        bool changed = false;
+        foreach (var favorite in _favorites.Where(item => item.IsApp))
+            if (!apps.Any(app => string.Equals(app.Id, favorite.AppId, StringComparison.OrdinalIgnoreCase)) &&
+                apps.FirstOrDefault(app => app.HasId(favorite.AppId)) is { } renamed)
+            {
+                favorite.AppId = renamed.Id;
+                changed = true;
+            }
+        if (changed) _favoriteStore.Save(_favorites);
+    }
+
     /// <summary>추가(null) 또는 편집</summary>
     private void EditFavorite(FavoriteProgram? editing)
     {

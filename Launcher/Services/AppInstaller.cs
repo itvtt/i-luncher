@@ -73,9 +73,17 @@ public sealed class AppInstaller
 
     // ───────────────────────── 확인 ─────────────────────────
 
+    /// <summary>지금 설치 폴더 이름으로, 없으면 예전 이름(FormerInstallNames)으로 설치된 것. 예전 이름이면 InstalledApp.InstallName 이 그 이름</summary>
     public InstalledApp? Detect(AppDefinition app)
     {
-        string installName = app.EffectiveInstallName;
+        if (DetectAs(app, app.EffectiveInstallName) is { } current) return current;
+        foreach (string former in app.EffectiveFormerInstallNames)
+            if (DetectAs(app, former) is { } old) return old;
+        return null;
+    }
+
+    private InstalledApp? DetectAs(AppDefinition app, string installName)
+    {
         string? directory = null, displayVersion = null, uninstall = null, quietUninstall = null;
         try
         {
@@ -89,7 +97,7 @@ public sealed class AppInstaller
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException or ArgumentException) { }
 
         // "앱" 목록 기록이 지워졌어도 런처가 관리하는 폴더면 설치된 것으로 봄
-        string defaultDirectory = GetInstallDirectory(app);
+        string defaultDirectory = Path.Combine(_programsRoot, installName);
         if ((directory is null || !Directory.Exists(directory)) && File.Exists(Path.Combine(defaultDirectory, ManifestFileName)))
             directory = defaultDirectory;
         if (directory is null || !Directory.Exists(directory)) return null;
@@ -245,6 +253,7 @@ public sealed class AppInstaller
             progress?.Report("시작 메뉴에 등록 중…");
             Register(app, target, installedExecutable, versionText);
             TryCreateShortcut(app, installedExecutable, target);
+            RemoveFormerInstalls(app);
             return Detect(app) ?? throw new IOException("설치한 앱을 확인하지 못했습니다: " + target);
         }
         finally
@@ -381,9 +390,14 @@ public sealed class AppInstaller
         if (process.ExitCode is not (0 or 3010 or 1641))
             throw new InvalidOperationException($"설치 프로그램이 오류로 끝났습니다 (종료 코드 {process.ExitCode}).");
         // Velopack 처럼 설치를 마친 뒤 앱을 띄우는 설치 프로그램도 있음: 등록될 때까지 잠깐 기다림
+        // 이름을 바꾼 앱이면 새 이름으로 설치된 것을 기다린 뒤 예전 이름의 설치를 지움
         for (int i = 0; i < 20; i++)
         {
-            if (Detect(app) is { } installed) return installed;
+            if (DetectAs(app, app.EffectiveInstallName) is { } installed)
+            {
+                RemoveFormerInstalls(app);
+                return installed;
+            }
             await Task.Delay(500, cancellationToken).ConfigureAwait(false);
         }
         return null;
@@ -396,7 +410,7 @@ public sealed class AppInstaller
         string executable = installed.ExecutablePath ?? throw new FileNotFoundException("실행 파일을 찾지 못했습니다. 앱 편집에서 실행 파일 이름을 지정하세요.");
         var start = new ProcessStartInfo(executable)
         {
-            UseShellExecute = true,  // 관리자 권한을 요구하는 앱(DiskAtlas)도 UAC 확인으로 시작
+            UseShellExecute = true,  // 관리자 권한을 요구하는 앱(DiskScan)도 UAC 확인으로 시작
             WorkingDirectory = Path.GetDirectoryName(executable)!
         };
         if (!string.IsNullOrWhiteSpace(app.Arguments)) start.Arguments = app.Arguments;
@@ -523,6 +537,26 @@ public sealed class AppInstaller
         directory ??= Path.Combine(_programsRoot, installName);
         if (Directory.Exists(directory) && IsRunning(directory)) throw new AppRunningException(installName);
         RemoveManaged(installName, directory, installName);
+    }
+
+    /// <summary>
+    /// 이름을 바꾼 앱: 새 이름으로 설치한 뒤 예전 이름의 설치(폴더 · "앱" 목록 기록 · 바로 가기)를 지움.
+    /// 예전 앱이 실행 중이거나 지우지 못하면 그대로 두고 다음 설치 때 다시 함 (새 설치는 이미 끝났으므로 실패로 치지 않음)
+    /// </summary>
+    public void RemoveFormerInstalls(AppDefinition app)
+    {
+        string current = Path.GetFullPath(GetInstallDirectory(app)).TrimEnd('\\');
+        foreach (string former in app.EffectiveFormerInstallNames)
+        {
+            if (DetectAs(app, former) is not { } old || !old.ManagedByLauncher) continue;
+            if (string.Equals(Path.GetFullPath(old.Directory).TrimEnd('\\'), current, StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                if (IsRunning(old.Directory)) continue;
+                RemoveManaged(former, old.Directory, app.Name);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+        }
     }
 
     private void RemoveManaged(string installName, string directory, string displayName)

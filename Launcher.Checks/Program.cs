@@ -116,17 +116,17 @@ try
         GitHubTreeEntry F(string path, long size = 5000) => new(path, true, size);
         var entries = new[]
         {
-            F("SwiftCopy.App/SwiftCopy.App.csproj"), F("SwiftCopy.Core/SwiftCopy.Core.csproj"), F("tests/SwiftCopy.Tests/SwiftCopy.Tests.csproj"),
-            F("SwiftCopy.App/Assets/SwiftCopy.ico"), F("SwiftCopy.App/Assets/SwiftCopy-128.png"), F("docs/logo.png"), F("SwiftCopy.App/bin/Release/icon.ico")
+            F("FastCopy.App/FastCopy.App.csproj"), F("FastCopy.Core/FastCopy.Core.csproj"), F("tests/FastCopy.Tests/FastCopy.Tests.csproj"),
+            F("FastCopy.App/Assets/FastCopy.ico"), F("FastCopy.App/Assets/FastCopy-128.png"), F("docs/logo.png"), F("FastCopy.App/bin/Release/icon.ico")
         };
-        var names = IconDiscovery.Names("SwiftCopy", null, "SwiftCopy");
-        Equal("SwiftCopy.App/SwiftCopy.App.csproj", IconDiscovery.ProjectCandidates(entries, names).FirstOrDefault(), "app project first, tests skipped");
+        var names = IconDiscovery.Names("FastCopy", null, "FastCopy");
+        Equal("FastCopy.App/FastCopy.App.csproj", IconDiscovery.ProjectCandidates(entries, names).FirstOrDefault(), "app project first, tests skipped");
         Assert(!IconDiscovery.ProjectCandidates(entries, names).Any(path => path.Contains("Tests")), "test projects are not read");
-        Equal("SwiftCopy.App/Assets/SwiftCopy.ico", IconDiscovery.ParseApplicationIcon("<Project><PropertyGroup><ApplicationIcon>Assets/SwiftCopy.ico</ApplicationIcon></PropertyGroup></Project>", "SwiftCopy.App/SwiftCopy.App.csproj"), "relative to the project");
+        Equal("FastCopy.App/Assets/FastCopy.ico", IconDiscovery.ParseApplicationIcon("<Project><PropertyGroup><ApplicationIcon>Assets/FastCopy.ico</ApplicationIcon></PropertyGroup></Project>", "FastCopy.App/FastCopy.App.csproj"), "relative to the project");
         Equal("cal.ico", IconDiscovery.ParseApplicationIcon("<ApplicationIcon>cal.ico</ApplicationIcon>", "DeskCal.csproj"), "root project");
-        Equal("DiskAtlas.App/Assets/DiskAtlas.ico", IconDiscovery.ParseApplicationIcon(@"<ApplicationIcon>..\DiskAtlas.App\Assets\DiskAtlas.ico</ApplicationIcon>", "DiskAtlas.Start/DiskAtlas.Start.csproj"), "parent folder");
+        Equal("DiskScan.App/Assets/DiskScan.ico", IconDiscovery.ParseApplicationIcon(@"<ApplicationIcon>..\DiskScan.App\Assets\DiskScan.ico</ApplicationIcon>", "DiskScan.Start/DiskScan.Start.csproj"), "parent folder");
         Assert(IconDiscovery.ParseApplicationIcon("<ApplicationIcon>$(IconPath)</ApplicationIcon>", "a.csproj") is null, "MSBuild properties are not guessed");
-        Equal("SwiftCopy.App/Assets/SwiftCopy.ico", IconDiscovery.ChooseByName(entries, names), "named .ico in Assets, not docs or bin");
+        Equal("FastCopy.App/Assets/FastCopy.ico", IconDiscovery.ChooseByName(entries, names), "named .ico in Assets, not docs or bin");
         Equal("Assets/AppIcon.png", IconDiscovery.ChooseByName([F("Assets/AppIcon.png"), F("Assets/splash-icon.png"), F("README.png")], IconDiscovery.Names("Tool")), "icon name wins over splash");
         Assert(IconDiscovery.ChooseByName([F("images/photo.png"), F("screenshots/main.png")], IconDiscovery.Names("Tool")) is null, "no weak guesses");
     });
@@ -154,10 +154,15 @@ try
     {
         var apps = CatalogSerializer.Parse("""
             // comment
-            [ { "name": "Folder Compare", "repository": "o/FolderCompare" }, { "id": "folder-compare", "name": "dup", "repository": "o/x" }, { "name": "no repo" }, ]
+            [ { "name": "Disk Scan", "repository": "o/DiskScan" }, { "id": "disk-scan", "name": "dup", "repository": "o/x" }, { "name": "no repo" }, ]
             """);
         Equal(1, apps.Count, "count");
-        Equal("folder-compare", apps[0].Id, "generated id");
+        Equal("disk-scan", apps[0].Id, "generated id");
+        var renamed = CatalogSerializer.Parse("""
+            [ { "id": "fastcopy", "name": "FastCopy", "repository": "o/FastCopy", "formerIds": ["swiftcopy"], "formerInstallNames": ["SwiftCopy"] } ]
+            """)[0];
+        Assert(renamed.HasId("swiftcopy") && renamed.HasId("fastcopy") && !renamed.HasId("other"), "former ids read");
+        Equal("SwiftCopy", renamed.EffectiveFormerInstallNames.Single(), "former install names read");
     });
     await CheckSync("app page: details and screenshots come from the app list, release notes read as plain text", () =>
     {
@@ -340,6 +345,27 @@ try
         await installer.UninstallAsync(sample, installer.Detect(sample)!);
         Assert(!Directory.Exists(dir) && installer.Detect(sample) is null, "uninstalled");
         Assert(Registry.CurrentUser.OpenSubKey(registryRoot + @"\SampleApp") is null, "registry entry removed");
+    });
+
+    // 이름을 모두 바꾼 앱 (2026-11-16 FastCopy → FastCopy 등): 예전 설치 폴더 이름으로 깔린 것을 찾고, 다음 설치 때 새 이름으로 옮김
+    await Check("a renamed app is found under its former install name and moved to the new one on the next install", async () =>
+    {
+        var before = new AppDefinition { Id = "old-copy", Name = "OldCopy", InstallName = "OldCopy", Repository = "https://ghe.test/team/OldCopy" };
+        await installer.InstallZipAsync(before, MakeZip("old1.zip", new() { ["OldCopy.exe"] = "old exe" }), Release("v1.0.0"));
+        string oldDir = Path.Combine(programs, "OldCopy");
+        var renamed = new AppDefinition { Id = "new-copy", Name = "NewCopy", InstallName = "NewCopy", Repository = "https://ghe.test/team/NewCopy",
+            FormerIds = ["old-copy"], FormerInstallNames = ["OldCopy"] };
+        var found = installer.Detect(renamed);
+        Assert(found is not null && found.InstallName == "OldCopy" && found.Directory == oldDir, "found under the former name");
+        Equal("1.0.0", found!.Version?.ToString(), "with its version, so the new release shows as an update");
+        var moved = await installer.InstallZipAsync(renamed, MakeZip("new2.zip", new() { ["NewCopy.exe"] = "new exe" }), Release("v1.1.0"));
+        Equal(Path.Combine(programs, "NewCopy"), moved.Directory, "installed under the new name");
+        Equal("NewCopy", moved.InstallName, "new install name");
+        Assert(!Directory.Exists(oldDir), "old folder removed");
+        Assert(Registry.CurrentUser.OpenSubKey(registryRoot + @"\OldCopy") is null, "old Windows apps entry removed");
+        Equal("1.1.0", installer.Detect(renamed)?.Version?.ToString(), "detected under the new name afterwards");
+        await installer.UninstallAsync(renamed, installer.Detect(renamed)!);
+        Assert(installer.Detect(renamed) is null, "uninstalled");
     });
 
     await Check("a failed update restores the previous files", async () =>

@@ -51,6 +51,13 @@ public sealed partial class AppDefinition
     public bool Beta { get; set; }
     /// <summary>새로 추가한 앱: 카드에 "NEW" 배지. 마스터가 API 서버 관리 프로그램의 앱 목록에서 켜고 끔</summary>
     public bool New { get; set; }
+    /// <summary>이름을 바꾸기 전의 id: 그 id 로 된 즐겨찾기를 이 앱으로 옮김</summary>
+    public List<string>? FormerIds { get; set; }
+    /// <summary>
+    /// 이름을 바꾸기 전의 설치 폴더 이름: 그 이름으로 깔려 있으면 설치된 것으로 보고(버전이 낮으면 업데이트),
+    /// 다음 설치·업데이트 때 새 이름 폴더에 설치한 뒤 예전 폴더 · "앱" 목록 기록 · 바로 가기를 지움
+    /// </summary>
+    public List<string>? FormerInstallNames { get; set; }
 
     [JsonIgnore]
     public string EffectiveKind => string.Equals(Kind, InstallKinds.Setup, StringComparison.OrdinalIgnoreCase) ? InstallKinds.Setup : InstallKinds.Zip;
@@ -58,12 +65,22 @@ public sealed partial class AppDefinition
     [JsonIgnore]
     public string EffectiveInstallName => SafeFolderName(string.IsNullOrWhiteSpace(InstallName) ? Name : InstallName!);
 
+    /// <summary>지금 이름과 다른 예전 설치 폴더 이름들</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> EffectiveFormerInstallNames => (FormerInstallNames ?? []).Where(name => !string.IsNullOrWhiteSpace(name))
+        .Select(SafeFolderName).Where(name => !string.Equals(name, EffectiveInstallName, StringComparison.OrdinalIgnoreCase))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>id 가 이 앱의 지금 id 이거나 예전 id</summary>
+    public bool HasId(string id) => string.Equals(Id, id, StringComparison.OrdinalIgnoreCase) ||
+        (FormerIds ?? []).Any(former => string.Equals(former, id, StringComparison.OrdinalIgnoreCase));
+
     public AppDefinition Clone() => (AppDefinition)MemberwiseClone();
 
     [GeneratedRegex("[^a-z0-9]+")]
     private static partial Regex NonIdCharacters();
 
-    /// <summary>이름이나 저장소 이름에서 id 를 만듦 (DeskCal → deskcal, Folder Compare → folder-compare)</summary>
+    /// <summary>이름이나 저장소 이름에서 id 를 만듦 (DeskCal → deskcal, Disk Scan → disk-scan)</summary>
     public static string CreateId(string text)
     {
         string id = NonIdCharacters().Replace(text.Trim().ToLowerInvariant(), "-").Trim('-');

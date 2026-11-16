@@ -40,7 +40,7 @@ static class UiSnapshot
                             ReleaseVersion.Parse(version), "설치한 릴리스", null, true, null, null);
                         if (demo.Count > 0) demo[0].Installed = Installed(demo[0], "1.0.9");
                         if (demo.Count > 1 && demo[1].Latest?.Version is { } latest) demo[1].Installed = Installed(demo[1], latest.ToString());
-                        if (demo.Count > 2) { demo[2].BeginWork("받는 중…"); demo[2].ReportWork(new AppProgress("FolderCompareWPF-win-x64.zip (3.1 MB) 받는 중… 42%", 0.42)); }
+                        if (demo.Count > 2) { demo[2].BeginWork("받는 중…"); demo[2].ReportWork(new AppProgress("Compare-win-x64.zip (3.1 MB) 받는 중… 42%", 0.42)); }
                         window.UpdateLayout();
                         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
                     }
