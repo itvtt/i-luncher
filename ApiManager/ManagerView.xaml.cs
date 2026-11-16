@@ -516,6 +516,18 @@ public partial class ManagerView : UserControl
         SetAppsDirty(true);
     }
 
+    /// <summary>예전 값(original)이 지금 값과 다르면 목록(key)에 더함. 지금 값은 목록에서 뺌 (되돌린 이름)</summary>
+    internal static void KeepFormer(JsonObject data, string key, string original, string current)
+    {
+        var names = (data[key] as JsonArray)?.Select(node => node?.ToString() ?? "").Where(name => name.Length > 0).ToList() ?? [];
+        if (original.Length > 0 && !string.Equals(original, current, StringComparison.OrdinalIgnoreCase) &&
+            !names.Contains(original, StringComparer.OrdinalIgnoreCase))
+            names.Add(original);
+        names.RemoveAll(name => string.Equals(name, current, StringComparison.OrdinalIgnoreCase));
+        if (names.Count == 0) data.Remove(key);
+        else data[key] = new JsonArray(names.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray());
+    }
+
     internal static bool Flag(JsonObject data, string key) =>
         data[key] is JsonValue value && value.TryGetValue<bool>(out bool on) && on;
 
@@ -575,6 +587,9 @@ public partial class ManagerView : UserControl
         {
             var data = (JsonObject)_apps[index].Data.DeepClone();
             data["order"] = (index + 1) * 10;
+            // id 나 설치 폴더 이름을 바꿨으면 예전 값을 남김: 런처가 예전 이름으로 깔린 앱을 찾아 옮기고 즐겨찾기를 따라가게
+            KeepFormer(data, "formerIds", _apps[index].OriginalId, Str(data["id"]));
+            KeepFormer(data, "formerInstallNames", _apps[index].OriginalInstallName, AppRow.EffectiveInstallName(data));
             apps.Add(data);
         }
         AppRow? selected = AppsList.SelectedItem as AppRow;
@@ -955,6 +970,13 @@ internal sealed record VersionRow(int Version, string Text)
 internal sealed class AppRow(JsonObject data) : INotifyPropertyChanged
 {
     public JsonObject Data { get; } = data;
+    /// <summary>서버에서 읽었을 때의 id · 설치 폴더 이름 (새로 추가한 앱은 빈 값): 저장할 때 바뀌었으면 formerIds · formerInstallNames 에 남김</summary>
+    public string OriginalId { get; } = data["id"]?.ToString() ?? "";
+    public string OriginalInstallName { get; } = EffectiveInstallName(data);
+
+    /// <summary>런처와 같은 규칙: installName, 비면 name</summary>
+    public static string EffectiveInstallName(JsonObject data) =>
+        data["installName"]?.ToString() is { Length: > 0 } install ? install.Trim() : data["name"]?.ToString()?.Trim() ?? "";
     public string Title => Data["name"]?.ToString() is { Length: > 0 } name ? name : "(이름 없음)";
     public string Detail => string.Join(" · ", new[] { Data["id"]?.ToString(), Data["category"]?.ToString(), Data["kind"]?.ToString(),
             (bool?)Data["masterOnly"] == true ? "마스터만" : null,

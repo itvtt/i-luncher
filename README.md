@@ -89,7 +89,7 @@ github.com 저장소는 API 서버의 GitHub 중계로 받으므로 토큰이 �
 | `setupAsset`, `setupArguments` | 설치 프로그램 이름과 인수 (`*Setup*.exe`/`.msi`, 인수 `/S`, Velopack은 `--silent`) |
 | `installName` | 설치 폴더 `%LOCALAPPDATA%\Programs\<이름>`과 Windows "앱" 목록 키 이름 (`name`). **앱의 자체 업데이터·설치 프로그램과 같아야** 따로 실행해도 스스로 업데이트합니다. 앱 추가 창이 zip 이름(`DeskCal-win-x64.zip` → `DeskCal`)에서 채웁니다 |
 | `formerInstallNames` | 이름을 바꾸기 전의 설치 폴더 이름 목록 (예: `["SwiftCopy"]`). 그 이름으로 깔린 앱도 설치된 것으로 보고, 다음 설치·업데이트 때 새 이름 폴더에 설치한 뒤 예전 폴더·"앱" 목록 기록·바로 가기를 지웁니다 (앱이 실행 중이면 다음 번에) |
-| `formerIds` | 이름을 바꾸기 전의 id 목록 (예: `["swiftcopy"]`). 그 id 로 된 즐겨찾기를 이 앱으로 옮깁니다 |
+| `formerIds` | 이름을 바꾸기 전의 id 목록 (예: `["swiftcopy"]`). 그 id 로 된 즐겨찾기를 이 앱으로 옮깁니다. 이 두 칸은 관리자 메뉴 → 앱 목록에서 id·설치 폴더 이름을 바꿔 저장하면 예전 값으로 자동으로 채워집니다 |
 | `executable`, `arguments` | 실행 파일(설치 폴더 기준)과 인수 (설치 이름과 같은 exe → 하나뿐인 exe, `current\` 아래도 찾음) |
 | `icon` | 카드 아이콘: 저장소 안 경로(`Assets/App.png`) 또는 https 주소 (아래 '아이콘') |
 | `includePrerelease` | 프리릴리스도 최신으로 볼지 (false) |

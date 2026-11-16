@@ -164,6 +164,18 @@ try
         Assert(renamed.HasId("swiftcopy") && renamed.HasId("fastcopy") && !renamed.HasId("other"), "former ids read");
         Equal("SwiftCopy", renamed.EffectiveFormerInstallNames.Single(), "former install names read");
     });
+    await CheckSync("관리자 메뉴: changing an app's id or install folder name keeps the old value for the launcher", () =>
+    {
+        var data = new System.Text.Json.Nodes.JsonObject { ["id"] = "fastcopy", ["name"] = "FastCopy" };
+        Equal("FastCopy", ApiManager.AppRow.EffectiveInstallName(data), "install name falls back to the name");
+        ApiManager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
+        ApiManager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
+        Equal("[\"swiftcopy\"]", data["formerIds"]!.ToJsonString(), "old id kept once");
+        ApiManager.ManagerView.KeepFormer(data, "formerInstallNames", "FastCopy", "FastCopy");
+        Assert(data["formerInstallNames"] is null, "an unchanged name adds nothing");
+        ApiManager.ManagerView.KeepFormer(data, "formerIds", "fastcopy", "swiftcopy");
+        Equal("[\"fastcopy\"]", data["formerIds"]!.ToJsonString(), "renamed back: the current id leaves the list, the other one stays");
+    });
     await CheckSync("app page: details and screenshots come from the app list, release notes read as plain text", () =>
     {
         var apps = CatalogSerializer.Parse("""
