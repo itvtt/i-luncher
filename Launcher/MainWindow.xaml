@@ -77,10 +77,45 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-            <Style x:Key="CardActionButtonStyle" TargetType="Button" BasedOn="{StaticResource StoreActionButtonStyle}">
-                <Setter Property="Padding" Value="14,0" />
-                <Setter Property="Background" Value="#40FFFFFF" />
-                <Setter Property="Foreground" Value="White" />
+            <!-- 카드 버튼 (열기 · 받기 · 업데이트): 흰 알약에 옅은 그림자, 글자와 아이콘은 그 카드 색의 진한 톤(Ink).
+                 마우스를 올리면 더 밝고 그림자가 짙어지며, 누르면 살짝 작아짐 -->
+            <Style x:Key="CardActionButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="30" />
+                <Setter Property="MinWidth" Value="68" />
+                <Setter Property="Padding" Value="12,0,14,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Background" Value="#F2FFFFFF" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
+                                <Border x:Name="Shadow" CornerRadius="15" Background="#38000000" Margin="2,3,2,-2">
+                                    <Border.Effect><BlurEffect Radius="7" /></Border.Effect>
+                                </Border>
+                                <Border x:Name="Pill" CornerRadius="15" Background="{TemplateBinding Background}" BorderBrush="#99FFFFFF" BorderThickness="1">
+                                    <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Pill" Property="Background" Value="White" />
+                                    <Setter TargetName="Shadow" Property="Background" Value="#52000000" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Pill" Property="BorderBrush" Value="White" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.95" ScaleY="0.95" /></Setter.Value></Setter>
+                                    <Setter TargetName="Pill" Property="Background" Value="#E6FFFFFF" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.7" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <!-- 앱 페이지의 큰 버튼: 둥근 사각, 위가 밝은 파란 그라데이션과 가는 빛 테두리, 아래로 파란 빛. 아이콘 + 글자 -->
             <Style x:Key="DetailActionButtonStyle" TargetType="Button">
@@ -421,8 +456,14 @@
                                                 <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,8,0,0">
                                                     <DockPanel>
                                                         <Button DockPanel.Dock="Right" Style="{StaticResource CardActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
-                                                                Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Content="{Binding StoreButtonText}"
-                                                                AutomationProperties.Name="{Binding StoreButtonText}" />
+                                                                Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" Foreground="{Binding Ink}"
+                                                                AutomationProperties.Name="{Binding StoreButtonText}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding StoreButtonGlyph}" Visibility="{Binding StoreButtonGlyphVisibility}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                                           FontSize="11" FontWeight="Normal" Margin="0,1,6,0" VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </Button>
                                                         <TextBlock Margin="0,0,10,0" VerticalAlignment="Center" FontSize="12" Foreground="#CCFFFFFF" Text="{Binding VersionText}" ToolTip="{Binding VersionToolTip}" TextTrimming="CharacterEllipsis" />
                                                     </DockPanel>
                                                 </Border>
@@ -462,7 +503,12 @@
                                                 </Grid>
                                                 <TextBlock Grid.Row="2" Margin="0,6,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding PathText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                                 <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,8,0,0">
-                                                    <Button HorizontalAlignment="Right" Style="{StaticResource CardActionButtonStyle}" Tag="{Binding}" Click="FavoriteCard_Click" Content="열기" AutomationProperties.Name="열기" />
+                                                    <Button HorizontalAlignment="Right" Style="{StaticResource CardActionButtonStyle}" Tag="{Binding}" Click="FavoriteCard_Click" Foreground="{Binding Ink}" AutomationProperties.Name="열기">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11" FontWeight="Normal" Margin="0,1,6,0" VerticalAlignment="Center" />
+                                                            <TextBlock Text="열기" VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </Button>
                                                 </Border>
                                             </Grid>
                                         </Border>

@@ -23,6 +23,8 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public string AutomationId => "Favorite_" + Program.Id;
     /// <summary>카드 배경: 경로로 정한 그라데이션</summary>
     public Brush Art => CardArt.Gradient(CardArt.Stable(Program.Path.ToLowerInvariant()));
+    /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
+    public Brush Ink => CardArt.Ink(CardArt.Stable(Program.Path.ToLowerInvariant()));
     /// <summary>카드 왼쪽 위 작은 글자: 폴더 · 프로그램 · 파일</summary>
     public string Eyebrow => Directory.Exists(Program.Path) ? "폴더"
         : Path.GetExtension(Program.Path).ToLowerInvariant() is ".exe" or ".lnk" or ".bat" or ".cmd" ? "프로그램" : "파일";

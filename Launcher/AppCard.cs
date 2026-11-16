@@ -110,9 +110,11 @@ public sealed class AppCard : INotifyPropertyChanged
     public int Palette
     {
         get => _palette ??= CardArt.Stable(App.Id.Length > 0 ? App.Id : App.Name);
-        set { if (_palette == value) return; _palette = value; Notify(); Notify(nameof(Art)); }
+        set { if (_palette == value) return; _palette = value; Notify(); Notify(nameof(Art)); Notify(nameof(Ink)); }
     }
     public Brush Art => CardArt.Gradient(Palette);
+    /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
+    public Brush Ink => CardArt.Ink(Palette);
     /// <summary>카드 왼쪽 위 작은 글자: 새 버전 · 새 앱 · 베타, 아니면 분류</summary>
     public string Eyebrow => UpdateAvailable ? "새 버전" : App.New ? "새 앱" : App.Beta ? "베타" : Category;
 

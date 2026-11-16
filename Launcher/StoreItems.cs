@@ -16,7 +16,26 @@ public static class CardArt
         (Color.FromRgb(0x05, 0x96, 0x69), Color.FromRgb(0x0E, 0xA5, 0xE9)),  // 초록 → 하늘
     ];
 
+    // 흰 버튼 위 글자색: 그라데이션과 같은 계열의 진한 색 (흰 바탕 대비 4.5:1 이상)
+    private static readonly Color[] Inks =
+    [
+        Color.FromRgb(0x43, 0x38, 0xCA),  // 남색
+        Color.FromRgb(0x1D, 0x4E, 0xD8),  // 파랑
+        Color.FromRgb(0xBE, 0x18, 0x5D),  // 분홍
+        Color.FromRgb(0x03, 0x69, 0xA1),  // 하늘
+        Color.FromRgb(0x6D, 0x28, 0xD9),  // 보라
+        Color.FromRgb(0x04, 0x78, 0x57),  // 초록
+    ];
+
     public static int Count => Palettes.Length;
+
+    /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
+    public static Brush Ink(int index)
+    {
+        var brush = new SolidColorBrush(Inks[((index % Inks.Length) + Inks.Length) % Inks.Length]);
+        brush.Freeze();
+        return brush;
+    }
 
     /// <summary>글자로 정하는 색 번호 (같은 글자는 늘 같은 색)</summary>
     public static int Stable(string text)
