@@ -47,8 +47,8 @@ public partial class MainWindow : Window
         TitleVersionText.Text = "v" + LauncherVersion;
         ApiManagerPanel.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
         AppCard.AdminMenus = IsApiManager;
-        // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서)
-        ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: false));
+        // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서, 새로 넣은 앱의 릴리스도 확인)
+        ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: true));
         PreviewMouseUp += Window_PreviewMouseUp;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
