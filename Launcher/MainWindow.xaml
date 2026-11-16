@@ -7,7 +7,7 @@
         Icon="Assets/ILauncher.ico"
         Foreground="#FFF5F7FB"
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
-        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextHintingMode="Fixed" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
         Width="1100" Height="640" MinWidth="760" MinHeight="440"
         WindowStartupLocation="CenterScreen"
@@ -84,7 +84,7 @@
                 <Setter Property="MinWidth" Value="68" />
                 <Setter Property="Padding" Value="12,0,14,0" />
                 <Setter Property="VerticalAlignment" Value="Center" />
-                <Setter Property="Background" Value="#F2FFFFFF" />
+                <Setter Property="Background" Value="White" />
                 <Setter Property="FontSize" Value="12.5" />
                 <Setter Property="FontWeight" Value="Bold" />
                 <Setter Property="Cursor" Value="Hand" />
@@ -97,19 +97,18 @@
                                 <Border x:Name="Shadow" CornerRadius="15" Background="#38000000" Margin="2,3,2,-2">
                                     <Border.Effect><BlurEffect Radius="7" /></Border.Effect>
                                 </Border>
-                                <Border x:Name="Pill" CornerRadius="15" Background="{TemplateBinding Background}" BorderBrush="#99FFFFFF" BorderThickness="1">
+                                <Border x:Name="Pill" CornerRadius="15" Background="{TemplateBinding Background}">
                                     <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Pill" Property="Background" Value="White" />
+                                    <Setter TargetName="Pill" Property="Background" Value="#FFF4F4F7" />
                                     <Setter TargetName="Shadow" Property="Background" Value="#52000000" />
                                 </Trigger>
-                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Pill" Property="BorderBrush" Value="White" /></Trigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter TargetName="Root" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.95" ScaleY="0.95" /></Setter.Value></Setter>
-                                    <Setter TargetName="Pill" Property="Background" Value="#E6FFFFFF" />
+                                    <Setter TargetName="Pill" Property="Background" Value="#FFE9E9EE" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.7" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
                             </ControlTemplate.Triggers>
@@ -117,44 +116,35 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-            <!-- 앱 페이지의 큰 버튼: 둥근 사각, 위가 밝은 파란 그라데이션과 가는 빛 테두리, 아래로 파란 빛. 아이콘 + 글자 -->
+            <!-- 앱 페이지의 큰 버튼: 불투명한 흰 둥근 사각에 옅은 그림자, 아이콘 + 글자는 그 앱 색의 진한 톤(Ink). 카드 버튼과 같은 계열 -->
             <Style x:Key="DetailActionButtonStyle" TargetType="Button">
                 <Setter Property="Height" Value="38" />
                 <Setter Property="MinWidth" Value="116" />
-                <Setter Property="Padding" Value="22,0" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Padding" Value="20,0,22,0" />
+                <Setter Property="Background" Value="White" />
                 <Setter Property="FontSize" Value="14" />
-                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Grid>
-                                <Border CornerRadius="10" Background="#FF2F6BEB" Opacity="0.55" Margin="4,6,4,-4">
-                                    <Border.Effect><BlurEffect Radius="14" /></Border.Effect>
+                            <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
+                                <Border CornerRadius="10" Background="#40000000" Margin="2,3,2,-2">
+                                    <Border.Effect><BlurEffect Radius="8" /></Border.Effect>
                                 </Border>
-                                <Border CornerRadius="10" BorderThickness="1">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Color="#FF5B97FF" Offset="0" />
-                                            <GradientStop Color="#FF2C66E5" Offset="1" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                    <Border.BorderBrush>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Color="#66FFFFFF" Offset="0" />
-                                            <GradientStop Color="#00FFFFFF" Offset="0.6" />
-                                        </LinearGradientBrush>
-                                    </Border.BorderBrush>
+                                <Border x:Name="Face" CornerRadius="10" Background="{TemplateBinding Background}">
+                                    <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <Border x:Name="Shine" CornerRadius="10" Background="#1FFFFFFF" Opacity="0" />
-                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
-                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shine" Property="Background" Value="#29000000" /><Setter TargetName="Shine" Property="Opacity" Value="1" /></Trigger>
-                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FFF4F4F7" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Face" Property="Background" Value="#FFE9E9EE" />
+                                    <Setter TargetName="Root" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97" /></Setter.Value></Setter>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.6" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
@@ -165,7 +155,7 @@
                 <Setter Property="Width" Value="38" />
                 <Setter Property="Height" Value="38" />
                 <Setter Property="Margin" Value="10,0,0,0" />
-                <Setter Property="Foreground" Value="#FFE5E5EA" />
+                <Setter Property="Foreground" Value="#FFF2F2F7" />
                 <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
                 <Setter Property="FontSize" Value="15" />
                 <Setter Property="Cursor" Value="Hand" />
@@ -173,12 +163,12 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
                             <Grid>
-                                <Border x:Name="Face" CornerRadius="10" Background="#14FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1" />
+                                <Border x:Name="Face" CornerRadius="10" Background="#FF2C2C30" BorderBrush="#FF3D3D44" BorderThickness="1" />
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#24FFFFFF" /><Setter TargetName="Face" Property="BorderBrush" Value="#40FFFFFF" /></Trigger>
-                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Background" Value="#0DFFFFFF" /></Trigger>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF37373C" /><Setter TargetName="Face" Property="BorderBrush" Value="#FF52525A" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF242427" /></Trigger>
                                 <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Face" Property="BorderBrush" Value="#FF4AA3FF" /></Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -282,7 +272,7 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="HomeButton" AutomationProperties.Name="홈" Click="HomeButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource PlainButtonStyle}" ToolTip="홈">
                         <StackPanel Orientation="Horizontal" Background="Transparent">
-                            <Image Width="28" Height="28" Margin="0,0,10,0" Source="Assets/ILauncher.png" Stretch="Uniform" />
+                            <Image Width="28" Height="28" Margin="0,0,10,0" Source="Assets/ILauncher.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
                             <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Foreground="#FFE8ECF4" Text="i-luncher" />
                         </StackPanel>
                     </Button>
@@ -584,7 +574,7 @@
                                 <TextBlock FontSize="28" FontWeight="Bold" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="16" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                 <TextBlock Margin="0,6,0,0" FontSize="14" Foreground="#FF98989D" Text="{Binding App.Description}" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                                    <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
+                                    <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}" Foreground="{Binding Ink}"
                                             Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" AutomationProperties.Name="{Binding StoreButtonText}">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding StoreButtonGlyph}" Visibility="{Binding StoreButtonGlyphVisibility}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -650,7 +640,7 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Button Style="{StaticResource PlainButtonStyle}" Margin="0,0,14,0" Tag="{Binding Shot}" Click="Shot_Click" ToolTip="크게 보기">
-                                                <Border Width="{Binding Width}" Height="{Binding Height}" CornerRadius="12" BorderBrush="#26FFFFFF" BorderThickness="1">
+                                                <Border Width="{Binding Width}" Height="{Binding Height}" CornerRadius="12" BorderBrush="#26FFFFFF" BorderThickness="1" RenderOptions.BitmapScalingMode="HighQuality">
                                                     <Border.Background><ImageBrush ImageSource="{Binding Image}" Stretch="UniformToFill" /></Border.Background>
                                                 </Border>
                                             </Button>
