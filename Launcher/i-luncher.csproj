@@ -37,45 +37,6 @@
   <ItemGroup>
     <Resource Include="Assets/ILauncher.ico" />
     <Resource Include="Assets/ILauncher.png" />
-    <!-- 글꼴: Pretendard (SIL OFL 1.1, 라이선스 파일을 함께 배포) -->
-    <Resource Include="Assets/Fonts/*.otf" />
-    <Content Include="Assets/Fonts/Pretendard-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Remove="Assets/Build-Icon.ps1;Assets/ILauncher.svg" />
-  </ItemGroup>
-
-  <!-- dotnet publish -p:ReleaseZip=<경로> 이면 게시 폴더를 릴리스 zip 으로도 묶음 (build\Publish-Release.ps1) -->
-  <Target Name="PackReleaseZip" AfterTargets="Publish" Condition="'$(ReleaseZip)' != ''">
-    <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ReleaseZip)" Overwrite="true" />
-  </Target>
-
-  <!-- 빌드 설정: 저장소 루트의 .env 에서 런처가 쓰는 줄만 골라 실행 파일 옆 launcher.env 로 (.env.sample 참고).
-       Actions 러너에서는 LAUNCHER_REPOSITORY 가 비어 있으면 그 러너의 저장소 (릴리스를 올리는 곳에서 업데이트도 받음) -->
-  <Target Name="WriteLauncherSettings" BeforeTargets="AssignTargetPaths">
-    <PropertyGroup>
-      <_LauncherEnvFile>$(MSBuildProjectDirectory)\..\.env</_LauncherEnvFile>
-      <!-- 저장소에 .env 가 없으면 프로필 폴더(사용자 환경 변수 APPS_ENV_DIR)의 i-luncher.env -->
-      <_LauncherEnvFile Condition="!Exists('$(_LauncherEnvFile)') and '$(APPS_ENV_DIR)' != '' and Exists('$(APPS_ENV_DIR)\i-luncher.env')">$(APPS_ENV_DIR)\i-luncher.env</_LauncherEnvFile>
-    </PropertyGroup>
-    <ReadLinesFromFile File="$(_LauncherEnvFile)" Condition="Exists('$(_LauncherEnvFile)')">
-      <Output TaskParameter="Lines" ItemName="_LauncherEnvLine" />
-    </ReadLinesFromFile>
-    <ItemGroup>
-      <_LauncherSetting Include="@(_LauncherEnvLine)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*(API_SERVER|MASTER_USERS|LAUNCHER_REPOSITORY|CATALOG_REPOSITORY|CATALOG_PATH|CATALOG_BRANCH|NOTICES_PATH|GITHUB_HOST|LAUNCHER_TOKEN)\s*='))" />
-      <_LauncherRepositoryLine Include="@(_LauncherSetting)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*LAUNCHER_REPOSITORY\s*=\s*\S'))" />
-    </ItemGroup>
-    <ItemGroup Condition="'@(_LauncherRepositoryLine)' == '' and '$(GITHUB_ACTIONS)' == 'true' and '$(GITHUB_SERVER_URL)' != ''">
-      <_LauncherSetting Include="LAUNCHER_REPOSITORY=$(GITHUB_SERVER_URL)/$(GITHUB_REPOSITORY)" />
-    </ItemGroup>
-    <PropertyGroup>
-      <_LauncherSettingsPath>$(IntermediateOutputPath)launcher.env</_LauncherSettingsPath>
-    </PropertyGroup>
-    <WriteLinesToFile File="$(_LauncherSettingsPath)" Lines="# i-luncher build settings (generated from .env);@(_LauncherSetting)" Overwrite="true" WriteOnlyWhenDifferent="true" Encoding="utf-8" />
-    <ItemGroup>
-      <Content Include="$(_LauncherSettingsPath)" Link="launcher.env" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-      <FileWrites Include="$(_LauncherSettingsPath)" />
-    </ItemGroup>
-  </Target>
-  <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>

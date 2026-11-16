@@ -702,6 +702,9 @@ public partial class MainWindow : Window
                     foreach (var group in scope.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
                         sections.Add(new StoreSection(group.Key, group.ToList(), $"{group.Count()}개"));
             }
+            // 전체 앱 맨 아래: 즐겨찾기로 등록한 이 PC 의 프로그램 (예: 릴리스 없이 exe 로 쓰는 Receive)
+            if (_filter == "all" && Programs() is { Count: > 0 } programs)
+                sections.Add(new StoreSection("내 PC 프로그램", programs, $"{programs.Count}개", "프로그램 추가", () => EditFavorite(null)));
         }
 
         // 카드는 늘 같은 크기 (창을 키우면 열만 늘어남)
