@@ -568,7 +568,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:StoreSection}">
                                     <StackPanel Margin="0,8,0,10">
-                                        <Border BorderBrush="#FF38383A" BorderThickness="0,1,0,0" Padding="0,14,0,2">
+                                        <Border BorderBrush="#FF38383A" BorderThickness="0,1,0,0" Padding="0,14,0,2" Visibility="{Binding HeaderVisibility}">
                                             <DockPanel>
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource LinkButtonStyle}" Content="{Binding ActionText}" Tag="{Binding}" Click="SectionAction_Click"
                                                         Visibility="{Binding ActionVisibility}" IsEnabled="{Binding ActionEnabled}" />

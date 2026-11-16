@@ -32,6 +32,9 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
     /// <summary>목록 폭: 열 수 × 카드 한 칸 (창을 키워도 카드는 같은 크기, 열만 늘어남)</summary>
     public double PanelWidth { get; set; } = double.NaN;
 
+    /// <summary>제목 줄: 제목이 비면 숨김 (전체 앱 · 분류 화면의 한 덩어리 목록)</summary>
+    public Visibility HeaderVisibility => Title.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+
     public Visibility ActionVisibility => string.IsNullOrEmpty(_actionText) || Action is null ? Visibility.Collapsed : Visibility.Visible;
 
     public event PropertyChangedEventHandler? PropertyChanged;

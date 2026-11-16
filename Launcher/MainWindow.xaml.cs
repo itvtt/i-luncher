@@ -663,15 +663,10 @@ public partial class MainWindow : Window
         List<FavoriteCard> Programs() => allPrograms.Where(card => card.Matches(search)).ToList();
         List<object> InCategory(IEnumerable<AppCard> apps, string category) =>
             [.. apps, .. allPrograms.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase))];
-        // 카드 색: 분류별 섹션 순서대로 돌려 가며 (같은 분류의 이웃 카드끼리 다른 색, 화면을 바꿔도 앱마다 같은 색)
+        // 카드 색: 전체 앱 목록 순서대로 돌려 가며 (이웃 카드끼리 다른 색, 화면을 바꿔도 앱마다 같은 색)
         int palette = 0;
-        foreach (string category in Categories())
-        {
-            foreach (var card in Sorted(_cards.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase))))
-                card.Palette = palette++ % CardArt.Count;
-            foreach (var program in allPrograms.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase)))
-                program.Palette = palette++ % CardArt.Count;
-        }
+        foreach (var card in Sorted(_cards)) card.Palette = palette++ % CardArt.Count;
+        foreach (var program in allPrograms) program.Palette = palette++ % CardArt.Count;
 
         var sections = new List<StoreSection>();
         _updatesSection = null;
@@ -707,21 +702,11 @@ public partial class MainWindow : Window
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
             if (_filter != "updates")
             {
-                // 분류 화면 · 전체 앱: 그 분류의 앱 뒤에 같은 분류로 등록한 이 PC 의 프로그램 (설치된 앱 화면은 앱만)
-                bool withPrograms = _filter == "all" || category is not null;
-                if (category is not null)
-                {
-                    var items = withPrograms ? InCategory(scope, category) : [.. scope];
-                    if (items.Count > 0) sections.Add(new StoreSection("앱", items, $"{items.Count}개"));
-                }
-                else
-                    foreach (string name in withPrograms ? Categories() : [.. scope.Select(card => card.Category).Distinct(StringComparer.CurrentCultureIgnoreCase)
-                                 .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)])
-                    {
-                        var apps = scope.Where(card => string.Equals(card.Category, name, StringComparison.CurrentCultureIgnoreCase));
-                        var items = withPrograms ? InCategory(apps, name) : [.. apps];
-                        if (items.Count > 0) sections.Add(new StoreSection(name, items, $"{items.Count}개"));
-                    }
+                // 분류로 나누지 않고 한 덩어리: 앱 목록 순서, 전체 앱 · 분류 화면은 그 뒤에 이 PC 의 프로그램 (설치된 앱 화면은 앱만).
+                // 위에 업데이트 섹션이 있을 때만 제목 줄(모든 앱)을 둠
+                List<object> items = category is not null ? InCategory(scope, category)
+                    : _filter == "all" ? [.. scope, .. allPrograms] : [.. scope];
+                if (items.Count > 0) sections.Add(new StoreSection(updates.Count > 0 ? "모든 앱" : "", items, $"{items.Count}개"));
             }
         }
 
@@ -816,17 +801,28 @@ public partial class MainWindow : Window
         var programCategories = _favorites.Where(item => !item.IsApp).Select(item => new FavoriteCard(item).Category).ToList();
         var groups = _cards.Select(card => card.Category).Concat(programCategories)
             .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
-        AddChip("전체", null, "all");
-        foreach (var group in groups) AddChip(group.Key, group.Count(), "category:" + group.Key);
+        AddChip("전체", null, "all", CategoryLook.AllGlyph, Brushes.White, ChipOnText);
+        int index = 0;
+        foreach (var group in groups)
+        {
+            AddChip(group.Key, group.Count(), "category:" + group.Key, CategoryLook.Glyph(group.Key), CategoryLook.Light(index), CategoryLook.Ink(index));
+            index++;
+        }
 
-        void AddChip(string name, int? count, string filter)
+        void AddChip(string name, int? count, string filter, string glyph, Brush color, Brush ink)
         {
             bool on = _filter == filter;
             var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
             text.Inlines.Add(new System.Windows.Documents.Run(name));
             if (count is { } n)
                 text.Inlines.Add(new System.Windows.Documents.Run("  " + n) { FontWeight = FontWeights.Normal, Foreground = on ? Brushes.Gray : (Brush)FindResource("MutedTextBrush") });
-            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = text, Tag = on ? "on" : "off" };
+            var icon = new TextBlock
+            {
+                Text = glyph, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14, FontWeight = FontWeights.Normal,
+                Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = on ? ink : color
+            };
+            var content = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, text } };
+            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = content, Tag = on ? "on" : "off" };
             if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
             System.Windows.Automation.AutomationProperties.SetName(button, name);
             button.Click += (_, _) =>
