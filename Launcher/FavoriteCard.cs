@@ -13,6 +13,8 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public FavoriteProgram Program { get; } = program;
     public string Name => Program.Name;
     public string PathText => Program.Path;
+    /// <summary>카드의 설명 줄: 등록할 때 쓴 설명, 없으면 경로</summary>
+    public string DescriptionText => string.IsNullOrWhiteSpace(Program.Description) ? Program.Path : Program.Description.Trim();
     public bool Exists => File.Exists(Program.Path) || Directory.Exists(Program.Path);
     public ImageSource? Icon { get; } = FavoriteIcons.Load(program.Path);
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
@@ -21,13 +23,17 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public double CardOpacity => Exists ? 1.0 : 0.55;
     public string ToolTipText => Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
     public string AutomationId => "Favorite_" + Program.Id;
-    /// <summary>카드 배경: 경로로 정한 그라데이션</summary>
-    public Brush Art => CardArt.Gradient(CardArt.Stable(Program.Path.ToLowerInvariant()));
+    /// <summary>분류 (앱과 같은 섹션에 들어감, 비우면 기타)</summary>
+    public string Category => string.IsNullOrWhiteSpace(Program.Category) ? "기타" : Program.Category.Trim();
+    /// <summary>카드 색 번호: Render 가 앱과 함께 분류 순서대로 정함. 정하기 전에는 경로로</summary>
+    public int Palette { get; set; } = CardArt.Stable(program.Path.ToLowerInvariant());
+    /// <summary>카드 배경</summary>
+    public Brush Art => CardArt.Gradient(Palette);
     /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
-    public Brush Ink => CardArt.Ink(CardArt.Stable(Program.Path.ToLowerInvariant()));
-    /// <summary>카드 왼쪽 위 작은 글자: 폴더 · 프로그램 · 파일</summary>
-    public string Eyebrow => Directory.Exists(Program.Path) ? "폴더"
-        : Path.GetExtension(Program.Path).ToLowerInvariant() is ".exe" or ".lnk" or ".bat" or ".cmd" ? "프로그램" : "파일";
+    public Brush Ink => CardArt.Ink(Palette);
+    /// <summary>카드 왼쪽 위 작은 글자: 이 PC 의 프로그램(폴더·파일)이라는 표시</summary>
+    public string Eyebrow => Directory.Exists(Program.Path) ? "내 PC 폴더"
+        : Path.GetExtension(Program.Path).ToLowerInvariant() is ".exe" or ".lnk" or ".bat" or ".cmd" ? "내 PC 프로그램" : "내 PC 파일";
     // 앱 카드와 같은 오로라 글로우 (아이콘 색, 없으면 차분한 파랑)
     private Color AccentColor => CardColors.Accent(Icon) ?? CardColors.Fallback;
     public Brush AccentGlowBrush => CardColors.Glow(AccentColor);
@@ -35,7 +41,8 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public Brush CategoryTextBrush => CardColors.Tag(AccentColor).Text;
 
     public bool Matches(string search) => search.Length == 0 ||
-        Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) || Program.Path.Contains(search, StringComparison.CurrentCultureIgnoreCase);
+        Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) || Program.Path.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+        Category.Contains(search, StringComparison.CurrentCultureIgnoreCase) || Program.Description.Contains(search, StringComparison.CurrentCultureIgnoreCase);
 }
 
 /// <summary>즐겨찾기 아이콘: 실행 파일·바로 가기는 64px 아이콘, 그 밖의 파일은 Windows 가 보여 주는 아이콘</summary>

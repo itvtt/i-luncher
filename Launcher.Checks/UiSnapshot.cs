@@ -87,7 +87,7 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(1));
                     Save((FrameworkElement)window.Content, Suffix(output, "-favorites"));
                     Console.WriteLine($"favorites: {window.SectionTitle.Text} · {window.CountText.Text}");
-                    var favoriteEditor = new FavoriteEditorWindow(null) { ShowActivated = false, Left = -4000, Top = 0 };
+                    var favoriteEditor = new FavoriteEditorWindow(null, ["개발", "설비", "일정", "파일"]) { ShowActivated = false, Left = -4000, Top = 0 };
                     favoriteEditor.Show();
                     Pump(TimeSpan.FromSeconds(3));
                     Save((FrameworkElement)favoriteEditor.Content, Suffix(output, "-favorite-editor"));

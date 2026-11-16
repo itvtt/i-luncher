@@ -12,7 +12,7 @@
     <Style TargetType="Window">
         <Setter Property="Background" Value="{StaticResource WindowBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="FontFamily" Value="Segoe UI, Malgun Gothic" />
+        <Setter Property="FontFamily" Value="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     </Style>
@@ -414,7 +414,7 @@
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Foreground" Value="#FFF5F5F7" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="FontFamily" Value="Segoe UI, Malgun Gothic" />
+        <Setter Property="FontFamily" Value="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">

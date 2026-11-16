@@ -11,7 +11,7 @@
         AllowsTransparency="True"
         Background="Transparent"
         Foreground="#FFF5F7FB"
-        FontFamily="Segoe UI, Malgun Gothic"
+        FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType">
     <Window.Resources>
@@ -77,6 +77,22 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBox x:Name="PathBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="경로" TextChanged="Field_Changed" />
                     <Button Grid.Column="1" Content="찾아보기" Height="34" Margin="8,0,0,0" Padding="12,0" Click="BrowseButton_Click" Style="{StaticResource ToolbarButtonStyle}" />
+                </Grid>
+
+                <!-- 분류: 전체 앱·분류 화면에서 같은 분류의 앱과 함께 보임. 아래의 지금 있는 분류를 눌러 고르거나 직접 씀 -->
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="분류" />
+                <Grid>
+                    <TextBox x:Name="CategoryBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="분류" TextChanged="Category_Changed" />
+                    <TextBlock x:Name="CategoryPlaceholder" Margin="11,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13"
+                               Foreground="{StaticResource MutedTextBrush}" Text="비우면 기타" />
+                </Grid>
+                <WrapPanel x:Name="CategoryChips" Margin="0,2,0,0" />
+
+                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="설명" />
+                <Grid>
+                    <TextBox x:Name="DescriptionBox" Style="{StaticResource FieldTextBoxStyle}" AutomationProperties.Name="설명" TextChanged="Field_Changed" />
+                    <TextBlock x:Name="DescriptionPlaceholder" Margin="11,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13"
+                               Foreground="{StaticResource MutedTextBrush}" Text="카드에 보일 한 줄 (비우면 경로)" />
                 </Grid>
 
                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="실행 인수 (선택)" />

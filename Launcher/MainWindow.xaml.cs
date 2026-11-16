@@ -657,11 +657,21 @@ public partial class MainWindow : Window
         string search = SearchBox.Text.Trim();
         static List<AppCard> Sorted(IEnumerable<AppCard> cards) =>
             cards.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        List<FavoriteCard> Programs() => _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program)).Where(card => card.Matches(search)).ToList();
+        // 즐겨찾기로 등록한 이 PC 의 프로그램(exe 등): 분류가 있어 전체 앱·분류 화면에서 같은 분류의 앱 뒤에 섞여 보임
+        var allPrograms = _favorites.Where(item => !item.IsApp).Select(program => new FavoriteCard(program))
+            .OrderBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        List<FavoriteCard> Programs() => allPrograms.Where(card => card.Matches(search)).ToList();
+        List<object> InCategory(IEnumerable<AppCard> apps, string category) =>
+            [.. apps, .. allPrograms.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase))];
         // 카드 색: 분류별 섹션 순서대로 돌려 가며 (같은 분류의 이웃 카드끼리 다른 색, 화면을 바꿔도 앱마다 같은 색)
         int palette = 0;
-        foreach (var group in Sorted(_cards).GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
-            foreach (var card in group) card.Palette = palette++ % CardArt.Count;
+        foreach (string category in Categories())
+        {
+            foreach (var card in Sorted(_cards.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase))))
+                card.Palette = palette++ % CardArt.Count;
+            foreach (var program in allPrograms.Where(card => string.Equals(card.Category, category, StringComparison.CurrentCultureIgnoreCase)))
+                program.Palette = palette++ % CardArt.Count;
+        }
 
         var sections = new List<StoreSection>();
         _updatesSection = null;
@@ -697,14 +707,22 @@ public partial class MainWindow : Window
             if (updates.Count > 0) sections.Add(_updatesSection = UpdatesSection(updates));
             if (_filter != "updates")
             {
-                if (category is not null) { if (scope.Count > 0) sections.Add(new StoreSection("앱", scope, $"{scope.Count}개")); }
+                // 분류 화면 · 전체 앱: 그 분류의 앱 뒤에 같은 분류로 등록한 이 PC 의 프로그램 (설치된 앱 화면은 앱만)
+                bool withPrograms = _filter == "all" || category is not null;
+                if (category is not null)
+                {
+                    var items = withPrograms ? InCategory(scope, category) : [.. scope];
+                    if (items.Count > 0) sections.Add(new StoreSection("앱", items, $"{items.Count}개"));
+                }
                 else
-                    foreach (var group in scope.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
-                        sections.Add(new StoreSection(group.Key, group.ToList(), $"{group.Count()}개"));
+                    foreach (string name in withPrograms ? Categories() : [.. scope.Select(card => card.Category).Distinct(StringComparer.CurrentCultureIgnoreCase)
+                                 .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)])
+                    {
+                        var apps = scope.Where(card => string.Equals(card.Category, name, StringComparison.CurrentCultureIgnoreCase));
+                        var items = withPrograms ? InCategory(apps, name) : [.. apps];
+                        if (items.Count > 0) sections.Add(new StoreSection(name, items, $"{items.Count}개"));
+                    }
             }
-            // 전체 앱 맨 아래: 즐겨찾기로 등록한 이 PC 의 프로그램 (예: 릴리스 없이 exe 로 쓰는 Receive)
-            if (_filter == "all" && Programs() is { Count: > 0 } programs)
-                sections.Add(new StoreSection("내 PC 프로그램", programs, $"{programs.Count}개", "프로그램 추가", () => EditFavorite(null)));
         }
 
         // 카드는 늘 같은 크기 (창을 키우면 열만 늘어남)
@@ -779,10 +797,17 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>분류 이름 (앱과 즐겨찾기로 등록한 프로그램의 분류, 가나다순)</summary>
+    private List<string> Categories() =>
+        [.. _cards.Select(card => card.Category).Concat(_favorites.Where(item => !item.IsApp).Select(item => new FavoriteCard(item).Category))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)];
+
     private void RenderCategories()
     {
         CategoryButtons.Children.Clear();
-        foreach (var group in _cards.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key))
+        var programCategories = _favorites.Where(item => !item.IsApp).Select(item => new FavoriteCard(item).Category).ToList();
+        foreach (var group in _cards.Select(card => card.Category).Concat(programCategories)
+                     .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
         {
             string filter = "category:" + group.Key;
             var button = new Button

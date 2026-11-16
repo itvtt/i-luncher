@@ -35,7 +35,7 @@ public partial class MainWindow
     /// <summary>추가(null) 또는 편집</summary>
     private void EditFavorite(FavoriteProgram? editing)
     {
-        var editor = new FavoriteEditorWindow(editing) { Owner = this };
+        var editor = new FavoriteEditorWindow(editing, Categories()) { Owner = this };
         if (editor.ShowDialog() != true || editor.Result is not { } result) return;
         int index = editing is null ? -1 : _favorites.FindIndex(item => item.Id == editing.Id);
         if (index >= 0) _favorites[index] = result; else _favorites.Add(result);

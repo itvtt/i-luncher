@@ -9,6 +9,10 @@ public sealed class FavoriteProgram
     public string Name { get; set; } = "";
     public string Path { get; set; } = "";
     public string Arguments { get; set; } = "";
+    /// <summary>분류: 전체 앱·분류 화면에서 같은 분류의 앱과 함께 보임 (비우면 기타)</summary>
+    public string Category { get; set; } = "";
+    /// <summary>카드에 보이는 설명 (비우면 경로)</summary>
+    public string Description { get; set; } = "";
     /// <summary>런처 앱을 즐겨찾기한 경우 그 앱의 id (Path 는 비움)</summary>
     public string AppId { get; set; } = "";
     public bool IsApp => AppId.Length > 0;

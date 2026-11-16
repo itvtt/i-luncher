@@ -6,7 +6,7 @@
         Title="i-luncher"
         Icon="Assets/ILauncher.ico"
         Foreground="#FFF5F7FB"
-        FontFamily="Segoe UI, Malgun Gothic"
+        FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
         Width="1100" Height="640" MinWidth="760" MinHeight="440"
@@ -111,6 +111,31 @@
                                     <Setter TargetName="Pill" Property="Background" Value="#FFE9E9EE" />
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.7" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- 카드의 즐겨찾기 별: 둥근 아이콘 버튼, 즐겨찾기면 채운 흰 별 · 아니면 빈 별, 올리면 옅게 밝아짐 -->
+            <Style x:Key="CardStarButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="30" />
+                <Setter Property="Height" Value="30" />
+                <Setter Property="Margin" Value="0,0,6,0" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Ellipse x:Name="Face" Fill="#26FFFFFF" />
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Fill" Value="#40FFFFFF" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Fill" Value="#1AFFFFFF" /></Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
@@ -454,6 +479,8 @@
                                                                 <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
                                                             </StackPanel>
                                                         </Button>
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource CardStarButtonStyle}" Tag="{Binding}" Click="FavoriteToggleMenu_Click"
+                                                                Content="{Binding FavoriteGlyph}" ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
                                                         <TextBlock Margin="0,0,10,0" VerticalAlignment="Center" FontSize="12" Foreground="#CCFFFFFF" Text="{Binding VersionText}" ToolTip="{Binding VersionToolTip}" TextTrimming="CharacterEllipsis" />
                                                     </DockPanel>
                                                 </Border>
@@ -491,14 +518,18 @@
                                                     <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="21" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
                                                     <Image Width="38" Height="38" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Grid>
-                                                <TextBlock Grid.Row="2" Margin="0,6,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding PathText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Row="2" Margin="0,6,0,0" MaxHeight="36" FontSize="12.5" LineHeight="18" Foreground="#E6FFFFFF" Text="{Binding DescriptionText}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
                                                 <Border Grid.Row="4" BorderBrush="#40FFFFFF" BorderThickness="0,1,0,0" Padding="0,8,0,0">
-                                                    <Button HorizontalAlignment="Right" Style="{StaticResource CardActionButtonStyle}" Tag="{Binding}" Click="FavoriteCard_Click" Foreground="{Binding Ink}" AutomationProperties.Name="열기">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11" FontWeight="Normal" Margin="0,1,6,0" VerticalAlignment="Center" />
-                                                            <TextBlock Text="열기" VerticalAlignment="Center" />
-                                                        </StackPanel>
-                                                    </Button>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                        <Button Style="{StaticResource CardStarButtonStyle}" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Content="&#xE735;"
+                                                                ToolTip="즐겨찾기에서 빼기" AutomationProperties.Name="즐겨찾기에서 빼기" />
+                                                        <Button Style="{StaticResource CardActionButtonStyle}" Tag="{Binding}" Click="FavoriteCard_Click" Foreground="{Binding Ink}" AutomationProperties.Name="열기">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11" FontWeight="Normal" Margin="0,1,6,0" VerticalAlignment="Center" />
+                                                                <TextBlock Text="열기" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
                                                 </Border>
                                             </Grid>
                                         </Border>

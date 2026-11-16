@@ -11,11 +11,14 @@ public partial class FavoriteEditorWindow : Window
     private sealed record ProgramItem(string Name, string Path);
 
     private readonly FavoriteProgram? _editing;
+    private readonly IReadOnlyList<string> _categories;
     private List<ProgramItem> _programs = [];
 
-    public FavoriteEditorWindow(FavoriteProgram? editing)
+    /// <param name="categories">지금 있는 분류 (분류 칸 아래 고르기 버튼)</param>
+    public FavoriteEditorWindow(FavoriteProgram? editing, IReadOnlyList<string>? categories = null)
     {
         _editing = editing;
+        _categories = categories ?? [];
         InitializeComponent();
         if (editing is not null)
         {
@@ -24,7 +27,10 @@ public partial class FavoriteEditorWindow : Window
             NameBox.Text = editing.Name;
             PathBox.Text = editing.Path;
             ArgumentsBox.Text = editing.Arguments;
+            CategoryBox.Text = editing.Category;
+            DescriptionBox.Text = editing.Description;
         }
+        RenderCategoryChips();
         Loaded += async (_, _) =>
         {
             if (_editing is not null) { NameBox.Focus(); return; }
@@ -80,9 +86,41 @@ public partial class FavoriteEditorWindow : Window
     {
         if (SaveButton is null) return;
         ErrorText.Visibility = Visibility.Collapsed;
+        DescriptionPlaceholder.Visibility = DescriptionBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         bool filled = NameBox.Text.Trim().Length > 0 && PathBox.Text.Trim().Trim('"').Length > 0;
-        bool changed = _editing is null || NameBox.Text.Trim() != _editing.Name || PathBox.Text.Trim().Trim('"') != _editing.Path || ArgumentsBox.Text.Trim() != _editing.Arguments;
+        bool changed = _editing is null || NameBox.Text.Trim() != _editing.Name || PathBox.Text.Trim().Trim('"') != _editing.Path || ArgumentsBox.Text.Trim() != _editing.Arguments ||
+                       CategoryBox.Text.Trim() != _editing.Category || DescriptionBox.Text.Trim() != _editing.Description;
         SaveButton.IsEnabled = filled && changed;
+    }
+
+    private void Category_Changed(object sender, TextChangedEventArgs e)
+    {
+        RenderCategoryChips();
+        Field_Changed(sender, e);
+    }
+
+    /// <summary>분류 칸 아래: 지금 있는 분류 (누르면 그 분류로, 지금 분류는 파랑)</summary>
+    private void RenderCategoryChips()
+    {
+        if (CategoryChips is null) return;
+        CategoryPlaceholder.Visibility = CategoryBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CategoryChips.Children.Clear();
+        string current = CategoryBox.Text.Trim();
+        foreach (string category in _categories)
+        {
+            bool on = string.Equals(category, current, StringComparison.CurrentCultureIgnoreCase);
+            var chip = new Button
+            {
+                Content = category, Margin = new Thickness(0, 6, 6, 0), Padding = new Thickness(10, 3, 10, 3), Height = 26, FontSize = 12,
+                Style = (Style)FindResource(on ? "PrimaryButtonStyle" : "ToolbarButtonStyle")
+            };
+            chip.Click += (_, _) =>
+            {
+                CategoryBox.Text = category;
+                CategoryBox.CaretIndex = category.Length;
+            };
+            CategoryChips.Children.Add(chip);
+        }
     }
 
     private void Card_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -104,7 +142,9 @@ public partial class FavoriteEditorWindow : Window
             Id = _editing?.Id ?? Guid.NewGuid().ToString("N"),
             Name = NameBox.Text.Trim(),
             Path = path,
-            Arguments = ArgumentsBox.Text.Trim()
+            Arguments = ArgumentsBox.Text.Trim(),
+            Category = CategoryBox.Text.Trim(),
+            Description = DescriptionBox.Text.Trim()
         };
         DialogResult = true;
     }
