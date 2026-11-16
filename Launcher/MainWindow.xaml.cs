@@ -792,8 +792,10 @@ public partial class MainWindow : Window
         FavoritesCountText.Text = favoriteCount > 0 ? favoriteCount.ToString() : "";
         foreach (var (button, filter) in new[] { (AllAppsButton, "all"), (InstalledAppsButton, "installed"), (UpdatesButton, "updates"), (FavoritesButton, "favorites"), (ApiManagerButton, "manager") })
         {
-            button.Background = _filter == filter ? SelectedNavBrush : Brushes.Transparent;
-            button.Foreground = _filter == filter ? (Brush)FindResource("TextBrush") : (Brush)FindResource("MutedTextBrush");
+            // 분류 화면은 전체 앱 안의 버튼 줄로 고르므로 사이드바에서는 전체 앱이 선택된 것으로 보임
+            bool on = _filter == filter || (filter == "all" && _filter.StartsWith("category:", StringComparison.Ordinal));
+            button.Background = on ? SelectedNavBrush : Brushes.Transparent;
+            button.Foreground = on ? (Brush)FindResource("TextBrush") : (Brush)FindResource("MutedTextBrush");
         }
     }
 
@@ -802,30 +804,37 @@ public partial class MainWindow : Window
         [.. _cards.Select(card => card.Category).Concat(_favorites.Where(item => !item.IsApp).Select(item => new FavoriteCard(item).Category))
             .Distinct(StringComparer.CurrentCultureIgnoreCase).OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)];
 
+    private static readonly Brush ChipOnBack = Brushes.White, ChipOnText = new SolidColorBrush(Color.FromRgb(0x1C, 0x1C, 0x1E));
+
+    /// <summary>제목 아래 분류 버튼 줄 (앱스토어처럼): 전체 · 분류마다 (개수), 고른 것은 흰 버튼. 전체 앱과 분류 화면에서만</summary>
     private void RenderCategories()
     {
         CategoryButtons.Children.Clear();
+        bool show = SearchBox.Text.Trim().Length == 0 && (_filter == "all" || _filter.StartsWith("category:", StringComparison.Ordinal));
+        CategoryButtons.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
         var programCategories = _favorites.Where(item => !item.IsApp).Select(item => new FavoriteCard(item).Category).ToList();
-        foreach (var group in _cards.Select(card => card.Category).Concat(programCategories)
-                     .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+        var groups = _cards.Select(card => card.Category).Concat(programCategories)
+            .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
+        AddChip("전체", null, "all");
+        foreach (var group in groups) AddChip(group.Key, group.Count(), "category:" + group.Key);
+
+        void AddChip(string name, int? count, string filter)
         {
-            string filter = "category:" + group.Key;
-            var button = new Button
+            bool on = _filter == filter;
+            var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            text.Inlines.Add(new System.Windows.Documents.Run(name));
+            if (count is { } n)
+                text.Inlines.Add(new System.Windows.Documents.Run("  " + n) { FontWeight = FontWeights.Normal, Foreground = on ? Brushes.Gray : (Brush)FindResource("MutedTextBrush") });
+            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = text, Tag = on ? "on" : "off" };
+            if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
+            System.Windows.Automation.AutomationProperties.SetName(button, name);
+            button.Click += (_, _) =>
             {
-                Style = (Style)FindResource("SidebarNavButtonStyle"),
-                Tag = filter,
-                Content = new Grid
-                {
-                    Children =
-                    {
-                        new TextBlock { Text = group.Key, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 22, 0) },
-                        new TextBlock { Text = group.Count().ToString(), HorizontalAlignment = HorizontalAlignment.Right, FontSize = 11 }
-                    }
-                },
-                Background = _filter == filter ? SelectedNavBrush : Brushes.Transparent,
-                Foreground = _filter == filter ? (Brush)FindResource("TextBrush") : (Brush)FindResource("MutedTextBrush")
+                CloseDetail();
+                _filter = filter;
+                Render();
             };
-            button.Click += FilterButton_Click;
             CategoryButtons.Children.Add(button);
         }
     }
