@@ -40,7 +40,7 @@ public sealed class AppCard : INotifyPropertyChanged
     public bool IsChecking { get => _checking; set { _checking = value; NotifyAll(); } }
     public bool IsBusy { get => _busy; private set { _busy = value; NotifyAll(); } }
     public string? BusyText { get => _busyText; private set { _busyText = value; Notify(); Notify(nameof(DescriptionText)); } }
-    public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); } }
+    public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); Notify(nameof(CellActionText)); } }
     public ImageSource? Icon
     {
         get => _icon;
@@ -179,6 +179,7 @@ public sealed class AppCard : INotifyPropertyChanged
             if (_running == value) return;
             _running = value;
             Notify(); Notify(nameof(CellStateText)); Notify(nameof(CellStateBrush)); Notify(nameof(RunningDotOpacity)); Notify(nameof(RunningVisibility));
+            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled));
         }
     }
     public double RunningDotOpacity => IsRunning ? 1 : 0;
@@ -194,6 +195,57 @@ public sealed class AppCard : INotifyPropertyChanged
     public Visibility UpdateBadgeVisibility => UpdateAvailable && !IsBusy ? Visibility.Visible : Visibility.Collapsed;
     /// <summary>받을 수 있는 앱: 아이콘 오른쪽 아래 ↓</summary>
     public Visibility GetBadgeVisibility => !IsInstalled && !IsBusy && Latest is not null ? Visibility.Visible : Visibility.Collapsed;
+
+    // ── 홈 화면 아이콘 아래 상태 단추 (받기 · 업데이트 · 열기 · 실행 중 · 진행 중) ──
+    public enum CellActionKind { None, Get, Update, Open, Running, Busy }
+
+    public CellActionKind CellAction => IsBusy ? CellActionKind.Busy : UpdateAvailable ? CellActionKind.Update : IsRunning ? CellActionKind.Running
+        : IsInstalled ? CellActionKind.Open : Latest is not null ? CellActionKind.Get : CellActionKind.None;
+
+    /// <summary>단추 글자. 확인 중 · 확인 실패 · 릴리스 없음은 그대로 글자로</summary>
+    public string CellActionText => CellAction switch
+    {
+        CellActionKind.Busy => Progress is { } progress ? $"진행 중 {progress * 100:0}%" : "진행 중",
+        CellActionKind.Update => "업데이트",
+        CellActionKind.Running => "실행 중",
+        CellActionKind.Open => "열기",
+        CellActionKind.Get => "받기",
+        _ => VersionText.Length > 0 ? VersionText : "…"
+    };
+
+    private static readonly Brush ActionBlue = Freeze(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)));
+    private static readonly Brush ActionGrey = Freeze(new SolidColorBrush(Color.FromRgb(0x3A, 0x3B, 0x41)));
+    private static readonly Brush ActionGreenBack = Freeze(new SolidColorBrush(Color.FromArgb(0x33, 0x30, 0xD1, 0x58)));
+    private static readonly Brush ActionBusyBack = Freeze(new SolidColorBrush(Color.FromRgb(0x2C, 0x2D, 0x32)));
+    private static readonly Brush ActionInkWhite = Freeze(new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)));
+    private static readonly Brush ActionInkLight = Freeze(new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7)));
+
+    public Brush CellActionBackground => CellAction switch
+    {
+        CellActionKind.Get or CellActionKind.Update => ActionBlue,
+        CellActionKind.Running => ActionGreenBack,
+        CellActionKind.Open => ActionGrey,
+        CellActionKind.Busy => ActionBusyBack,
+        _ => Brushes.Transparent
+    };
+
+    public Brush CellActionInk => CellAction switch
+    {
+        CellActionKind.Get or CellActionKind.Update => ActionInkWhite,
+        CellActionKind.Running => CellGreenBrush,
+        CellActionKind.Open => ActionInkLight,
+        CellActionKind.Busy => CellBlueBrush,
+        _ => VersionWarning ? WarningBrush : CellGreyBrush
+    };
+
+    /// <summary>누를 수 있는 단추인지 (진행 중 · 확인 중 등은 글자만)</summary>
+    public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;
+
+    /// <summary>아이콘 안 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>
+    public string IconVersionText => Installed?.Version?.ToString() is { } installed ? $"v{installed}"
+        : Latest?.Version?.ToString() is { } latest ? $"v{latest}" : "";
+
+    public Visibility IconVersionVisibility => IconVersionText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>아이콘이 없을 때 타일 글자: 단어 두 개 이상이면 앞 글자 둘 (Windows Terminal → WT), 아니면 한 글자</summary>
     public string Initials

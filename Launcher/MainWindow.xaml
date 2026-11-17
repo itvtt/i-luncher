@@ -103,6 +103,29 @@
                 </Setter>
             </Style>
             <!-- 아이콘 칸의 즐겨찾기 별 (마우스를 올리면 아이콘 오른쪽 위에): 즐겨찾기면 채운 금색 별 · 아니면 빈 별 -->
+            <!-- 아이콘 아래 상태 단추: 둥근 알약, 받기 · 업데이트는 파랑, 열기는 회색, 실행 중은 초록 글자 -->
+            <Style x:Key="CellActionStyle" TargetType="Button">
+                <Setter Property="Height" Value="24" />
+                <Setter Property="MinWidth" Value="52" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="FontSize" Value="11.5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Face" Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Opacity" Value="0.85" /></Trigger>
+                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Opacity" Value="0.7" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="CardStarButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="28" />
                 <Setter Property="Height" Value="28" />
@@ -363,10 +386,11 @@
                     <ScrollViewer x:Name="CardScrollViewer" Padding="24,4,24,118" SizeChanged="CardScrollViewer_SizeChanged" ScrollChanged="CardScrollViewer_ScrollChanged" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <ScrollViewer.Resources>
                             <!-- 앱 칸: 큰 아이콘(받지 않은 앱은 흐리게, 새 버전은 오른쪽 위 파란 ↑, 받을 수 있으면 오른쪽 아래 ↓), 이름, 상태 한 줄
-                                 (실행 중 · 업데이트 · 받기 · 버전). 누르면 바로 열기, 우클릭은 메뉴(앱 정보 등), 마우스를 올리면 즐겨찾기 별 -->
+                                 아이콘 안 오른쪽 위에 버전(어두운 판에 흰 글자), 이름 아래 상태 단추(받기 · 업데이트 · 열기 · 실행 중 · 진행 중).
+                                 아이콘을 누르면 설치된 앱은 바로 열기, 받지 않은 앱은 앱 페이지. 마우스를 올리면 왼쪽에 ⓘ(앱 정보) · 즐겨찾기 별, 우클릭은 메뉴 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
-                                    <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="StoreAction_Click" ToolTip="{Binding RunToolTip}"
+                                    <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="Cell_Click" ToolTip="{Binding RunToolTip}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
@@ -393,20 +417,20 @@
                                                     </Border>
                                                     <Image Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Grid>
-                                                <Border Width="24" Height="24" Margin="0,-6,-6,0" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="12"
-                                                        Background="#FF0A84FF" BorderBrush="#FF1C1C1E" BorderThickness="3" Visibility="{Binding UpdateBadgeVisibility}">
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="9" FontWeight="Bold" Foreground="White" Text="&#xE74A;" />
-                                                </Border>
-                                                <Border Width="26" Height="26" Margin="0,0,-6,-6" HorizontalAlignment="Right" VerticalAlignment="Bottom" CornerRadius="13"
-                                                        Background="#FF3A3B41" BorderBrush="#FF1C1C1E" BorderThickness="3" Visibility="{Binding GetBadgeVisibility}">
-                                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#FFE5E5EA" Text="&#xE74B;" />
+                                                <Border Margin="0,5,5,0" Padding="5,1,5,2" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="6"
+                                                        Background="#E8141416" BorderBrush="#40FFFFFF" BorderThickness="1" Visibility="{Binding IconVersionVisibility}" IsHitTestVisible="False">
+                                                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="White" Text="{Binding IconVersionText}" />
                                                 </Border>
                                             </Grid>
                                             <TextBlock Margin="6,11,6,0" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Margin="6,3,6,0" HorizontalAlignment="Center" FontSize="11.5" Foreground="{Binding CellStateBrush}" Text="{Binding CellStateText}" ToolTip="{Binding VersionToolTip}" TextTrimming="CharacterEllipsis" />
+                                            <Button Margin="0,7,0,0" HorizontalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding}" Click="CellAction_Click"
+                                                    Content="{Binding CellActionText}" Background="{Binding CellActionBackground}" Foreground="{Binding CellActionInk}"
+                                                    IsHitTestVisible="{Binding CellActionEnabled}" ToolTip="{Binding VersionToolTip}" AutomationProperties.Name="{Binding CellActionText}" />
                                         </StackPanel>
                                     </Button>
-                                    <Button x:Name="Star" Style="{StaticResource CardStarButtonStyle}" Margin="0,4,10,0" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"
+                                    <Button x:Name="Info" Style="{StaticResource CardStarButtonStyle}" Margin="8,6,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
+                                            Tag="{Binding}" Click="Card_Click" Content="&#xE946;" Foreground="#FFE5E5EA" ToolTip="앱 정보" AutomationProperties.Name="앱 정보" />
+                                    <Button x:Name="Star" Style="{StaticResource CardStarButtonStyle}" Margin="8,38,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
                                             Tag="{Binding}" Click="FavoriteToggleMenu_Click" Content="{Binding FavoriteGlyph}" Foreground="{Binding FavoriteGlyphBrush}"
                                             ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
                                     <ProgressBar Height="3" Margin="28,0,28,4" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
@@ -414,7 +438,10 @@
                                                  Background="#FF2C2D32" BorderThickness="0" Foreground="#FF4AA3FF" />
                                 </Grid>
                                 <DataTemplate.Triggers>
-                                    <Trigger SourceName="Cell" Property="IsMouseOver" Value="True"><Setter TargetName="Star" Property="Visibility" Value="Visible" /></Trigger>
+                                    <Trigger SourceName="Cell" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Star" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="Info" Property="Visibility" Value="Visible" />
+                                    </Trigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
 

@@ -93,7 +93,7 @@ public partial class MainWindow
 
     /// <summary>
     /// 트레이 창에서 누름: 설치된 앱 · 프로그램은 바로 실행 (트레이 창은 이미 닫힘).
-    /// 받지 않은 앱이나 실행하지 못했을 때는 큰 창을 열어 그곳에서 (설치 확인 · 오류 알림)
+    /// 받지 않은 앱은 큰 창의 앱 페이지, 실행하지 못했을 때는 큰 창을 열어 그곳에서 (오류 알림)
     /// </summary>
     internal async Task QuickOpenAsync(object item)
     {
@@ -109,8 +109,9 @@ public partial class MainWindow
             if (!Launch(card)) ShowFromTray();
             return;
         }
+        // 받지 않은 앱: 큰 창의 앱 페이지 (설명 · 스크린샷을 보고 받기)
         ShowFromTray();
-        await OpenAsync(card);
+        ShowDetail(card);
     }
 
     /// <summary>트레이 창의 업데이트: 큰 창을 열고 그 앱을 업데이트 (실행 중이면 물어봄, 진행은 칸에)</summary>
