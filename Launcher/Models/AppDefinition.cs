@@ -59,6 +59,10 @@ public sealed partial class AppDefinition
     /// </summary>
     public List<string>? FormerInstallNames { get; set; }
 
+    /// <summary>내 앱: 사용자가 GitHub 프로젝트로 더한 앱 (이 PC 에만, my-apps.json). 앱 목록(서버)에는 없음</summary>
+    [JsonIgnore]
+    public bool Personal { get; set; }
+
     [JsonIgnore]
     public string EffectiveKind => string.Equals(Kind, InstallKinds.Setup, StringComparison.OrdinalIgnoreCase) ? InstallKinds.Setup : InstallKinds.Zip;
 

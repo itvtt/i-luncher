@@ -555,6 +555,22 @@ try
         var again = CatalogSerializer.Parse(saved);
         Assert(again[0].Beta && again[0].New && !saved.Contains("\"beta\": false") && !again[1].Beta, "a saved list keeps them (and writes nothing for off)");
     });
+
+    await CheckSync("My apps (GitHub projects added on this PC) are saved locally, read back as personal, and never written to the app list", () =>
+    {
+        var store = new MyAppStore(Path.Combine(root, "my-apps", "my-apps.json"));
+        Equal(0, store.Load().Count, "nothing before saving");
+        store.Save([new AppDefinition { Id = "my-tool", Name = "Tool", Repository = "https://github.com/someone/Tool", Category = "도구", InstallName = "Tool", Personal = true }]);
+        var read = store.Load();
+        Assert(read.Count == 1 && read[0].Personal && read[0].Name == "Tool" && read[0].Category == "도구", "read back as a personal app");
+        Assert(!File.ReadAllText(Path.Combine(root, "my-apps", "my-apps.json")).Contains("personal", StringComparison.OrdinalIgnoreCase), "the personal flag is not stored");
+        Assert(!CatalogSerializer.Serialize(read).Contains("personal", StringComparison.OrdinalIgnoreCase), "and never written into the app list");
+        Assert(MyAppStore.SameRepository("https://github.com/Someone/tool", "someone/Tool", null), "same repository whatever the case or form");
+        Assert(!MyAppStore.SameRepository("https://github.com/someone/tool", "https://github.com/someone/other", null), "different repositories differ");
+        var card = new ILauncher.AppCard(read[0]);
+        Assert(card.PersonalMenuVisibility == System.Windows.Visibility.Visible && card.AdminMenuVisibility == System.Windows.Visibility.Collapsed,
+            "a personal app offers 삭제 and never 관리자 메뉴에서 편집");
+    });
 }
 finally
 {

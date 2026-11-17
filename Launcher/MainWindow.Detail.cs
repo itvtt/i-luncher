@@ -25,7 +25,7 @@ public partial class MainWindow
 
     private bool OnDetail => _detail is not null && !OnPage;
 
-    /// <summary>앱 정보 (아이콘에 마우스를 올리면 나오는 ⓘ · 우클릭 메뉴): 앱 페이지</summary>
+    /// <summary>앱 정보 (우클릭 메뉴): 앱 페이지</summary>
     private void Card_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
@@ -41,13 +41,11 @@ public partial class MainWindow
         else await OpenAsync(card);
     }
 
-    /// <summary>홈 화면의 아이콘: 설치된 앱은 바로 실행(업데이트가 있으면 물어봄), 받지 않은 앱은 앱 페이지(설명 · 스크린샷 · 받기)</summary>
-    private async void Cell_Click(object sender, RoutedEventArgs e)
+    /// <summary>홈 화면의 아이콘: 앱 페이지(설명 · 스크린샷 · 새로운 기능 · 열기/받기). 실행 · 설치 · 업데이트는 이름 아래 상태 단추로</summary>
+    private void Cell_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
-        if ((sender as FrameworkElement)?.Tag is not AppCard card) return;
-        if (!card.IsInstalled) ShowDetail(card);
-        else await OpenAsync(card);
+        if ((sender as FrameworkElement)?.Tag is AppCard card) ShowDetail(card);
     }
 
     /// <summary>독 · 앱 페이지의 큰 버튼: 바로 실행, 설치, 업데이트 후 실행</summary>

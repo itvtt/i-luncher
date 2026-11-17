@@ -103,6 +103,34 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(3));
                     Save((FrameworkElement)favoriteEditor.Content, Suffix(output, "-favorite-editor"));
                     favoriteEditor.Close();
+                    // GitHub 프로젝트 추가 창: 확인한 저장소(이 PC 의 API 서버로 실제 확인) · 열 수 없는 저장소 오류. 내 앱 삭제 창
+                    var github = new GitHubClient(host => settings.GetToken(host), MainWindow.LauncherVersion, apiBaseOverride: repository => settings.ApiBaseFor(repository));
+                    var manager = new AppManager(github, new AppInstaller(), Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-downloads"), () => settings.DefaultHost);
+                    foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-error") })
+                    {
+                        var projectWindow = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구", "설비", "일정", "파일"], _ => null)
+                        { ShowActivated = false, Left = -4000, Top = 0 };
+                        projectWindow.Show();
+                        projectWindow.RepoBox.Text = repository;
+                        projectWindow.CheckButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                        for (int i = 0; i < 60 && projectWindow.Details.Visibility != Visibility.Visible && projectWindow.ErrorText.Visibility != Visibility.Visible; i++)
+                            Pump(TimeSpan.FromMilliseconds(250));
+                        Pump(TimeSpan.FromMilliseconds(300));
+                        Save((FrameworkElement)projectWindow.Content, Suffix(output, suffix));
+                        Console.WriteLine($"github {repository}: details {projectWindow.Details.Visibility} · add {projectWindow.AddButton.IsEnabled} · " +
+                                          (projectWindow.ErrorText.Visibility == Visibility.Visible ? "error: " + projectWindow.ErrorText.Text : projectWindow.PreviewVersion.Text + " " + projectWindow.PreviewFile.Text));
+                        projectWindow.Close();
+                    }
+                    window.SelectFilter("all");
+                    Pump(TimeSpan.FromMilliseconds(300));
+                    if (window.VisibleCards.FirstOrDefault(card => card.IsInstalled) is { } installedCard)
+                    {
+                        var deleteWindow = new DeleteProjectWindow(installedCard) { ShowActivated = false, Left = -4000, Top = 0 };
+                        deleteWindow.Show();
+                        Pump(TimeSpan.FromMilliseconds(500));
+                        Save((FrameworkElement)deleteWindow.Content, Suffix(output, "-delete"));
+                        deleteWindow.Close();
+                    }
                     // 설정 (오른쪽 화면)
                     window.SettingsButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));

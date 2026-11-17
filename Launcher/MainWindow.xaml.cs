@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     private bool _updatingAll;
     private readonly FavoriteStore _favoriteStore;
     private List<FavoriteProgram> _favorites;
+    private readonly MyAppStore _myAppStore;
+    private List<AppDefinition> _myApps;
     private readonly UsageStore _usage;
     private readonly DispatcherTimer _runningTimer;
     private bool _scanningRunning;
@@ -47,6 +49,8 @@ public partial class MainWindow : Window
         _startupMessage = startupMessage;
         _favoriteStore = new FavoriteStore(Path.Combine(settings.DataDirectory, "favorites.json"));
         _favorites = _favoriteStore.Load();
+        _myAppStore = new MyAppStore(Path.Combine(settings.DataDirectory, "my-apps.json"));
+        _myApps = _myAppStore.Load();
         _usage = new UsageStore(Path.Combine(settings.DataDirectory, "usage.json"));
         InitializeComponent();
         CreateServices();
@@ -200,7 +204,7 @@ public partial class MainWindow : Window
             if (generation != _refreshGeneration) return;
             if (snapshot.Warning is { } warning) ShowError(warning); else HideError();
             MigrateFavorites(snapshot.Apps);
-            MergeCards(snapshot.Apps);
+            MergeCards(WithMyApps(snapshot.Apps));
             await DetectInstallsAsync(_cards.ToList());
             Render();
             if (checkReleases) await CheckReleasesAsync(_cards.ToList());
@@ -211,6 +215,23 @@ public partial class MainWindow : Window
             _refreshing = false;
             RefreshButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>앱 목록 + 내 앱 (앱 목록에 같은 저장소 · id 가 있으면 앱 목록 것만). 내 앱은 앱 목록 뒤에</summary>
+    private List<AppDefinition> WithMyApps(IReadOnlyList<AppDefinition> apps)
+    {
+        var all = apps.ToList();
+        int order = 100000;
+        foreach (var mine in _myApps)
+        {
+            if (all.Any(app => app.Id.Equals(mine.Id, StringComparison.OrdinalIgnoreCase)
+                               || MyAppStore.SameRepository(app.Repository, mine.Repository, _settings.DefaultHost))) continue;
+            var copy = mine.Clone();
+            copy.Personal = true;
+            copy.Order = order++;
+            all.Add(copy);
+        }
+        return all;
     }
 
     private void MergeCards(IReadOnlyList<AppDefinition> apps)
@@ -585,7 +606,97 @@ public partial class MainWindow : Window
     // ───────────────────────── 앱 목록 고치기 = 관리자 메뉴 ─────────────────────────
 
     /// <summary>독 끝의 + (프로그램 추가). 앱 추가는 관리자 메뉴 → 앱 목록</summary>
-    private void AddAppButton_Click(object sender, RoutedEventArgs e) => EditFavorite(null);
+    /// <summary>
+    /// GitHub 프로젝트 추가: 저장소를 확인해 내 앱으로 (이 PC 에만). 추가하면 홈 화면에 넣고 그 앱 페이지를 엶 (받기는 거기서)
+    /// </summary>
+    private async void AddGitHubProject()
+    {
+        var dialog = new GitHubProjectWindow(_manager, _settings.DefaultHost, Categories(),
+            repository => _cards.FirstOrDefault(card => MyAppStore.SameRepository(card.App.Repository, repository.WebUrl, _settings.DefaultHost))?.Name)
+        { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Result is not { } app) return;
+        string id = app.Id;
+        for (int n = 2; _cards.Any(card => card.App.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+                        || _myApps.Any(mine => mine.Id.Equals(id, StringComparison.OrdinalIgnoreCase)); n++) id = $"{app.Id}-{n}";
+        app.Id = id;
+        app.Order = 100000 + _myApps.Count;
+        _myApps.Add(app);
+        try
+        {
+            _myAppStore.Save(_myApps);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _myApps.Remove(app);
+            ShowError("내 앱을 저장하지 못했습니다: " + error.Message);
+            return;
+        }
+        var card = new AppCard(app.Clone());
+        _cards.Add(card);
+        await DetectInstallsAsync([card]);
+        Render();
+        ShowDetail(card);
+        StatusText.Text = $"{app.Name} 추가함 (내 앱)";
+        await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
+        _ = LoadRepositoryIconsAsync([card]);
+        UpdateCounts();
+    }
+
+    /// <summary>내 앱 삭제: 목록에서만 뺄지, 설치된 앱도 제거할지 물어봄</summary>
+    private async void DeleteMyApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not { App.Personal: true, IsBusy: false } card) return;
+        var dialog = new DeleteProjectWindow(card) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        bool uninstalled = false;
+        if (dialog.Uninstall && card.Installed is { } installed)
+        {
+            if (!(await CloseIfRunningAsync(card, "제거", "앱을 닫은 뒤 제거하고 목록에서 뺍니다.")).Proceed) return;
+            card.BeginWork("제거 중…");
+            try
+            {
+                await _manager.Installer.UninstallAsync(card.App, installed);
+                uninstalled = true;
+            }
+            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            {
+                card.EndWork();
+                ShowError($"{card.Name}: {error.Message} (목록에서는 빼지 않았습니다)");
+                return;
+            }
+            card.EndWork();
+        }
+        _myApps.RemoveAll(app => app.Id.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase));
+        try
+        {
+            _myAppStore.Save(_myApps);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ShowError("내 앱을 저장하지 못했습니다: " + error.Message);
+        }
+        // 즐겨찾기에서도
+        if (_favorites.RemoveAll(item => item.IsApp && item.AppId.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase)) > 0)
+            _favoriteStore.Save(_favorites);
+        if (ReferenceEquals(_detail, card)) CloseDetail();
+        _cards.Remove(card);
+        StatusText.Text = uninstalled ? $"{card.Name} 제거하고 목록에서 뺌" : $"{card.Name} 목록에서 뺌";
+        Render();
+    }
+
+    /// <summary>독의 +: 이 PC 프로그램 또는 GitHub 프로젝트 추가 (메뉴로 고름)</summary>
+    private void AddAppButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement button) return;
+        var menu = new ContextMenu { PlacementTarget = button, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
+        var program = new MenuItem { Header = "이 PC 프로그램…", Icon = "\uE7F4" };
+        program.Click += (_, _) => EditFavorite(null);
+        var project = new MenuItem { Header = "GitHub 프로젝트…", Icon = "\uE943" };
+        project.Click += (_, _) => AddGitHubProject();
+        menu.Items.Add(program);
+        menu.Items.Add(project);
+        menu.IsOpen = true;
+    }
 
     /// <summary>카드 메뉴의 "관리자 메뉴에서 편집" (마스터만): 관리자 메뉴 → 앱 목록에서 그 앱을 엶</summary>
     private void EditMenu_Click(object sender, RoutedEventArgs e)

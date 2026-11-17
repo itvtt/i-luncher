@@ -387,7 +387,7 @@
                         <ScrollViewer.Resources>
                             <!-- 앱 칸: 큰 아이콘(받지 않은 앱은 흐리게, 새 버전은 오른쪽 위 파란 ↑, 받을 수 있으면 오른쪽 아래 ↓), 이름, 상태 한 줄
                                  아이콘 밖 오른쪽 위에 작은 버전(회색 판), 이름 아래 상태 단추(받기 · 업데이트 · 열기 · 실행 중 · 진행 중).
-                                 아이콘을 누르면 설치된 앱은 바로 열기, 받지 않은 앱은 앱 페이지. 마우스를 올리면 왼쪽에 ⓘ(앱 정보) · 즐겨찾기 별, 우클릭은 메뉴 -->
+                                 아이콘을 누르면 앱 페이지, 실행 · 설치 · 업데이트는 상태 단추. 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
                                     <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="Cell_Click" ToolTip="{Binding RunToolTip}"
@@ -405,6 +405,8 @@
                                             <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
                                             <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                      Style="{StaticResource DangerMenuItemStyle}" />
+                                            <MenuItem Header="내 앱에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteMyApp_Click" Visibility="{Binding PersonalMenuVisibility}"
                                                       Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
@@ -429,9 +431,7 @@
                                                     IsHitTestVisible="{Binding CellActionEnabled}" ToolTip="{Binding VersionToolTip}" AutomationProperties.Name="{Binding CellActionText}" />
                                         </StackPanel>
                                     </Button>
-                                    <Button x:Name="Info" Style="{StaticResource CardStarButtonStyle}" Margin="8,6,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
-                                            Tag="{Binding}" Click="Card_Click" Content="&#xE946;" Foreground="#FFE5E5EA" ToolTip="앱 정보" AutomationProperties.Name="앱 정보" />
-                                    <Button x:Name="Star" Style="{StaticResource CardStarButtonStyle}" Margin="8,38,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
+                                    <Button x:Name="Star" Style="{StaticResource CardStarButtonStyle}" Margin="8,6,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
                                             Tag="{Binding}" Click="FavoriteToggleMenu_Click" Content="{Binding FavoriteGlyph}" Foreground="{Binding FavoriteGlyphBrush}"
                                             ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
                                     <ProgressBar Height="3" Margin="28,0,28,4" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
@@ -441,7 +441,6 @@
                                 <DataTemplate.Triggers>
                                     <Trigger SourceName="Cell" Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Star" Property="Visibility" Value="Visible" />
-                                        <Setter TargetName="Info" Property="Visibility" Value="Visible" />
                                     </Trigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -627,6 +626,8 @@
                                                 <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
                                                 <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                                 <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                          Style="{StaticResource DangerMenuItemStyle}" />
+                                                <MenuItem Header="내 앱에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteMyApp_Click" Visibility="{Binding PersonalMenuVisibility}"
                                                           Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
