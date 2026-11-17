@@ -386,7 +386,7 @@
                     <ScrollViewer x:Name="CardScrollViewer" Padding="24,4,24,118" SizeChanged="CardScrollViewer_SizeChanged" ScrollChanged="CardScrollViewer_ScrollChanged" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <ScrollViewer.Resources>
                             <!-- 앱 칸: 큰 아이콘(받지 않은 앱은 흐리게, 새 버전은 오른쪽 위 파란 ↑, 받을 수 있으면 오른쪽 아래 ↓), 이름, 상태 한 줄
-                                 아이콘 안 오른쪽 위에 버전(어두운 판에 흰 글자), 이름 아래 상태 단추(받기 · 업데이트 · 열기 · 실행 중 · 진행 중).
+                                 아이콘 밖 오른쪽 위에 작은 버전(회색 판), 이름 아래 상태 단추(받기 · 업데이트 · 열기 · 실행 중 · 진행 중).
                                  아이콘을 누르면 설치된 앱은 바로 열기, 받지 않은 앱은 앱 페이지. 마우스를 올리면 왼쪽에 ⓘ(앱 정보) · 즐겨찾기 별, 우클릭은 메뉴 -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
@@ -417,9 +417,10 @@
                                                     </Border>
                                                     <Image Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Grid>
-                                                <Border Margin="0,5,5,0" Padding="5,1,5,2" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="6"
-                                                        Background="#E8141416" BorderBrush="#40FFFFFF" BorderThickness="1" Visibility="{Binding IconVersionVisibility}" IsHitTestVisible="False">
-                                                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="White" Text="{Binding IconVersionText}" />
+                                                <!-- 버전: 아이콘 밖, 오른쪽 위 모서리 위에 작게 (회색 판에 밝은 글자) -->
+                                                <Border Margin="0,-17,-10,0" Padding="4,0,4,1" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="5"
+                                                        Background="#FF34353B" Visibility="{Binding IconVersionVisibility}" IsHitTestVisible="False">
+                                                    <TextBlock FontSize="9" FontWeight="SemiBold" Foreground="#FFE5E5EA" Text="{Binding IconVersionText}" />
                                                 </Border>
                                             </Grid>
                                             <TextBlock Margin="6,11,6,0" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />

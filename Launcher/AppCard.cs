@@ -241,7 +241,7 @@ public sealed class AppCard : INotifyPropertyChanged
     /// <summary>누를 수 있는 단추인지 (진행 중 · 확인 중 등은 글자만)</summary>
     public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;
 
-    /// <summary>아이콘 안 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>
+    /// <summary>아이콘 밖 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>
     public string IconVersionText => Installed?.Version?.ToString() is { } installed ? $"v{installed}"
         : Latest?.Version?.ToString() is { } latest ? $"v{latest}" : "";
 
