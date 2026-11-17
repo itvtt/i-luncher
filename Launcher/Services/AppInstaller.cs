@@ -425,6 +425,44 @@ public sealed class AppInstaller
         return running.Count > 0;
     }
 
+    /// <summary>
+    /// 여러 설치 폴더 중 지금 실행 중인 폴더 (홈 화면 · 트레이 창의 "실행 중" 표시용). 프로세스 목록은 한 번만 읽고,
+    /// 이름이 맞는 프로세스만 경로를 확인함. 경로를 못 읽는 프로세스(관리자 권한)는 그 이름의 폴더가 하나일 때만, Windows 서비스(세션 0)는 셈하지 않음
+    /// </summary>
+    public static HashSet<string> RunningDirectories(IEnumerable<string> directories)
+    {
+        var running = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string directory in directories.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (string folder in new[] { directory, Path.Combine(directory, "current") })
+            {
+                if (!Directory.Exists(folder)) continue;
+                try
+                {
+                    foreach (string exe in Directory.EnumerateFiles(folder, "*.exe"))
+                    {
+                        string name = Path.GetFileNameWithoutExtension(exe);
+                        if (!byName.TryGetValue(name, out var owners)) byName[name] = owners = [];
+                        if (!owners.Contains(directory, StringComparer.OrdinalIgnoreCase)) owners.Add(directory);
+                    }
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+        if (byName.Count == 0) return running;
+        foreach (Process process in Process.GetProcesses())
+            using (process)
+            {
+                if (!byName.TryGetValue(process.ProcessName, out var owners)) continue;
+                try { if (process.SessionId == 0) continue; } catch (InvalidOperationException) { continue; }
+                string? path;
+                try { path = process.MainModule?.FileName; }
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { path = null; }
+                foreach (string directory in owners)
+                    if (path is null ? owners.Count == 1 : IsInside(path, directory)) running.Add(directory);
+            }
+        return running;
+    }
+
     /// <summary>설치 폴더 안의 실행 파일로 도는 프로세스 (부른 쪽이 Dispose)</summary>
     private static List<Process> FindRunning(string directory)
     {

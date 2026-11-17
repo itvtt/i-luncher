@@ -15,7 +15,7 @@ public partial class MainWindow
         string id = card.App.Id;
         bool removed = _favorites.RemoveAll(item => string.Equals(item.AppId, id, StringComparison.OrdinalIgnoreCase)) > 0;
         if (!removed) _favorites.Add(new FavoriteProgram { Name = card.Name, AppId = id });
-        SaveFavorites(removed ? $"{card.Name} 즐겨찾기에서 뺌" : $"{card.Name} 즐겨찾기에 추가", switchView: false);
+        SaveFavorites(removed ? $"{card.Name} 즐겨찾기에서 뺌" : $"{card.Name} 즐겨찾기에 추가");
     }
 
     /// <summary>이름을 바꾼 앱(FormerIds): 예전 id 로 된 즐겨찾기를 새 id 로 옮겨 저장</summary>
@@ -42,7 +42,8 @@ public partial class MainWindow
         SaveFavorites(index >= 0 ? $"{result.Name} 수정함" : $"{result.Name} 추가함");
     }
 
-    private void SaveFavorites(string done, bool switchView = true)
+    /// <summary>저장하고 다시 그림 (보던 화면 그대로, 독에 바로 보임)</summary>
+    private void SaveFavorites(string done)
     {
         try
         {
@@ -54,7 +55,6 @@ public partial class MainWindow
         {
             ShowError("즐겨찾기를 저장하지 못했습니다: " + error.Message);
         }
-        if (switchView) _filter = "favorites";
         Render();
     }
 
@@ -96,13 +96,14 @@ public partial class MainWindow
         SaveFavorites($"{card.Name} 뺌");
     }
 
-    private void RunFavorite(FavoriteCard card)
+    /// <summary>내 PC 프로그램 실행. 실행하지 못했으면 false (오류는 알림에)</summary>
+    private bool RunFavorite(FavoriteCard card)
     {
         var program = card.Program;
         if (!card.Exists)
         {
             ShowError($"{card.Name}: 파일이 없습니다. 우클릭 → 편집에서 경로를 고치세요. ({program.Path})");
-            return;
+            return false;
         }
         try
         {
@@ -111,14 +112,18 @@ public partial class MainWindow
             Process.Start(start);
             StatusText.Text = $"{card.Name} 실행";
             HideError();
+            _usage.Add(UsageStore.ProgramKey(program.Id));
+            return true;
         }
         catch (Win32Exception error) when (error.NativeErrorCode == 1223)
         {
             StatusText.Text = $"{card.Name} 실행을 취소했습니다.";  // UAC 취소
+            return true;
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
             ShowError($"{card.Name}을(를) 실행하지 못했습니다: {error.Message}");
+            return false;
         }
     }
 
@@ -141,7 +146,6 @@ public partial class MainWindow
             _favorites.Add(new FavoriteProgram { Name = name, Path = path });
             added.Add(name);
         }
-        _filter = "favorites";
         if (added.Count > 0) SaveFavorites(added.Count == 1 ? $"{added[0]} 추가함" : $"{added.Count}개 추가함");
         else Render();
     }

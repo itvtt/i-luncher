@@ -165,6 +165,36 @@ public sealed class AppCard : INotifyPropertyChanged
     public double IconOpacity => 1.0;
     public Brush TitleBrush => IsInstalled ? InstalledTitleBrush : NotInstalledTitleBrush;
 
+    // ── 홈 화면의 아이콘 칸 · 독 · 트레이 창 ──
+    private static readonly Brush CellGreyBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93)));
+    private static readonly Brush CellBlueBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xFF)));
+    private static readonly Brush CellGreenBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x5B, 0xE3, 0xA3)));
+    private bool _running;
+    /// <summary>설치 폴더의 실행 파일이 돌고 있음 (MainWindow 가 창이 보일 때 몇 초마다 확인)</summary>
+    public bool IsRunning
+    {
+        get => _running;
+        set
+        {
+            if (_running == value) return;
+            _running = value;
+            Notify(); Notify(nameof(CellStateText)); Notify(nameof(CellStateBrush)); Notify(nameof(RunningDotOpacity)); Notify(nameof(RunningVisibility));
+        }
+    }
+    public double RunningDotOpacity => IsRunning ? 1 : 0;
+    public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>아이콘 아래 한 줄: 진행 중 · 업데이트 · 실행 중 · 버전 · 받기 (확인 중 · 확인 실패 · 릴리스 없음)</summary>
+    public string CellStateText => IsBusy ? "진행 중" : UpdateAvailable ? "업데이트" : IsRunning ? "실행 중" : IsInstalled ? VersionText
+        : Latest is not null ? "받기" : VersionText;
+    public Brush CellStateBrush => IsBusy || UpdateAvailable || !IsInstalled && Latest is not null ? CellBlueBrush
+        : IsRunning ? CellGreenBrush : VersionWarning ? WarningBrush : CellGreyBrush;
+    /// <summary>받지 않은 앱은 흐리게</summary>
+    public double CellIconOpacity => IsInstalled || IsBusy ? 1.0 : 0.45;
+    /// <summary>새 버전: 아이콘 오른쪽 위 파란 ↑</summary>
+    public Visibility UpdateBadgeVisibility => UpdateAvailable && !IsBusy ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>받을 수 있는 앱: 아이콘 오른쪽 아래 ↓</summary>
+    public Visibility GetBadgeVisibility => !IsInstalled && !IsBusy && Latest is not null ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>아이콘이 없을 때 타일 글자: 단어 두 개 이상이면 앞 글자 둘 (Windows Terminal → WT), 아니면 한 글자</summary>
     public string Initials
     {
@@ -317,7 +347,7 @@ public sealed class AppCard : INotifyPropertyChanged
     }
 }
 
-/// <summary>실행 파일 아이콘 (64px) 을 읽고, 앱을 지워도 카드에 보이도록 PNG 로 보관</summary>
+/// <summary>실행 파일 아이콘 (128px) 을 읽고, 앱을 지워도 카드에 보이도록 PNG 로 보관</summary>
 public static class AppIcons
 {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -351,14 +381,15 @@ public static class AppIcons
 
     private static BitmapSource? FromExecutable(string executable) => FromFile(executable);
 
-    /// <summary>파일(실행 파일·dll·ico)의 아이콘 하나를 64px 로</summary>
+    /// <summary>파일(실행 파일·dll·ico)의 아이콘 하나를 128px 로</summary>
     public static BitmapSource? FromFile(string file, int index = 0)
     {
         var handles = new IntPtr[1];
         var ids = new int[1];
         try
         {
-            if (PrivateExtractIcons(file, index, 64, 64, handles, ids, 1, 0) is 0 or uint.MaxValue || handles[0] == IntPtr.Zero) return null;
+            // 128px: 홈 화면의 큰 아이콘(76)도 또렷하게 (작게 그리는 곳은 줄여서 씀)
+            if (PrivateExtractIcons(file, index, 128, 128, handles, ids, 1, 0) is 0 or uint.MaxValue || handles[0] == IntPtr.Zero) return null;
             var source = Imaging.CreateBitmapSourceFromHIcon(handles[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             source.Freeze();
             return source;

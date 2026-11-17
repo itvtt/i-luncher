@@ -11,8 +11,8 @@ using ILauncher.Services;
 namespace ILauncher;
 
 /// <summary>
-/// 앱 페이지 (앱스토어처럼): 카드를 누르면 오른쪽에 열림. 아이콘·이름·버튼, 버전·출시·분류·크기, 스크린샷(API 서버에 올린 이미지),
-/// 상세 설명, 새로운 기능(최신 릴리스 노트). 카드 안의 열기·받기·업데이트 버튼은 페이지를 열지 않고 바로 동작함.
+/// 앱 페이지 (앱스토어처럼): 아이콘 칸 우클릭 → 앱 정보로 열림. 아이콘·이름·버튼, 버전·출시·분류·크기, 스크린샷(API 서버에 올린 이미지),
+/// 상세 설명, 새로운 기능(최신 릴리스 노트). 아이콘 칸을 누르면 페이지를 열지 않고 바로 열기·받기·업데이트.
 /// </summary>
 public partial class MainWindow
 {
@@ -25,12 +25,13 @@ public partial class MainWindow
 
     private bool OnDetail => _detail is not null && !OnPage;
 
+    /// <summary>우클릭 메뉴의 앱 정보</summary>
     private void Card_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is AppCard card) ShowDetail(card);
     }
 
-    /// <summary>카드의 열기·받기·업데이트 (앱 페이지의 큰 버튼도): 바로 실행, 설치, 업데이트 후 실행</summary>
+    /// <summary>아이콘 칸 · 독 (앱 페이지의 큰 버튼도): 바로 실행, 설치, 업데이트 후 실행</summary>
     private async void StoreAction_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
@@ -43,7 +44,7 @@ public partial class MainWindow
         _detail = card;
         card.PropertyChanged += DetailCard_PropertyChanged;
         DetailPane.DataContext = card;
-        DetailBackText.Text = SearchBox.Text.Trim().Length > 0 ? "검색" : SectionTitle.Text;
+        DetailBackText.Text = _title;
         ShotViewer.Visibility = Visibility.Collapsed;
         FillDetail(card);
         DetailScrollViewer.ScrollToTop();

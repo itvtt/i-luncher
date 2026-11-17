@@ -8,7 +8,7 @@ using ILauncher.Services;
 
 /// <summary>
 /// Launcher.Checks --ui-snapshot &lt;데이터 폴더&gt; &lt;png&gt; [초]: 실제 MainWindow 를 띄워 몇 초 뒤 화면을 PNG 로 저장하고
-/// 카드 상태를 출력. 같은 폴더에 즐겨찾기(-favorites.png)와 설정 화면(-settings.png)도 저장.
+/// 카드 상태를 출력. 같은 폴더에 즐겨찾기(-favorites.png), 트레이 창(-tray.png), 설정 화면(-settings.png)도 저장.
 /// 원격 세션이 끊겨 있으면 WPF 가 아무것도 그리지 못해 그림은 비고, 출력한 값으로만 확인할 수 있음.
 /// </summary>
 static class UiSnapshot
@@ -74,19 +74,30 @@ static class UiSnapshot
                         menu.IsOpen = false;
                         window.DetailBackButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     }
-                    Console.WriteLine($"title: {window.SectionTitle.Text} · {window.CountText.Text} · status: {window.StatusText.Text}");
+                    Console.WriteLine($"title: {window.ViewTitle} · {window.VisibleCards.Count}개 · status: {window.StatusText.Text}");
                     Console.WriteLine($"catalog: {window.CatalogSourceText.Text}");
                     if (window.ErrorPanel.Visibility == Visibility.Visible) Console.WriteLine($"error: {window.ErrorText.Text}");
                     if (window.EmptyState.Visibility == Visibility.Visible) Console.WriteLine($"empty: {window.EmptyStateTitle.Text} / {window.EmptyStateText.Text}");
                     foreach (AppCard card in window.VisibleCards)
                         Console.WriteLine($"card [{card.Category}] {card.Name}: {card.VersionText} | {card.DescriptionText} | tooltip: {card.VersionToolTip.Replace(Environment.NewLine, " / ")}");
-                    Console.WriteLine($"counts: all {window.AllCountText.Text}, installed {window.InstalledCountText.Text}, updates '{window.UpdatesCountText.Text}'");
+                    Console.WriteLine("chips: " + string.Join(", ", window.CategoryButtons.Children.OfType<System.Windows.Controls.Button>()
+                        .Select(chip => System.Windows.Automation.AutomationProperties.GetName(chip))));
+                    Console.WriteLine($"dock: {window.DockFavorites.Items.Count} favorites, {window.DockRunning.Items.Count} running");
+
+                    // 트레이 창 (트레이 아이콘을 한 번 누르면 뜨는 작은 창)
+                    var quick = new TrayPopup(window) { ShowActivated = false, Left = -4000, Top = 0 };
+                    quick.Refresh();
+                    quick.Show();
+                    Pump(TimeSpan.FromSeconds(1));
+                    Save((FrameworkElement)quick.Content, Suffix(output, "-tray"));
+                    Console.WriteLine($"tray: {quick.Items.Items.Count} cells, {quick.Updates.Items.Count} updates");
+                    quick.CloseForGood();
 
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
-                    window.FavoritesButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    window.SelectFilter("favorites");
                     Pump(TimeSpan.FromSeconds(1));
                     Save((FrameworkElement)window.Content, Suffix(output, "-favorites"));
-                    Console.WriteLine($"favorites: {window.SectionTitle.Text} · {window.CountText.Text}");
+                    Console.WriteLine($"favorites: {window.ViewTitle} · {window.VisibleCards.Count}개 앱");
                     var favoriteEditor = new FavoriteEditorWindow(null, ["개발", "설비", "일정", "파일"]) { ShowActivated = false, Left = -4000, Top = 0 };
                     favoriteEditor.Show();
                     Pump(TimeSpan.FromSeconds(3));
@@ -99,22 +110,22 @@ static class UiSnapshot
                     // 제목줄의 로고·이름 = 홈: 설정 화면에서도, 앱 페이지에서도 전체 앱으로
                     window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromMilliseconds(500));
-                    Console.WriteLine($"home from settings: {window.SectionTitle.Text} · list {window.StorePane.Visibility} · page {window.PagePane.Visibility}");
+                    Console.WriteLine($"home from settings: {window.ViewTitle} · list {window.StorePane.Visibility} · page {window.PagePane.Visibility}");
                     if (window.VisibleCards.FirstOrDefault() is { } homeCard)
                     {
                         window.ShowDetail(homeCard);
                         window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                         Pump(TimeSpan.FromMilliseconds(500));
-                        Console.WriteLine($"home from app page: {window.SectionTitle.Text} · list {window.StorePane.Visibility} · app page {window.DetailPane.Visibility}");
+                        Console.WriteLine($"home from app page: {window.ViewTitle} · list {window.StorePane.Visibility} · app page {window.DetailPane.Visibility}");
                     }
-                    // 관리자 메뉴 (마스터 계정만 사이드바에 보임, 오른쪽 화면). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
-                    Console.WriteLine($"api manager: {window.ApiManagerPanel.Visibility}");
-                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerPanel.Visibility == Visibility.Visible)
+                    // 관리자 메뉴 (마스터 계정만 제목 표시줄에 보임, 창 전체). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
+                    Console.WriteLine($"api manager: {window.ApiManagerButton.Visibility}");
+                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerButton.Visibility == Visibility.Visible)
                     {
                         window.ApiManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                         Pump(TimeSpan.FromSeconds(6));
                         Save((FrameworkElement)window.Content, Suffix(output, "-manager"));
-                        if (window.PagePane.Content is ApiManager.ManagerView view)
+                        if (window.PageContent.Content is ApiManager.ManagerView view)
                         {
                             foreach (var (tab, name) in new[] { (2, "-manager-releases"), (3, "-manager-runners"), (1, "-manager-apps") })
                             {
@@ -189,15 +200,16 @@ static class UiSnapshot
     private static void Save(FrameworkElement root, string path)
     {
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth), (int)Math.Ceiling(root.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-        // 창 배경은 Window 에 있으므로 내용 아래에 같은 색을 깔아 그림
+        // 창 배경은 Window 에 있으므로 내용 아래에 같은 색을 먼저 깔고, 내용은 직접 그림
+        // (VisualBrush 로 그리면 화면이 잠겼거나 원격 세션이 끊겼을 때 비어 나옴)
         var visual = new DrawingVisual();
         using (var context = visual.RenderOpen())
         {
             var background = (Window.GetWindow(root)?.Background as SolidColorBrush) ?? Brushes.Black;
             context.DrawRectangle(background, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
-            context.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
         }
         bitmap.Render(visual);
+        bitmap.Render(root);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using (var stream = File.Create(path)) encoder.Save(stream);

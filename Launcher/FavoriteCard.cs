@@ -23,6 +23,8 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public double CardOpacity => Exists ? 1.0 : 0.55;
     public string ToolTipText => Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
     public string AutomationId => "Favorite_" + Program.Id;
+    /// <summary>홈 화면 칸의 아이콘 아래 한 줄</summary>
+    public string CellStateText => Exists ? "내 PC" : "파일 없음";
     /// <summary>분류 (앱과 같은 섹션에 들어감, 비우면 기타)</summary>
     public string Category => string.IsNullOrWhiteSpace(Program.Category) ? "기타" : Program.Category.Trim();
     /// <summary>카드 색 번호: Render 가 앱과 함께 분류 순서대로 정함. 정하기 전에는 경로로</summary>
