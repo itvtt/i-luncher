@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace ILauncher.Services;
 
-/// <summary>즐겨찾기: 런처 앱(AppId) 또는 이 PC 에 설치된 일반 프로그램(실행 파일·바로 가기·파일). 이 PC 에만 저장 (경로가 PC 마다 다름)</summary>
+/// <summary>즐겨찾기: 런처 앱(AppId), 이 PC 의 일반 프로그램(실행 파일·바로 가기·파일·폴더) 또는 웹사이트(Path 가 http(s) 주소). 이 PC 에만 저장</summary>
 public sealed class FavoriteProgram
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -15,7 +15,12 @@ public sealed class FavoriteProgram
     public string Description { get; set; } = "";
     /// <summary>런처 앱을 즐겨찾기한 경우 그 앱의 id (Path 는 비움)</summary>
     public string AppId { get; set; } = "";
+    /// <summary>고른 아이콘 (CustomIcons: 비우면 자동 = 프로그램 · 사이트 아이콘, "builtin:이름", 복사해 둔 그림 경로)</summary>
+    public string Icon { get; set; } = "";
     public bool IsApp => AppId.Length > 0;
+    /// <summary>웹사이트 (누르면 기본 브라우저로 엶)</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsWeb => SiteInfo.IsWebAddress(Path);
 }
 
 /// <summary>%LOCALAPPDATA%\i-luncher\favorites.json</summary>

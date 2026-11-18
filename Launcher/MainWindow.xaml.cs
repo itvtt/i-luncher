@@ -47,6 +47,9 @@ public partial class MainWindow : Window
     {
         _settings = settings;
         _startupMessage = startupMessage;
+        CustomIcons.Folder = Path.Combine(settings.DataDirectory, "custom-icons");
+        SiteInfo.CacheFolder = Path.Combine(settings.DataDirectory, "site-icons");
+        MyAppStore.MediaFolder = Path.Combine(settings.DataDirectory, "my-media");
         _favoriteStore = new FavoriteStore(Path.Combine(settings.DataDirectory, "favorites.json"));
         _favorites = _favoriteStore.Load();
         _myAppStore = new MyAppStore(Path.Combine(settings.DataDirectory, "my-apps.json"));
@@ -154,6 +157,7 @@ public partial class MainWindow : Window
         _runningTimer.Start();
         _ = ScanRunningAsync();
         _ = RefreshNoticesAsync();
+        _ = RefreshSiteIconsAsync();
         await CheckLauncherUpdateAsync(automatic: true);
     }
 
@@ -642,6 +646,44 @@ public partial class MainWindow : Window
         UpdateCounts();
     }
 
+    /// <summary>내 앱 편집: 이름 · 제작자 · 분류 · 설명 · 상세 설명 · 아이콘 · 스크린샷 (저장소는 그대로)</summary>
+    private async void EditMyApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not { App.Personal: true } card) return;
+        int index = _myApps.FindIndex(app => app.Id.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return;
+        var before = _myApps[index];
+        var plain = before.Clone();
+        plain.Icon = null;  // 자동(저장소 아이콘) 미리 보기용
+        var dialog = new GitHubProjectWindow(_manager, _settings.DefaultHost, Categories(), _ => null, before)
+        {
+            Owner = this,
+            RepositoryIcon = _icons.Current(plain, card.Installed)
+        };
+        if (dialog.ShowDialog() != true || dialog.Result is not { } edited) return;
+        _myApps[index] = edited;
+        try
+        {
+            _myAppStore.Save(_myApps);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _myApps[index] = before;
+            ShowError("내 앱을 저장하지 못했습니다: " + error.Message);
+            return;
+        }
+        card.App = edited.Clone();
+        if (before.Icon != edited.Icon)
+        {
+            card.Icon = await Task.Run(() => _icons.Current(card.App, card.Installed));
+            if (!CustomIcons.IsCustom(edited.Icon)) _ = LoadRepositoryIconsAsync([card]);  // 자동으로 되돌림: 저장소에서 다시 찾음
+        }
+        Render();
+        if (ReferenceEquals(_detail, card)) ShowDetail(card);
+        StatusText.Text = $"{edited.Name} 수정함";
+        HideError();
+    }
+
     /// <summary>내 앱 삭제: 목록에서만 뺄지, 설치된 앱도 제거할지 물어봄</summary>
     private async void DeleteMyApp_Click(object sender, RoutedEventArgs e)
     {
@@ -670,6 +712,9 @@ public partial class MainWindow : Window
         try
         {
             _myAppStore.Save(_myApps);
+            // 이 앱에 넣었던 스크린샷 · 아이콘 그림 (이 PC 에 복사해 둔 것)
+            foreach (string shot in card.App.Screenshots ?? []) MyAppStore.DeleteMedia(shot);
+            CustomIcons.DeleteImported(card.App.Icon);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -691,9 +736,12 @@ public partial class MainWindow : Window
         var menu = new ContextMenu { PlacementTarget = button, Placement = System.Windows.Controls.Primitives.PlacementMode.Top };
         var program = new MenuItem { Header = "이 PC 프로그램…", Icon = "\uE7F4" };
         program.Click += (_, _) => EditFavorite(null);
+        var site = new MenuItem { Header = "웹사이트…", Icon = "\uE774" };
+        site.Click += (_, _) => EditFavorite(null, web: true);
         var project = new MenuItem { Header = "GitHub 프로젝트…", Icon = "\uE943" };
         project.Click += (_, _) => AddGitHubProject();
         menu.Items.Add(program);
+        menu.Items.Add(site);
         menu.Items.Add(project);
         menu.IsOpen = true;
     }

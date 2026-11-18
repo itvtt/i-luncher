@@ -46,6 +46,77 @@
         </Setter>
     </Style>
 
+    <!-- 여러 줄 입력 칸 (상세 설명) -->
+    <Style x:Key="DialogAreaStyle" TargetType="TextBox">
+        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="Foreground" Value="#FFF5F5F7" />
+        <Setter Property="CaretBrush" Value="#FFF5F5F7" />
+        <Setter Property="SelectionBrush" Value="#FF0A84FF" />
+        <Setter Property="AcceptsReturn" Value="True" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Field" Background="#FF141416" BorderBrush="#FF3A3B42" BorderThickness="1.5" CornerRadius="11">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Focusable="False" HorizontalScrollBarVisibility="Disabled" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#FF4A4B52" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#FF0A84FF" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 작은 보조 단추 (자동 · 이미지 파일… · 스크린샷 추가) -->
+    <Style x:Key="DialogSmallButtonStyle" TargetType="Button">
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Background" Value="#FF2C2D32" />
+        <Setter Property="Foreground" Value="#FFE5E5EA" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Face" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF3A3B42" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Face" Property="Opacity" Value="0.4" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 고르기 타일 (기본 아이콘): 투명 단추, 고른 것은 파란 고리 -->
+    <Style x:Key="DialogTileStyle" TargetType="Button">
+        <Setter Property="Width" Value="38" />
+        <Setter Property="Height" Value="38" />
+        <Setter Property="Margin" Value="0,0,6,6" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Ring" CornerRadius="11" BorderThickness="2" BorderBrush="{TemplateBinding BorderBrush}" Padding="2" Background="Transparent">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Ring" Property="Background" Value="#22FFFFFF" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 보통 단추 · 주 단추(파랑) · 삭제 단추(빨강) -->
     <Style x:Key="DialogButtonStyle" TargetType="Button">
         <Setter Property="Height" Value="40" />

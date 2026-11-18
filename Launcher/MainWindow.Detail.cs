@@ -103,6 +103,7 @@ public partial class MainWindow
             facts.Add(new DetailFact("출시", When(local), local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         }
         facts.Add(new DetailFact("분류", card.Category, ""));
+        if (card.App.Author?.Trim() is { Length: > 0 } author) facts.Add(new DetailFact("제작자", author, ""));
         if (release is not null && AppManager.ResolveKind(card.App, release) is var kind &&
             (kind == InstallKinds.Zip ? AppManager.SelectZipAsset(card.App, release) : AppManager.SelectSetupAsset(card.App, release)) is { Size: > 0 } asset)
             facts.Add(new DetailFact("크기", $"{asset.Size / 1048576.0:0.#} MB", kind == InstallKinds.Zip ? "zip" : "설치 프로그램"));

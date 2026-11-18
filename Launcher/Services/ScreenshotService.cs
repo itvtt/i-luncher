@@ -43,6 +43,9 @@ public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiSe
     {
         try
         {
+            // 내 앱: 이 PC 에 복사해 둔 그림
+            if (Path.IsPathFullyQualified(shot))
+                return File.Exists(shot) ? await Task.Run(() => Decode(shot, decodeHeight), cancellationToken) : null;
             string path = CachePath(shot);
             if (!File.Exists(path))
             {

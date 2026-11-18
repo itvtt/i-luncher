@@ -36,6 +36,26 @@ async Task Check(string name, Func<Task> body)
 }
 Task CheckSync(string name, Action body) => Check(name, () => { body(); return Task.CompletedTask; });
 static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+// WPF 그림(아이콘 그리기 등)은 STA 스레드에서
+static void Sta(Action body)
+{
+    Exception? failure = null;
+    var thread = new Thread(() => { try { body(); } catch (Exception error) { failure = error; } });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    if (failure is not null) throw failure;
+}
+
+static string WritePng(System.Windows.Media.Imaging.BitmapSource image, string path)
+{
+    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+    using var stream = File.Create(path);
+    encoder.Save(stream);
+    return path;
+}
 static void Equal<T>(T expected, T actual, string what) { if (!Equals(expected, actual)) throw new Exception($"{what}: expected <{expected}> but was <{actual}>"); }
 
 try
@@ -570,6 +590,97 @@ try
         var card = new ILauncher.AppCard(read[0]);
         Assert(card.PersonalMenuVisibility == System.Windows.Visibility.Visible && card.AdminMenuVisibility == System.Windows.Visibility.Collapsed,
             "a personal app offers 삭제 and never 관리자 메뉴에서 편집");
+    });
+
+    await CheckSync("Website favorites: an address opens in the browser, keeps its chosen icon, and never offers 파일 위치 열기", () =>
+    {
+        Equal("https://example.com/", SiteInfo.Normalize("example.com")?.AbsoluteUri, "a bare host becomes https");
+        Equal("http://intra:8080/wiki", SiteInfo.Normalize(" http://intra:8080/wiki ")?.AbsoluteUri, "http with a port and path stays");
+        Assert(SiteInfo.Normalize("not an address") is null && SiteInfo.Normalize("ftp://files") is null, "spaces and other schemes are refused");
+        var store = new FavoriteStore(Path.Combine(root, "favorites-web", "favorites.json"));
+        store.Save([new FavoriteProgram { Name = "Wiki", Path = "https://example.com/", Icon = "builtin:web" },
+                    new FavoriteProgram { Name = "Tool", Path = Path.Combine(root, "nothing", "tool.exe") }]);
+        var read = store.Load();
+        Assert(read[0].IsWeb && read[0].Icon == "builtin:web" && !read[1].IsWeb, "the address and the chosen icon are kept");
+        Assert(!File.ReadAllText(store.FilePath).Contains("IsWeb"), "IsWeb is worked out, not stored");
+        Sta(() =>
+        {
+            var web = new ILauncher.FavoriteCard(read[0]);
+            Assert(web.Exists && web.CellStateText == "웹사이트" && web.RunMenuText == "열기" && web.FolderMenuVisibility == System.Windows.Visibility.Collapsed,
+                "a website is always there, says 웹사이트 and 열기, and has no folder");
+            Assert(web.Icon is { Width: > 0 }, "the chosen built-in icon shows");
+            var gone = new ILauncher.FavoriteCard(read[1]);
+            Assert(!gone.Exists && gone.CellStateText == "파일 없음" && gone.FolderMenuVisibility == System.Windows.Visibility.Visible, "a missing program stays a program");
+        });
+    });
+
+    await CheckSync("Site icons: the page's largest PNG/ICO icon first (relative and <base> links resolved, SVG and mask icons skipped), the name from og:site_name or title", () =>
+    {
+        string html = """
+            <html><head><title> Team &amp; Wiki
+            </title>
+            <link rel="mask-icon" href="/mask.svg"><link rel="icon" type="image/svg+xml" href="/icon.svg">
+            <link rel="icon" href="/favicon-32.png" sizes="32x32"><link rel='apple-touch-icon' href='touch.png'>
+            <link href="/big.png" rel="icon" sizes="192x192">
+            </head></html>
+            """;
+        var links = SiteInfo.ParseIconLinks(html, new Uri("https://example.com/docs/page"));
+        Equal("https://example.com/big.png|https://example.com/docs/touch.png|https://example.com/favicon-32.png",
+            string.Join("|", links.Select(link => link.AbsoluteUri)), "icon order");
+        Equal("Team & Wiki", SiteInfo.ParseTitle(html), "title cleaned");
+        Equal("Example", SiteInfo.ParseTitle("""<meta property="og:site_name" content="Example"><title>Home | Example</title>"""), "og:site_name wins");
+        var based = SiteInfo.ParseIconLinks("""<base href="https://cdn.example.com/assets/"><link rel="shortcut icon" href="fav.ico">""", new Uri("https://example.com/"));
+        Equal("https://cdn.example.com/assets/fav.ico", based.Single().AbsoluteUri, "<base href> is honoured");
+        Assert(SiteInfo.ParseTitle("<p>no title</p>") is null, "no title gives null");
+    });
+
+    await CheckSync("Chosen icons: 18 built-ins render as 128px tiles, image files are copied into the launcher's folder, and only those copies are ever deleted", () =>
+    {
+        ILauncher.CustomIcons.Folder = Path.Combine(root, "custom-icons");
+        Equal(18, ILauncher.CustomIcons.Builtins.Select(item => item.Key).Distinct().Count(), "distinct built-ins");
+        Assert(ILauncher.CustomIcons.IsCustom("builtin:web") && !ILauncher.CustomIcons.IsCustom("") && !ILauncher.CustomIcons.IsCustom("Assets/App.png"), "what counts as chosen");
+        Assert(ILauncher.CustomIcons.FindBuiltin("builtin:STAR")?.Key == "star" && ILauncher.CustomIcons.FindBuiltin("builtin:nope") is null, "built-ins by name");
+        Sta(() =>
+        {
+            var tile = (System.Windows.Media.Imaging.BitmapSource)ILauncher.CustomIcons.Load("builtin:web")!;
+            Assert(tile.PixelWidth == 128 && tile.PixelHeight == 128, "a 128px tile");
+            string source = WritePng(tile, Path.Combine(root, "picked.png"));
+            string copy = ILauncher.CustomIcons.Import(source);
+            Assert(copy.StartsWith(ILauncher.CustomIcons.Folder, StringComparison.OrdinalIgnoreCase) && ILauncher.CustomIcons.Load(copy) is not null, "copied and loadable");
+            ILauncher.CustomIcons.DeleteImported(source);
+            Assert(File.Exists(source), "a file outside the folder is never deleted");
+            ILauncher.CustomIcons.DeleteImported(copy);
+            Assert(!File.Exists(copy), "the copy is deleted");
+            File.WriteAllText(Path.Combine(root, "not-image.png"), "text");
+            try { ILauncher.CustomIcons.Import(Path.Combine(root, "not-image.png")); throw new Exception("a non-image was accepted"); }
+            catch (InvalidDataException) { }
+        });
+    });
+
+    await Check("My app details: 제작자 · 상세 설명 · screenshots copied to this PC · a chosen icon are kept, and the screenshots load without a server", async () =>
+    {
+        MyAppStore.MediaFolder = Path.Combine(root, "my-media");
+        string source = Path.Combine(root, "shot.png");
+        Sta(() => WritePng((System.Windows.Media.Imaging.BitmapSource)ILauncher.CustomIcons.Load("builtin:chart")!, source));
+        string shot = MyAppStore.ImportScreenshot(source);
+        Assert(shot.StartsWith(MyAppStore.MediaFolder, StringComparison.OrdinalIgnoreCase) && File.Exists(source), "copied, the original stays");
+        var store = new MyAppStore(Path.Combine(root, "my-apps-details", "my-apps.json"));
+        store.Save([new AppDefinition { Id = "my-x", Name = "X", Repository = "https://github.com/someone/X", Author = "Team A", Details = "line 1\nline 2",
+                                        Screenshots = [shot], Icon = "builtin:code", Personal = true }]);
+        var read = store.Load().Single();
+        Assert(read.Author == "Team A" && read.Details == "line 1\nline 2" && read.Screenshots?.Single() == shot && read.Icon == "builtin:code", "kept");
+        Assert(CatalogSerializer.Serialize([new AppDefinition { Id = "a", Name = "A", Repository = "https://github.com/o/a", Author = "Team B" }]).Contains("\"author\": \"Team B\""),
+            "the app list stores 제작자 too");
+        using var shots = new ScreenshotService(Path.Combine(root, "shots-cache"), () => null);
+        Assert(await shots.LoadAsync(shot, 100, CancellationToken.None) is { PixelHeight: 100 }, "a local screenshot loads without a server");
+        Assert(await shots.LoadAsync(Path.Combine(root, "gone.png"), 100, CancellationToken.None) is null, "a missing one is skipped");
+        MyAppStore.DeleteMedia(source);
+        Assert(File.Exists(source), "a picture outside the folder is never deleted");
+        MyAppStore.DeleteMedia(shot);
+        Assert(!File.Exists(shot), "deleting the app removes its copied screenshot");
+        File.WriteAllText(Path.Combine(root, "notes.txt"), "text");
+        try { MyAppStore.ImportScreenshot(Path.Combine(root, "notes.txt")); throw new Exception("a text file was accepted"); }
+        catch (InvalidDataException) { }
     });
 }
 finally

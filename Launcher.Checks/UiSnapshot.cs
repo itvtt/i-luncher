@@ -61,6 +61,13 @@ static class UiSnapshot
                             app.Screenshots = [.. shots.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
                             detailCard.App = app;
                         }
+                        // ILUNCHER_SNAPSHOT_AUTHOR=<이름>: 이 화면에서만 제작자를 넣어 봄
+                        if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_AUTHOR") is { Length: > 0 } author)
+                        {
+                            var app = detailCard.App.Clone();
+                            app.Author = author;
+                            detailCard.App = app;
+                        }
                         window.ShowDetail(detailCard);
                         Pump(TimeSpan.FromSeconds(4));
                         Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
@@ -103,13 +110,25 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(3));
                     Save((FrameworkElement)favoriteEditor.Content, Suffix(output, "-favorite-editor"));
                     favoriteEditor.Close();
+                    // 웹사이트 추가: ILUNCHER_SNAPSHOT_SITES=<주소,주소> 마다 열자마자 사이트에서 이름 · 아이콘을 가져온 모습 (못 가져오면 기본 아이콘이 펼쳐짐)
+                    int siteIndex = 0;
+                    foreach (string site in (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_SITES") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var siteEditor = new FavoriteEditorWindow(null, ["개발", "설비", "일정", "파일"], web: true) { ShowActivated = false, Left = -4000, Top = 0, InitialAddress = site, MaxHeight = 4000 };
+                        siteEditor.Show();
+                        for (int i = 0; i < 60 && (siteEditor.PathButton.IsEnabled == false || siteEditor.PathNote.Visibility != Visibility.Visible); i++) Pump(TimeSpan.FromMilliseconds(250));
+                        Pump(TimeSpan.FromMilliseconds(400));
+                        Save((FrameworkElement)siteEditor.Content, Suffix(output, "-site" + ++siteIndex));
+                        Console.WriteLine($"site {site}: name {siteEditor.NameBox.Text} · {siteEditor.PathNote.Text}");
+                        siteEditor.Close();
+                    }
                     // GitHub 프로젝트 추가 창: 확인한 저장소(이 PC 의 API 서버로 실제 확인) · 열 수 없는 저장소 오류. 내 앱 삭제 창
                     var github = new GitHubClient(host => settings.GetToken(host), MainWindow.LauncherVersion, apiBaseOverride: repository => settings.ApiBaseFor(repository));
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-downloads"), () => settings.DefaultHost);
                     foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-error") })
                     {
                         var projectWindow = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구", "설비", "일정", "파일"], _ => null)
-                        { ShowActivated = false, Left = -4000, Top = 0 };
+                        { ShowActivated = false, Left = -4000, Top = 0, MaxHeight = 4000 };
                         projectWindow.Show();
                         projectWindow.RepoBox.Text = repository;
                         projectWindow.CheckButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -123,6 +142,28 @@ static class UiSnapshot
                     }
                     window.SelectFilter("all");
                     Pump(TimeSpan.FromMilliseconds(300));
+                    // 내 앱 편집: 제작자 · 상세 설명 · 스크린샷 두 장 · 기본 아이콘을 넣은 모습 (그림은 임시 폴더에)
+                    if (window.VisibleCards.FirstOrDefault() is { } myAppCard)
+                    {
+                        string media = Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-media");
+                        Directory.CreateDirectory(media);
+                        var editing = myAppCard.App.Clone();
+                        editing.Author = "Tools Team";
+                        editing.Details = "설비 상태를 한 화면에서 봅니다.\n색으로 상태를 구분하고, 누르면 자세히 봅니다.";
+                        editing.Icon = "builtin:chart";
+                        editing.Screenshots = [ShotPng(Path.Combine(media, "a.png"), Color.FromRgb(0x24, 0x3B, 0x5E)), ShotPng(Path.Combine(media, "b.png"), Color.FromRgb(0x2E, 0x4A, 0x3A))];
+                        editing.Personal = true;
+                        var editWindow = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구", "설비", "일정", "파일"], _ => null, editing)
+                        { ShowActivated = false, Left = -4000, Top = 0, MaxHeight = 4000, RepositoryIcon = myAppCard.Icon };
+                        editWindow.Show();
+                        Pump(TimeSpan.FromSeconds(3));
+                        Save((FrameworkElement)editWindow.Content, Suffix(output, "-myapp-edit"));
+                        editWindow.Body.ScrollToEnd();
+                        Pump(TimeSpan.FromMilliseconds(400));
+                        Save((FrameworkElement)editWindow.Content, Suffix(output, "-myapp-edit-end"));
+                        Console.WriteLine($"my app edit: {editWindow.NameBox.Text} · {editWindow.PreviewVersion.Text} · shots {editWindow.ShotStrip.Children.Count}");
+                        editWindow.Close();
+                    }
                     if (window.VisibleCards.FirstOrDefault(card => card.IsInstalled) is { } installedCard)
                     {
                         var deleteWindow = new DeleteProjectWindow(installedCard) { ShowActivated = false, Left = -4000, Top = 0 };
@@ -223,6 +264,23 @@ static class UiSnapshot
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
         Save((FrameworkElement)dialog.Content, path);
         dialog.Close();
+    }
+
+    /// <summary>스크린샷 자리 그림 (색 판 + 줄 몇 개)</summary>
+    private static string ShotPng(string path, Color color)
+    {
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen())
+        {
+            context.DrawRectangle(new SolidColorBrush(color), null, new Rect(0, 0, 640, 400));
+            for (int i = 0; i < 5; i++) context.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF)), null, new Rect(40, 60 + i * 60, 360 - i * 40, 22), 6, 6);
+        }
+        var bitmap = new RenderTargetBitmap(640, 400, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using (var stream = File.Create(path)) encoder.Save(stream);
+        return path;
     }
 
     private static void Save(FrameworkElement root, string path)

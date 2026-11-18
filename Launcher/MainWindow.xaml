@@ -403,6 +403,7 @@
                                             <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
                                             <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
+                                            <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMyApp_Click" Visibility="{Binding PersonalMenuVisibility}" />
                                             <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
                                                       Style="{StaticResource DangerMenuItemStyle}" />
@@ -452,9 +453,9 @@
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="실행" Icon="&#xE768;" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
+                                            <MenuItem Header="{Binding RunMenuText}" Icon="&#xE768;" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
                                             <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
-                                            <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" />
+                                            <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" Visibility="{Binding FolderMenuVisibility}" />
                                             <Separator />
                                             <MenuItem Header="삭제" Icon="&#xE74D;" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
@@ -535,7 +536,7 @@
                                             <Button.ContextMenu>
                                                 <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                                                 <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
-                                                <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" />
+                                                <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" Visibility="{Binding FolderMenuVisibility}" />
                                                 <Separator />
                                                 <MenuItem Header="삭제" Icon="&#xE74D;" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                                 </ContextMenu>
@@ -624,6 +625,7 @@
                                                 <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                                 <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
                                                 <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
+                                                <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMyApp_Click" Visibility="{Binding PersonalMenuVisibility}" />
                                                 <Separator Visibility="{Binding InstalledMenuVisibility}" />
                                                 <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
                                                           Style="{StaticResource DangerMenuItemStyle}" />
@@ -721,7 +723,7 @@
         <Border Grid.Row="2" Background="#FF19191B" BorderBrush="#FF2E3036" BorderThickness="0,1,0,0">
             <Grid Margin="14,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock x:Name="CatalogSourceText" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Cursor="Hand" MouseLeftButtonUp="CatalogSourceText_Click" ToolTip="앱 목록 위치 (클릭하면 열기)" />
+                <TextBlock x:Name="CatalogSourceText" Visibility="Collapsed" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" Cursor="Hand" MouseLeftButtonUp="CatalogSourceText_Click" ToolTip="앱 목록 위치 (클릭하면 열기)" />
                 <TextBlock x:Name="StatusText" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
                 <TextBlock Grid.Column="2" Margin="14,0,0,0" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Opacity="0.75" IsHitTestVisible="False" Text="made by jy01.ahn" />
             </Grid>

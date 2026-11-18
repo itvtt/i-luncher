@@ -179,6 +179,8 @@
                             <TextBox x:Name="AppRepositoryBox" Tag="https://github.com/소유자/저장소" TextChanged="AppField_TextChanged" />
                             <TextBlock Text="설명" Style="{StaticResource FieldLabelStyle}" />
                             <TextBox x:Name="AppDescriptionBox" TextChanged="AppField_TextChanged" />
+                            <TextBlock Text="제작자" Style="{StaticResource FieldLabelStyle}" ToolTip="i-luncher 앱 페이지의 정보 줄 (비우면 안 보임)" />
+                            <TextBox x:Name="AppAuthorBox" TextChanged="AppField_TextChanged" />
                             <TextBlock Text="상세 설명" Style="{StaticResource FieldLabelStyle}" ToolTip="i-luncher 앱 페이지의 긴 설명" />
                             <TextBox x:Name="AppDetailsBox" Style="{StaticResource DocumentBoxStyle}" Height="110" FontFamily="Segoe UI, Malgun Gothic" FontSize="13"
                                      TextChanged="AppField_TextChanged" />

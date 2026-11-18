@@ -22,9 +22,11 @@ public sealed partial class AppDefinition
     /// <summary>GitHub 저장소 주소 (https://github.example.com/team/DeskCal)</summary>
     public string Repository { get; set; } = "";
     public string Description { get; set; } = "";
+    /// <summary>제작자 (앱 페이지의 정보 줄에 보임, 비우면 안 보임)</summary>
+    public string? Author { get; set; }
     /// <summary>앱 페이지의 긴 설명 (여러 줄). 비우면 Description</summary>
     public string? Details { get; set; }
-    /// <summary>앱 페이지의 스크린샷: API 서버에 올린 이미지 이름(/launcher/media/&lt;이름&gt;) 또는 http(s) 주소, 보이는 순서대로</summary>
+    /// <summary>앱 페이지의 스크린샷: API 서버에 올린 이미지 이름(/launcher/media/&lt;이름&gt;) 또는 http(s) 주소, 보이는 순서대로. 내 앱은 이 PC 에 복사해 둔 그림 경로</summary>
     public List<string>? Screenshots { get; set; }
     public string Category { get; set; } = "";
     /// <summary>zip(기본) 또는 setup</summary>
@@ -40,7 +42,7 @@ public sealed partial class AppDefinition
     /// <summary>실행 파일 (설치 폴더 기준 상대 경로 또는 파일 이름). 비우면 패키지에서 찾음</summary>
     public string? Executable { get; set; }
     public string? Arguments { get; set; }
-    /// <summary>카드 아이콘: 저장소 안 경로(Assets/App.png) 또는 https 주소. 비우면 저장소의 .csproj ApplicationIcon·Assets 에서 찾음</summary>
+    /// <summary>카드 아이콘: 저장소 안 경로(Assets/App.png) 또는 https 주소. 비우면 저장소의 .csproj ApplicationIcon·Assets 에서 찾음. 내 앱은 CustomIcons 값(기본 아이콘 · 복사해 둔 그림)도</summary>
     public string? Icon { get; set; }
     /// <summary>프리릴리스도 최신 버전으로 볼지</summary>
     public bool IncludePrerelease { get; set; }

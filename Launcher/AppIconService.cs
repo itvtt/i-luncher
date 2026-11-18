@@ -36,6 +36,8 @@ public sealed class AppIconService(GitHubClient github, string cacheDirectory, F
     /// <summary>지금 가진 것 중 가장 좋은 아이콘 (네트워크 없음). 백그라운드 스레드에서 불러도 됨</summary>
     public ImageSource? Current(AppDefinition app, InstalledApp? installed)
     {
+        // 내 앱에 고른 아이콘 (기본 아이콘 · 이미지 파일)
+        if (CustomIcons.IsCustom(app.Icon) && CustomIcons.Load(app.Icon) is { } custom) return custom;
         var meta = ReadMeta(app);
         ImageSource? repository = meta is { Path: not null } && meta.Key == Key(app) ? LoadPng(ImagePath(app)) : null;
         if (repository is not null && meta!.Confident) return repository;
@@ -46,6 +48,7 @@ public sealed class AppIconService(GitHubClient github, string cacheDirectory, F
     /// <summary>저장소에서 아이콘을 (필요하면) 다시 찾음. 바뀌었으면 true</summary>
     public async Task<bool> RefreshAsync(AppDefinition app, CancellationToken cancellationToken = default)
     {
+        if (CustomIcons.IsCustom(app.Icon)) return false;  // 고른 아이콘은 저장소에서 찾지 않음
         var meta = ReadMeta(app);
         string key = Key(app);
         if (meta is not null && meta.Key == key && DateTimeOffset.Now - meta.CheckedAt < (meta.Path is null ? RecheckMissing : RecheckFound)

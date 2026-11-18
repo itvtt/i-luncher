@@ -433,6 +433,7 @@ public partial class ManagerView : UserControl
         AppCategoryBox.Text = app is null ? "" : Str(app.Data["category"]);
         RenderCategoryChips();
         AppDescriptionBox.Text = app is null ? "" : Str(app.Data["description"]);
+        AppAuthorBox.Text = app is null ? "" : Str(app.Data["author"]);
         AppDetailsBox.Text = app is null ? "" : Str(app.Data["details"]).Replace("\n", "\r\n");
         ShowScreenshots(app);
         AppInstallNameBox.Text = app is null ? "" : Str(app.Data["installName"]);
@@ -454,6 +455,7 @@ public partial class ManagerView : UserControl
         Put(app.Data, "id", AppIdBox.Text.Trim(), keepEmpty: true);
         Put(app.Data, "category", AppCategoryBox.Text.Trim());
         Put(app.Data, "description", AppDescriptionBox.Text.Trim());
+        Put(app.Data, "author", AppAuthorBox.Text.Trim());
         Put(app.Data, "details", AppDetailsBox.Text.Replace("\r\n", "\n").Trim());
         Put(app.Data, "installName", AppInstallNameBox.Text.Trim());
         app.Changed();

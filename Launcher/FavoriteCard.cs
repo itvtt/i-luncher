@@ -7,7 +7,7 @@ using ILauncher.Services;
 
 namespace ILauncher;
 
-/// <summary>즐겨찾기 카드 하나: 이 PC 의 일반 프로그램 (누르면 실행)</summary>
+/// <summary>즐겨찾기 카드 하나: 이 PC 의 일반 프로그램 (누르면 실행) 또는 웹사이트 (누르면 브라우저로 엶)</summary>
 public sealed class FavoriteCard(FavoriteProgram program)
 {
     public FavoriteProgram Program { get; } = program;
@@ -15,16 +15,22 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public string PathText => Program.Path;
     /// <summary>카드의 설명 줄: 등록할 때 쓴 설명, 없으면 경로</summary>
     public string DescriptionText => string.IsNullOrWhiteSpace(Program.Description) ? Program.Path : Program.Description.Trim();
-    public bool Exists => File.Exists(Program.Path) || Directory.Exists(Program.Path);
-    public ImageSource? Icon { get; } = FavoriteIcons.Load(program.Path);
+    public bool IsWeb => Program.IsWeb;
+    public bool Exists => IsWeb || File.Exists(Program.Path) || Directory.Exists(Program.Path);
+    /// <summary>고른 아이콘, 없으면 사이트 아이콘(받아 둔 것) · 프로그램 아이콘</summary>
+    public ImageSource? Icon { get; } = CustomIcons.Load(program.Icon) ?? (program.IsWeb ? SiteInfo.Cached(program.Path) : FavoriteIcons.Load(program.Path));
+    /// <summary>메뉴의 첫 줄: 프로그램은 실행, 웹사이트는 열기</summary>
+    public string RunMenuText => IsWeb ? "열기" : "실행";
+    /// <summary>파일 위치 열기 (웹사이트는 없음)</summary>
+    public Visibility FolderMenuVisibility => IsWeb ? Visibility.Collapsed : Visibility.Visible;
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility InitialsVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
     public string Initials => Name.Trim() is { Length: > 0 } name ? name[..1].ToUpperInvariant() : "?";
     public double CardOpacity => Exists ? 1.0 : 0.55;
-    public string ToolTipText => Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
+    public string ToolTipText => IsWeb ? Program.Path : Exists ? Program.Path + (Program.Arguments.Length > 0 ? " " + Program.Arguments : "") : "파일이 없습니다: " + Program.Path;
     public string AutomationId => "Favorite_" + Program.Id;
     /// <summary>홈 화면 칸의 아이콘 아래 한 줄</summary>
-    public string CellStateText => Exists ? "내 PC" : "파일 없음";
+    public string CellStateText => IsWeb ? "웹사이트" : Exists ? "내 PC" : "파일 없음";
     /// <summary>분류 (앱과 같은 섹션에 들어감, 비우면 기타)</summary>
     public string Category => string.IsNullOrWhiteSpace(Program.Category) ? "기타" : Program.Category.Trim();
     /// <summary>카드 색 번호: Render 가 앱과 함께 분류 순서대로 정함. 정하기 전에는 경로로</summary>
@@ -34,7 +40,7 @@ public sealed class FavoriteCard(FavoriteProgram program)
     /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
     public Brush Ink => CardArt.Ink(Palette);
     /// <summary>카드 왼쪽 위 작은 글자: 이 PC 의 프로그램(폴더·파일)이라는 표시</summary>
-    public string Eyebrow => Directory.Exists(Program.Path) ? "내 PC 폴더"
+    public string Eyebrow => IsWeb ? "웹사이트" : Directory.Exists(Program.Path) ? "내 PC 폴더"
         : Path.GetExtension(Program.Path).ToLowerInvariant() is ".exe" or ".lnk" or ".bat" or ".cmd" ? "내 PC 프로그램" : "내 PC 파일";
     // 앱 카드와 같은 오로라 글로우 (아이콘 색, 없으면 차분한 파랑)
     private Color AccentColor => CardColors.Accent(Icon) ?? CardColors.Fallback;
