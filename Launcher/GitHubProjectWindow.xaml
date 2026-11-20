@@ -20,7 +20,7 @@
 
     <!--
         GitHub 프로젝트 추가 · 내 앱 편집: 저장소 주소 → [확인]으로 최신 릴리스와 설치 파일을 확인 →
-        이름 · 제작자 · 분류 · 설명 · 상세 설명 · 아이콘 · 스크린샷 → [추가]. 이 PC 의 "내 앱"이 됨. 편집은 저장소를 빼고 모두 바꿈
+        이름 · 분류 · 설명 · 아이콘 → [추가]. 이 PC 의 "내 앱"이 됨 (설치됨 탭). 편집은 저장소를 빼고 모두 바꿈
     -->
     <Grid Margin="14">
         <Border Style="{StaticResource DialogCardStyle}" Padding="0" MouseLeftButtonDown="Card_MouseLeftButtonDown">
@@ -83,12 +83,6 @@
                             <TextBlock Style="{StaticResource DialogLabelStyle}" Text="이름" />
                             <TextBox x:Name="NameBox" Style="{StaticResource DialogFieldStyle}" AutomationProperties.Name="이름" TextChanged="Field_Changed" />
 
-                            <TextBlock Style="{StaticResource DialogLabelStyle}" Text="제작자" />
-                            <Grid>
-                                <TextBox x:Name="AuthorBox" Style="{StaticResource DialogFieldStyle}" AutomationProperties.Name="제작자" TextChanged="Field_Changed" />
-                                <TextBlock x:Name="AuthorPlaceholder" Margin="14,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13" Foreground="#FF6E6E76" Text="앱 페이지에 보일 제작자 (선택)" />
-                            </Grid>
-
                             <TextBlock Style="{StaticResource DialogLabelStyle}" Text="분류" />
                             <Grid>
                                 <TextBox x:Name="CategoryBox" Style="{StaticResource DialogFieldStyle}" AutomationProperties.Name="분류" TextChanged="Category_Changed" />
@@ -99,26 +93,11 @@
                             <TextBlock Style="{StaticResource DialogLabelStyle}" Text="설명" />
                             <Grid>
                                 <TextBox x:Name="DescriptionBox" Style="{StaticResource DialogFieldStyle}" AutomationProperties.Name="설명" TextChanged="Field_Changed" />
-                                <TextBlock x:Name="DescriptionPlaceholder" Margin="14,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13" Foreground="#FF6E6E76" Text="카드 · 앱 페이지에 보일 한 줄 (선택)" />
-                            </Grid>
-
-                            <TextBlock Style="{StaticResource DialogLabelStyle}" Text="상세 설명" />
-                            <Grid>
-                                <TextBox x:Name="DetailsBox" Style="{StaticResource DialogAreaStyle}" Height="112" AutomationProperties.Name="상세 설명" TextChanged="Field_Changed" />
-                                <TextBlock x:Name="DetailsPlaceholder" Margin="14,11,14,0" VerticalAlignment="Top" IsHitTestVisible="False" FontSize="13" Foreground="#FF6E6E76" TextWrapping="Wrap"
-                                           Text="앱 페이지의 긴 설명 (여러 줄, 선택). 무엇을 하는 앱인지, 쓰는 법 등" />
+                                <TextBlock x:Name="DescriptionPlaceholder" Margin="14,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13" Foreground="#FF6E6E76" Text="칸 · 스토어 줄에 보일 한 줄 (선택)" />
                             </Grid>
 
                             <TextBlock Style="{StaticResource DialogLabelStyle}" Text="아이콘" />
-                            <local:IconPicker x:Name="IconChoice" />
-
-                            <!-- 스크린샷: [추가…]로 그림 파일 (여러 장), × 로 빼기. 이 순서대로 앱 페이지에 보임 -->
-                            <DockPanel Margin="2,16,0,8">
-                                <Button DockPanel.Dock="Right" Style="{StaticResource DialogSmallButtonStyle}" Click="AddShot_Click" Content="추가…" AutomationProperties.Name="스크린샷 추가" />
-                                <TextBlock Style="{StaticResource DialogLabelStyle}" Margin="0" VerticalAlignment="Center" Text="스크린샷" />
-                            </DockPanel>
-                            <TextBlock x:Name="ShotsEmpty" Margin="2,0,0,0" FontSize="12.5" Foreground="#FF6E6E76" Text="없음 · 앱 페이지에 보일 화면 그림을 넣을 수 있습니다." />
-                            <WrapPanel x:Name="ShotStrip" />
+                            <local:IconPicker x:Name="IconChoice" Margin="0,0,0,4" />
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

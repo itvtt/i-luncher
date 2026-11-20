@@ -27,7 +27,38 @@ internal static class Installer
         ? @"Software\" + testKey : @"Software\Microsoft\Windows\CurrentVersion\Uninstall\i-luncher";
     private static readonly string? ShortcutDirectory =
         Environment.GetEnvironmentVariable("ILUNCHER_SETUP_SHORTCUT_DIR") is { Length: > 0 } testDirectory ? testDirectory : null;
+    private static readonly bool TestRun = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_UNINSTALL_KEY") is { Length: > 0 };
     private static readonly bool IgnoreInstalledDotNet = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_IGNORE_INSTALLED_DOTNET") == "1";
+
+    /// <summary>부서용 설치 파일 (Publish-Release.ps1 이 -p:SetupGroup=team 으로 한 번 더 빌드한 i-luncher-Team-Setup.exe)</summary>
+#if TEAM_SETUP
+    internal static readonly bool TeamSetup = true;
+#else
+    internal static readonly bool TeamSetup = false;
+#endif
+
+    /// <summary>런처 설정 폴더 (런처 업데이트 · 제거에도 남음). ILUNCHER_DATA_DIR 은 시험용</summary>
+    internal static string DataDirectory => Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data
+        ? data : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
+
+    /// <summary>
+    /// 스토어 그룹 표시 (런처 Services\StoreGroup.cs 와 같은 파일): 부서용은 team 을 쓰고,
+    /// 일반용은 표시가 없을 때만 basic 을 씀 (부서 사람이 일반용으로 다시 설치해도 부서로 남음)
+    /// </summary>
+    internal static void WriteStoreGroup(Action<string> progress)
+    {
+        string path = Path.Combine(DataDirectory, "store-group.txt");
+        if (!TeamSetup && File.Exists(path)) return;
+        try
+        {
+            Directory.CreateDirectory(DataDirectory);
+            File.WriteAllText(path, (TeamSetup ? "team" : "basic") + Environment.NewLine, new System.Text.UTF8Encoding(false));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            progress("스토어 그룹을 적지 못했습니다: " + error.Message);
+        }
+    }
 
     internal static string DefaultInstallDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
@@ -102,6 +133,7 @@ internal static class Installer
             progress("Windows 앱 목록에 등록 중…");
             Register(target);
         }
+        WriteStoreGroup(progress);
         progress("설치 완료");
         if (options.Launch) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = target });
     }
@@ -234,6 +266,7 @@ internal static class Installer
     // 실행 중인 런처가 있으면 멈춤: 쓰는 중인 파일을 바꾸지 않게
     private static void EnsureNotRunning()
     {
+        if (TestRun) return;  // 시험 설치는 임시 폴더에만 (이 PC 에서 실제로 실행 중인 런처와 상관없음)
         var running = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ExecutableName));
         bool any = running.Length > 0;
         foreach (var process in running) process.Dispose();

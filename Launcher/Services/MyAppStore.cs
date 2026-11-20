@@ -42,21 +42,11 @@ public sealed class MyAppStore(string filePath)
         File.Move(temp, filePath, overwrite: true);
     }
 
-    /// <summary>내 앱의 스크린샷을 복사해 둘 폴더 (런처가 시작할 때 정함)</summary>
+    /// <summary>
+    /// 예전(앱 페이지가 있을 때) 내 앱에 넣은 스크린샷을 복사해 둔 폴더 (런처가 시작할 때 정함).
+    /// 이제 새로 넣지는 않고, 내 앱을 지울 때 남은 그림만 정리함
+    /// </summary>
     public static string MediaFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher", "my-media");
-
-    /// <summary>스크린샷 그림을 MediaFolder 에 복사하고 그 경로 (PNG · JPG · BMP · GIF, 20 MB 까지). 그림이 아니면 InvalidDataException</summary>
-    public static string ImportScreenshot(string sourceFile)
-    {
-        var info = new FileInfo(sourceFile);
-        if (info.Length > 20_000_000) throw new InvalidDataException("20 MB 보다 큰 그림은 넣을 수 없습니다.");
-        string extension = info.Extension.ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" ? info.Extension.ToLowerInvariant()
-            : throw new InvalidDataException("PNG · JPG · BMP · GIF 그림만 넣을 수 있습니다.");
-        Directory.CreateDirectory(MediaFolder);
-        string copy = Path.Combine(MediaFolder, $"shot-{Guid.NewGuid():N}{extension}");
-        File.Copy(sourceFile, copy);
-        return copy;
-    }
 
     /// <summary>MediaFolder 에 복사해 둔 그림이면 지움 (다른 곳의 파일은 건드리지 않음)</summary>
     public static void DeleteMedia(string? path)

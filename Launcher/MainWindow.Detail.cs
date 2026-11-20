@@ -11,8 +11,9 @@ using ILauncher.Services;
 namespace ILauncher;
 
 /// <summary>
-/// 앱 페이지 (앱스토어처럼): 아이콘 칸 우클릭 → 앱 정보로 열림. 아이콘·이름·버튼, 버전·출시·분류·크기, 스크린샷(API 서버에 올린 이미지),
-/// 상세 설명, 새로운 기능(최신 릴리스 노트). 아이콘 칸을 누르면 페이지를 열지 않고 바로 열기·받기·업데이트.
+/// 앱 페이지 (앱스토어처럼, 스토어에서만): 스토어 줄을 누르면 열림. 아이콘·이름·버튼 하나, 버전·분류·크기,
+/// 스크린샷(기본 목록은 런처에 든 그림, 그 밖은 API 서버에 올린 그림), 상세 설명, 새로운 기능(최신 릴리스 노트).
+/// 설치됨 탭의 아이콘은 페이지 없이 바로 실행.
 /// </summary>
 public partial class MainWindow
 {
@@ -21,38 +22,16 @@ public partial class MainWindow
     private CancellationTokenSource? _detailLoad;
 
     private ScreenshotService Screenshots =>
-        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"), () => (_store as ApiCatalogStore)?.Server);
+        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"), () => _settings.ApiServerUrl);
 
     private bool OnDetail => _detail is not null && !OnPage;
 
-    /// <summary>앱 정보 (우클릭 메뉴): 앱 페이지</summary>
-    private void Card_Click(object sender, RoutedEventArgs e)
+    /// <summary>스토어 줄 (오른쪽 단추 말고): 앱 페이지</summary>
+    private void StoreRow_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if ((sender as FrameworkElement)?.Tag is not AppCard card) return;
         e.Handled = true;
-        if ((sender as FrameworkElement)?.Tag is AppCard card) ShowDetail(card);
-    }
-
-    /// <summary>아이콘 아래 상태 단추: 받기(설치 확인) · 업데이트 · 열기 · 실행 중(앞으로)</summary>
-    private async void CellAction_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if ((sender as FrameworkElement)?.Tag is not AppCard card || card.IsBusy) return;
-        if (card.UpdateAvailable) await UpdateCardAsync(card);
-        else await OpenAsync(card);
-    }
-
-    /// <summary>홈 화면의 아이콘: 앱 페이지(설명 · 스크린샷 · 새로운 기능 · 열기/받기). 실행 · 설치 · 업데이트는 이름 아래 상태 단추로</summary>
-    private void Cell_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if ((sender as FrameworkElement)?.Tag is AppCard card) ShowDetail(card);
-    }
-
-    /// <summary>독 · 앱 페이지의 큰 버튼: 바로 실행, 설치, 업데이트 후 실행</summary>
-    private async void StoreAction_Click(object sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-        if ((sender as FrameworkElement)?.Tag is AppCard card) await OpenAsync(card);
+        ShowDetail(card);
     }
 
     internal void ShowDetail(AppCard card)
@@ -61,7 +40,6 @@ public partial class MainWindow
         _detail = card;
         card.PropertyChanged += DetailCard_PropertyChanged;
         DetailPane.DataContext = card;
-        DetailBackText.Text = _title;
         ShotViewer.Visibility = Visibility.Collapsed;
         FillDetail(card);
         DetailScrollViewer.ScrollToTop();
@@ -97,13 +75,7 @@ public partial class MainWindow
         string version = release?.Version is { } latest ? "v" + latest : release?.Tag ?? (card.Installed?.Version is { } own ? "v" + own : "—");
         facts.Add(new DetailFact("버전", version,
             card.Installed is { } installed ? (card.UpdateAvailable ? $"설치됨 v{installed.Version}" : "설치됨") : "설치 안 됨"));
-        if (release?.PublishedAt is { } published)
-        {
-            var local = published.ToLocalTime();
-            facts.Add(new DetailFact("출시", When(local), local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
-        }
         facts.Add(new DetailFact("분류", card.Category, ""));
-        if (card.App.Author?.Trim() is { Length: > 0 } author) facts.Add(new DetailFact("제작자", author, ""));
         if (release is not null && AppManager.ResolveKind(card.App, release) is var kind &&
             (kind == InstallKinds.Zip ? AppManager.SelectZipAsset(card.App, release) : AppManager.SelectSetupAsset(card.App, release)) is { Size: > 0 } asset)
             facts.Add(new DetailFact("크기", $"{asset.Size / 1048576.0:0.#} MB", kind == InstallKinds.Zip ? "zip" : "설치 프로그램"));
@@ -179,14 +151,6 @@ public partial class MainWindow
         e.Handled = true;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) DetailShotsScroller.ScrollToHorizontalOffset(DetailShotsScroller.HorizontalOffset - e.Delta);
         else DetailScrollViewer.ScrollToVerticalOffset(DetailScrollViewer.VerticalOffset - e.Delta);
-    }
-
-    private void DetailMore_Click(object sender, RoutedEventArgs e)
-    {
-        var menu = DetailMoreButton.ContextMenu;
-        menu.PlacementTarget = DetailMoreButton;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        menu.IsOpen = true;
     }
 
     /// <summary>Esc: 크게 본 스크린샷 → 앱 페이지 순으로 닫음. 마우스 뒤로 단추도 앱 페이지를 닫음</summary>

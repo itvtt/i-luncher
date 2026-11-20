@@ -7,7 +7,8 @@ using System.Windows.Media.Imaging;
 namespace ILauncher.Services;
 
 /// <summary>
-/// 앱 페이지의 스크린샷을 받아 데이터 폴더(screenshots\)에 보관. API 서버에 올린 이미지는 이름이 내용(SHA-256)이라
+/// 앱 페이지의 스크린샷. 기본 목록의 그림은 런처에 들어 있음(저장소 basic-media\, 이름 그대로).
+/// 그 밖은 받아 데이터 폴더(screenshots\)에 보관: API 서버에 올린 이미지는 이름이 내용(SHA-256)이라
 /// 한 번 받으면 다시 받지 않음. http(s) 주소는 주소로 만든 이름으로 보관.
 /// </summary>
 public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiServer) : IDisposable
@@ -43,9 +44,7 @@ public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiSe
     {
         try
         {
-            // 내 앱: 이 PC 에 복사해 둔 그림
-            if (Path.IsPathFullyQualified(shot))
-                return File.Exists(shot) ? await Task.Run(() => Decode(shot, decodeHeight), cancellationToken) : null;
+            if (BuiltIn(shot) is { } builtIn) return await Task.Run(() => Decode(builtIn, decodeHeight), cancellationToken);
             string path = CachePath(shot);
             if (!File.Exists(path))
             {
@@ -66,6 +65,30 @@ public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiSe
         {
             return null;
         }
+    }
+
+    /// <summary>런처에 든 기본 목록의 그림 (저장소 basic-media\)</summary>
+    public static byte[]? BuiltIn(string shot)
+    {
+        if (shot.Contains('/') || shot.Contains('\\')) return null;
+        using Stream? stream = typeof(ScreenshotService).Assembly.GetManifestResourceStream("basic-media/" + shot);
+        if (stream is null) return null;
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
+
+    private static BitmapSource? Decode(byte[] data, int decodeHeight)
+    {
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+        if (decodeHeight > 0) image.DecodePixelHeight = decodeHeight;
+        image.StreamSource = new MemoryStream(data);
+        image.EndInit();
+        image.Freeze();
+        return image;
     }
 
     private static BitmapSource? Decode(string path, int decodeHeight)

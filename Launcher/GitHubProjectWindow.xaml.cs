@@ -11,20 +11,18 @@ namespace ILauncher;
 /// <summary>
 /// GitHub 프로젝트 추가 · 내 앱 편집.
 /// 추가: 저장소 주소를 넣고 [확인] (또는 Enter) 하면 API 서버의 GitHub 중계로 최신 릴리스와 설치 파일(zip · 설치 프로그램)을 확인.
-/// 이름 · 제작자 · 분류 · 설명 · 상세 설명 · 아이콘 · 스크린샷을 정해 [추가]하면 Result 가 이 PC 의 내 앱 (Personal).
+/// 이름 · 분류 · 설명 · 아이콘을 정해 [추가]하면 Result 가 이 PC 의 내 앱 (Personal, 설치됨 탭).
 /// 이미 있는 저장소 · 릴리스 없음 · 열 수 없는 저장소는 알려 줌.
-/// 편집(editing): 저장소는 그대로, 나머지를 바꿔 [저장]. 스크린샷 · 아이콘 그림은 MyAppStore.MediaFolder · CustomIcons.Folder 에 복사해 둠
+/// 편집(editing): 저장소는 그대로, 나머지를 바꿔 [저장]. 아이콘 그림은 CustomIcons.Folder 에 복사해 둠.
+/// (앱 페이지를 없애며 제작자 · 상세 설명 · 스크린샷 칸도 뺌. 예전에 넣은 값은 편집해도 그대로 남음)
 /// </summary>
 public partial class GitHubProjectWindow : Window
 {
-    private const int MaxShots = 10;
     private readonly AppManager _manager;
     private readonly string? _defaultHost;
     private readonly IReadOnlyList<string> _categories;
     private readonly Func<GitHubRepository, string?> _existingName;
     private readonly AppDefinition? _editing;
-    private readonly List<string> _shots = [];
-    private readonly List<string> _importedShots = [];
     private GitHubRepository? _checked;
     private CancellationTokenSource? _checking;
 
@@ -46,25 +44,21 @@ public partial class GitHubProjectWindow : Window
         {
             Title = "내 앱 편집";
             TitleText.Text = "내 앱 편집";
-            SubtitleText.Text = "앱 페이지에 보일 정보를 바꿉니다. 저장소는 바꿀 수 없습니다.";
+            SubtitleText.Text = "이름 · 분류 · 설명 · 아이콘을 바꿉니다. 저장소는 바꿀 수 없습니다.";
             AddButton.Content = "저장";
             RepoBox.Text = editing.Repository;
             RepoBox.IsReadOnly = true;
             CheckButton.Visibility = Visibility.Collapsed;
             _checked = GitHubRepository.Parse(editing.Repository, defaultHost);
             NameBox.Text = editing.Name;
-            AuthorBox.Text = editing.Author ?? "";
             CategoryBox.Text = editing.Category;
             DescriptionBox.Text = editing.Description;
-            DetailsBox.Text = (editing.Details ?? "").Replace("\n", "\r\n");
             IconChoice.Value = CustomIcons.IsCustom(editing.Icon) ? editing.Icon! : "";
-            _shots.AddRange(editing.Screenshots ?? []);
             PreviewName.Text = _checked?.FullName ?? editing.Repository;
             PreviewVersion.Text = "확인 중";
             Details.Visibility = Visibility.Visible;
         }
         RenderCategoryChips();
-        RenderShots();
         UpdatePreviewIcon();
         Field_Changed(this, null);
     }
@@ -167,7 +161,6 @@ public partial class GitHubProjectWindow : Window
             if (fillFields)
             {
                 NameBox.Text = repository.Name;
-                AuthorBox.Text = repository.Owner;
                 DescriptionBox.Text = description.Trim();
             }
             UpdatePreviewIcon();
@@ -230,14 +223,12 @@ public partial class GitHubProjectWindow : Window
         IconChoice.Refresh();
     }
 
-    // ───────── 이름 · 제작자 · 분류 · 설명 ─────────
+    // ───────── 이름 · 분류 · 설명 ─────────
 
     private void Field_Changed(object? sender, TextChangedEventArgs? e)
     {
         if (AddButton is null || IconChoice is null) return;
         DescriptionPlaceholder.Visibility = DescriptionBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AuthorPlaceholder.Visibility = AuthorBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        DetailsPlaceholder.Visibility = DetailsBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (sender == NameBox) UpdatePreviewIcon();
         AddButton.IsEnabled = _checked is not null && NameBox.Text.Trim().Length > 0;
     }
@@ -269,115 +260,6 @@ public partial class GitHubProjectWindow : Window
         }
     }
 
-    // ───────── 스크린샷 ─────────
-
-    private void AddShot_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "스크린샷 고르기",
-            Filter = "그림 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif",
-            Multiselect = true
-        };
-        if (dialog.ShowDialog(this) != true) return;
-        var problems = new List<string>();
-        foreach (string file in dialog.FileNames)
-        {
-            if (_shots.Count >= MaxShots)
-            {
-                problems.Add($"스크린샷은 {MaxShots}장까지 넣습니다.");
-                break;
-            }
-            try
-            {
-                if (Thumbnail(file, 10) is null) throw new InvalidDataException("그림으로 읽을 수 없습니다.");
-                string copy = MyAppStore.ImportScreenshot(file);
-                _importedShots.Add(copy);
-                _shots.Add(copy);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                problems.Add($"{Path.GetFileName(file)}: {error.Message}");
-            }
-        }
-        RenderShots();
-        ShotsEmpty.Text = problems.Count > 0 ? string.Join("\n", problems) : ShotsEmpty.Text;
-        if (problems.Count > 0) ShotsEmpty.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>스크린샷 줄: 작은 그림 + 오른쪽 위 × (빼기)</summary>
-    private void RenderShots()
-    {
-        ShotStrip.Children.Clear();
-        ShotsEmpty.Text = "없음 · 앱 페이지에 보일 화면 그림을 넣을 수 있습니다.";
-        ShotsEmpty.Visibility = _shots.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (string shot in _shots.ToList())
-        {
-            var frame = new Grid { Width = 150, Height = 94, Margin = new Thickness(0, 0, 8, 8), ToolTip = Path.GetFileName(shot) };
-            var picture = new Border
-            {
-                CornerRadius = new CornerRadius(10),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3B, 0x42)),
-                BorderThickness = new Thickness(1),
-                Background = Thumbnail(shot, 188) is { } image
-                    ? new ImageBrush(image) { Stretch = Stretch.UniformToFill }
-                    : new SolidColorBrush(Color.FromRgb(0x26, 0x27, 0x2B))
-            };
-            var remove = new Button
-            {
-                Style = (Style)FindResource("DialogCloseStyle"),
-                Width = 24, Height = 24, Margin = new Thickness(0, 5, 5, 0),
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-                Background = new SolidColorBrush(Color.FromArgb(0xC0, 0x14, 0x14, 0x16)),
-                ToolTip = "빼기",
-                Content = new System.Windows.Shapes.Path
-                {
-                    Width = 8, Height = 8, Stroke = Brushes.White, StrokeThickness = 1.4,
-                    Data = Geometry.Parse("M 0.5,0.5 L 7.5,7.5 M 7.5,0.5 L 0.5,7.5")
-                }
-            };
-            System.Windows.Automation.AutomationProperties.SetName(remove, "스크린샷 빼기");
-            // 닫기 단추 모양은 바탕이 투명하므로 둥근 판을 따로 깔아 그림 위에서도 보이게
-            var plate = new Border
-            {
-                Width = 24, Height = 24, Margin = remove.Margin, CornerRadius = new CornerRadius(12),
-                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-                Background = new SolidColorBrush(Color.FromArgb(0xC8, 0x14, 0x14, 0x16)), IsHitTestVisible = false
-            };
-            remove.Click += (_, _) =>
-            {
-                _shots.Remove(shot);
-                RenderShots();
-            };
-            frame.Children.Add(picture);
-            frame.Children.Add(plate);
-            frame.Children.Add(remove);
-            ShotStrip.Children.Add(frame);
-        }
-    }
-
-    private static BitmapSource? Thumbnail(string path, int height)
-    {
-        try
-        {
-            if (!File.Exists(path)) return null;
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile | BitmapCreateOptions.IgnoreImageCache;
-            image.DecodePixelHeight = height;
-            image.UriSource = new Uri(path);
-            image.EndInit();
-            image.Freeze();
-            return image;
-        }
-        catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or FileFormatException or UnauthorizedAccessException
-                                      or System.Runtime.InteropServices.COMException)
-        {
-            return null;
-        }
-    }
-
     // ───────── 추가 · 저장 · 닫기 ─────────
 
     private void Add_Click(object sender, RoutedEventArgs e)
@@ -391,17 +273,13 @@ public partial class GitHubProjectWindow : Window
             Personal = true
         };
         app.Name = NameBox.Text.Trim().Length > 0 ? NameBox.Text.Trim() : repository.Name;
-        app.Author = AuthorBox.Text.Trim() is { Length: > 0 } author ? author : null;
         app.Category = CategoryBox.Text.Trim();
         app.Description = DescriptionBox.Text.Trim();
-        app.Details = DetailsBox.Text.Replace("\r\n", "\n").Trim() is { Length: > 0 } details ? details : null;
         app.Icon = IconChoice.Value.Length > 0 ? IconChoice.Value : null;
-        app.Screenshots = _shots.Count > 0 ? [.. _shots] : null;
         app.Personal = true;
         Result = app;
 
-        // 쓰지 않게 된 그림 정리: 이번에 넣었다 뺀 것, 편집 전에 있다가 뺀 것 · 바꾼 아이콘
-        foreach (string gone in _importedShots.Concat(_editing?.Screenshots ?? []).Where(shot => !_shots.Contains(shot)).ToList()) MyAppStore.DeleteMedia(gone);
+        // 쓰지 않게 된 아이콘 그림 정리
         IconChoice.CleanUp(keep: app.Icon);
         if (_editing?.Icon is { } before && before != app.Icon) CustomIcons.DeleteImported(before);
         DialogResult = true;
@@ -424,12 +302,8 @@ public partial class GitHubProjectWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _checking?.Cancel();
-        if (Result is null)
-        {
-            // 취소: 이번에 복사한 그림만 지움 (편집 전 것은 그대로)
-            foreach (string shot in _importedShots) MyAppStore.DeleteMedia(shot);
-            IconChoice.CleanUp(keep: _editing?.Icon);
-        }
+        // 취소: 이번에 복사한 아이콘 그림만 지움 (편집 전 것은 그대로)
+        if (Result is null) IconChoice.CleanUp(keep: _editing?.Icon);
         base.OnClosed(e);
     }
 }

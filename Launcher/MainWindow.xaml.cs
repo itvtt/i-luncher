@@ -97,7 +97,8 @@ public partial class MainWindow : Window
         };
         if (!ReferenceEquals(PageContent.Content, page)) PageContent.Content = page;
         PagePane.Visibility = page is null ? Visibility.Collapsed : Visibility.Visible;
-        // 앱 페이지는 목록 위에 (목록의 스크롤 위치는 그대로 남음)
+        Sidebar.Visibility = page is null ? Visibility.Visible : Visibility.Collapsed;
+        // 앱 페이지는 스토어 위에 (목록의 스크롤 위치는 그대로 남음)
         bool detail = page is null && _detail is not null;
         DetailPane.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
         StorePane.Visibility = page is null && !detail ? Visibility.Visible : Visibility.Collapsed;
@@ -121,7 +122,7 @@ public partial class MainWindow : Window
         };
         _notices = new NoticeService(FetchNoticesAsync, _settings.DataDirectory);
         _icons = new AppIconService(_github, IconCacheDirectory, () => _settings.DefaultHost);
-        CatalogSourceText.Text = "앱 목록: " + _store.Location;
+        CatalogSourceText.Text = "앱 목록: 기본" + (SeesTeamApps ? " + " + _store.Location : "");
     }
 
     private async Task<string?> FetchNoticesAsync(CancellationToken cancellationToken)
@@ -146,7 +147,8 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        StatusText.Text = _startupMessage ?? $"i-luncher v{LauncherVersion}";
+        // 버전은 제목 표시줄에만 (오른쪽 아래에는 작업 알림만)
+        StatusText.Text = _startupMessage ?? "";
         // 런처가 스스로 파일을 바꾸므로 Windows "앱" 목록의 버전을 실행 중인 버전과 맞춤
         if (AppUpdater.IsInstalledCopy("i-luncher")) AppUpdater.SyncInstalledVersion("i-luncher");
         ShowNotices(_notices.CachedNotices);
@@ -204,12 +206,13 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = false;
         try
         {
-            CatalogSnapshot snapshot = await _store.LoadAsync();
+            CatalogSnapshot snapshot = await LoadCatalogAsync();
             if (generation != _refreshGeneration) return;
             if (snapshot.Warning is { } warning) ShowError(warning); else HideError();
             MigrateFavorites(snapshot.Apps);
             MergeCards(WithMyApps(snapshot.Apps));
             await DetectInstallsAsync(_cards.ToList());
+            ChooseFirstTab();
             Render();
             if (checkReleases) await CheckReleasesAsync(_cards.ToList());
             _ = LoadRepositoryIconsAsync(_cards.ToList());
@@ -219,6 +222,21 @@ public partial class MainWindow : Window
             _refreshing = false;
             RefreshButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>부서 사람(부서용 설치 파일) · 마스터 계정은 API 서버 앱 목록도 봄</summary>
+    private bool SeesTeamApps => _settings.Group == StoreGroup.Team || _settings.Build.IsListedMaster(Environment.UserName);
+
+    /// <summary>
+    /// 앱 목록: 런처에 든 기본 목록(basic-apps.json). 부서 사람은 여기에 API 서버의 앱 목록을 더함 (같은 앱이면 API 쪽 값).
+    /// 일반 사용자는 서버에 목록을 묻지 않음 (런처 버전에 따라 고정)
+    /// </summary>
+    private async Task<CatalogSnapshot> LoadCatalogAsync()
+    {
+        var basic = StoreGroup.LoadBasicApps(_settings.LauncherRepository);
+        if (!SeesTeamApps) return new CatalogSnapshot(basic, false, null);
+        var snapshot = await _store.LoadAsync();
+        return snapshot with { Apps = StoreGroup.Combine(basic, snapshot.Apps) };
     }
 
     /// <summary>앱 목록 + 내 앱 (앱 목록에 같은 저장소 · id 가 있으면 앱 목록 것만). 내 앱은 앱 목록 뒤에</summary>
@@ -339,6 +357,8 @@ public partial class MainWindow : Window
     private async Task OpenAsync(AppCard card)
     {
         if (card.IsBusy) return;
+        // 이미 실행 중이면 그 창을 앞으로. Ctrl+클릭은 하나 더 실행 (누른 순간의 Ctrl)
+        bool another = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         card.Installed = await Task.Run(() => _manager.Installer.Detect(card.App));
         if (card.Installed is null)
         {
@@ -362,7 +382,19 @@ public partial class MainWindow : Window
                 if (card.Installed is null) return;
             }
         }
+        if (!another && await BringToFrontAsync(card)) return;
         Launch(card);
+    }
+
+    /// <summary>실행 중인 앱의 창을 앞으로 (최소화돼 있으면 되살림). 창이 없으면(트레이에만) false → 실행 파일을 다시 열어 앱이 창을 보이게</summary>
+    private async Task<bool> BringToFrontAsync(AppCard card)
+    {
+        if (card.Installed is not { } installed) return false;
+        var ids = await Task.Run(() => AppInstaller.RunningProcessIds(installed.Directory));
+        if (!WindowFront.Activate(ids)) return false;
+        StatusText.Text = $"{card.Name} 앞으로 (Ctrl+클릭: 하나 더 실행)";
+        _usage.Add(UsageStore.AppKey(card.App.Id));
+        return true;
     }
 
     private static string UpdateDetail(AppCard card, GitHubRelease release) =>
@@ -638,8 +670,10 @@ public partial class MainWindow : Window
         var card = new AppCard(app.Clone());
         _cards.Add(card);
         await DetectInstallsAsync([card]);
+        // 내 앱은 설치됨 탭에 (받기는 그 칸의 단추로)
+        _tab = "installed";
+        _filter = "all";
         Render();
-        ShowDetail(card);
         StatusText.Text = $"{app.Name} 추가함 (내 앱)";
         await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
         _ = LoadRepositoryIconsAsync([card]);
@@ -679,7 +713,6 @@ public partial class MainWindow : Window
             if (!CustomIcons.IsCustom(edited.Icon)) _ = LoadRepositoryIconsAsync([card]);  // 자동으로 되돌림: 저장소에서 다시 찾음
         }
         Render();
-        if (ReferenceEquals(_detail, card)) ShowDetail(card);
         StatusText.Text = $"{edited.Name} 수정함";
         HideError();
     }
@@ -723,7 +756,6 @@ public partial class MainWindow : Window
         // 즐겨찾기에서도
         if (_favorites.RemoveAll(item => item.IsApp && item.AppId.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase)) > 0)
             _favoriteStore.Save(_favorites);
-        if (ReferenceEquals(_detail, card)) CloseDetail();
         _cards.Remove(card);
         StatusText.Text = uninstalled ? $"{card.Name} 제거하고 목록에서 뺌" : $"{card.Name} 목록에서 뺌";
         Render();
@@ -852,13 +884,43 @@ public partial class MainWindow : Window
     private static List<AppCard> Sorted(IEnumerable<AppCard> cards) =>
         cards.OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
+    // ───────────────────────── 스토어 / 설치됨 ─────────────────────────
+
+    /// <summary>지금 탭: store = 앱 목록의 앱 (받기 · 열기), installed = 이 PC 에 설치한 앱 · 내 앱 · 내 PC 프로그램 (홈 화면처럼 큰 아이콘)</summary>
+    private string _tab = "installed";
+    private bool _tabChosen;
+
+    /// <summary>스토어 줄 한 칸의 폭 (줄 340 + 양옆 여백). 창 폭에 맞춰 열 수가 바뀜</summary>
+    private const double StoreRowWidth = 372;
+    private int _storeColumns = 2;
+    private int StoreColumns => _storeColumns;
+
+    public string CurrentTab => _tab;
+
+    private static bool InStore(AppCard card) => !card.App.Personal;
+
+    /// <summary>설치됨 탭: 설치했거나 받는 중인 앱, 그리고 내 앱 (사용자가 직접 더한 것). 스토어에서 숨긴 앱도 설치했으면 여기 보임</summary>
+    private static bool InInstalled(AppCard card) => card.IsInstalled || card.IsBusy || card.App.Personal;
+
+    /// <summary>처음 목록을 읽었을 때 한 번: 설치한 것이 있으면 설치됨, 없으면 스토어</summary>
+    private void ChooseFirstTab()
+    {
+        if (_tabChosen) return;
+        _tabChosen = true;
+        _tab = _cards.Any(InInstalled) || ProgramCards().Count > 0 ? "installed" : "store";
+    }
+
+    /// <summary>스토어(store) · 설치됨(installed) 의 전체 화면</summary>
+    internal void ShowTab(string tab) => ShowView(tab, "all");
+
     /// <summary>
-    /// 홈 화면: 큰 아이콘 칸을 한 덩어리로 (앱 목록 순서, 전체 앱 · 분류 화면은 그 뒤에 이 PC 의 프로그램).
-    /// 업데이트 = 업데이트할 앱과 모두 업데이트, 즐겨찾기 = 별 붙인 앱 + 내 PC 프로그램, 검색 = 찾은 앱 + 프로그램. 아래 독은 즐겨찾기 · 실행 중
+    /// 스토어 탭: 앱 목록의 앱을 앱스토어처럼 한 줄씩 (아이콘 · 이름 · 분류 · 설명 · 받기/열기/업데이트).
+    /// 설치됨 탭: 설치한 앱 · 내 앱 · 내 PC 프로그램을 큰 아이콘 칸으로 (누르면 바로 실행).
+    /// 분류 버튼 줄과 검색은 지금 탭 안에서. 업데이트 = 업데이트할 앱과 모두 업데이트, 즐겨찾기 = 별 붙인 앱 + 내 PC 프로그램. 아래 독은 즐겨찾기 · 실행 중
     /// </summary>
     private void Render()
     {
-        if (_detail is not null && !_cards.Contains(_detail)) CloseDetail();  // 목록에서 빠진 앱
+        if (_detail is not null && (!_cards.Contains(_detail) || !InStore(_detail))) CloseDetail();  // 목록에서 빠진 앱
         ShowPage();
         foreach (var card in _cards) card.IsFavorite = _favorites.Any(item => string.Equals(item.AppId, card.App.Id, StringComparison.OrdinalIgnoreCase));
         RenderDock();
@@ -868,66 +930,78 @@ public partial class MainWindow : Window
             return;
         }
         string search = SearchBox.Text.Trim();
-        var programs = ProgramCards();
-        // 앱 페이지 큰 버튼의 글자색(Ink): 전체 앱 목록 순서대로 돌려 가며 (화면을 바꿔도 앱마다 같은 색)
+        bool store = _tab == "store";
+        var programs = store ? [] : ProgramCards();
         int palette = 0;
         foreach (var card in Sorted(_cards)) card.Palette = palette++ % CardArt.Count;
 
+        var pool = Sorted(_cards.Where(store ? InStore : InInstalled));
         string? category = _filter.StartsWith("category:", StringComparison.Ordinal) ? _filter[9..] : null;
         bool InCategory(string name) => string.Equals(name, category, StringComparison.CurrentCultureIgnoreCase);
-        bool updates = _filter == "updates" && search.Length == 0;
+        bool updates = !store && _filter == "updates" && search.Length == 0;
         List<object> items;
         if (search.Length > 0)
         {
             _title = "검색";
-            items = [.. Sorted(_cards.Where(card => card.Matches(search))), .. programs.Where(card => card.Matches(search))];
+            items = [.. pool.Where(card => card.Matches(search)), .. programs.Where(card => card.Matches(search))];
         }
-        else if (_filter == "favorites")
+        else if (!store && _filter == "favorites")
         {
             _title = "즐겨찾기";
-            items = [.. Sorted(_cards.Where(card => card.IsFavorite)), .. programs];
+            items = [.. pool.Where(card => card.IsFavorite), .. programs];
         }
         else if (updates)
         {
             _title = "업데이트";
-            items = [.. Sorted(_cards.Where(card => card.UpdateAvailable))];
+            items = [.. pool.Where(card => card.UpdateAvailable)];
         }
         else if (category is not null)
         {
             _title = category;
-            items = [.. Sorted(_cards.Where(card => InCategory(card.Category))), .. programs.Where(card => InCategory(card.Category))];
+            items = [.. pool.Where(card => InCategory(card.Category)), .. programs.Where(card => InCategory(card.Category))];
         }
         else
         {
-            _title = "전체 앱";
-            items = [.. Sorted(_cards), .. programs];
+            _title = store ? "스토어" : "설치됨";
+            items = [.. pool, .. programs];
         }
+        ViewHeading.Text = _title;
+        // 스토어는 같은 앱 칸을 한 줄 모양으로
+        if (store) items = items.Select(item => item is AppCard card ? new StoreRow(card) : item).ToList();
 
         var sections = new List<StoreSection>();
         _updatesSection = null;
         if (items.Count > 0) sections.Add(updates ? _updatesSection = UpdatesSection(items) : new StoreSection("", items));
         // 칸은 늘 같은 크기 (창을 키우면 열만 늘어남). 제목 없는 묶음은 한 줄이 안 차면 그 개수만큼만 열을 두어 가운데로
+        int columns = store ? StoreColumns : RowColumns;
         foreach (var section in sections)
         {
-            section.Columns = section.Title.Length > 0 ? RowColumns : Math.Max(1, Math.Min(RowColumns, section.Items.Count));
-            section.PanelWidth = section.Columns * CellWidth;
+            section.Columns = section.Title.Length > 0 ? columns : Math.Max(1, Math.Min(columns, section.Items.Count));
+            section.PanelWidth = section.Columns * (store ? StoreRowWidth : CellWidth);
         }
         SectionList.ItemsSource = sections;
-        VisibleCards = items.OfType<AppCard>().ToList();
+        VisibleCards = items.Select(item => item is StoreRow row ? row.Card : item as AppCard).OfType<AppCard>().ToList();
         UpdateCounts();
 
         bool empty = sections.Count == 0;
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         CardScrollViewer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         if (!empty) return;
-        if (_filter == "favorites" && search.Length == 0)
+        if (!store && _filter == "favorites" && search.Length == 0)
         {
             EmptyStateTitle.Text = "즐겨찾기가 없습니다";
             EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 아래 + 또는 끌어 놓기";
             EmptyStateButton.Content = "프로그램 추가";
             EmptyStateButton.Tag = "favorite-add";
         }
-        else if (_cards.Count == 0 && search.Length == 0)
+        else if (!store && _filter == "all" && search.Length == 0)
+        {
+            EmptyStateTitle.Text = "설치한 앱이 없습니다";
+            EmptyStateText.Text = "스토어에서 받으세요.";
+            EmptyStateButton.Content = "스토어";
+            EmptyStateButton.Tag = "store";
+        }
+        else if (store && !_cards.Any(card => !card.App.Personal) && search.Length == 0)
         {
             // 앱은 관리자가 관리자 메뉴 → 앱 목록에서 넣음 (버튼은 마스터에게만)
             EmptyStateTitle.Text = "아직 등록된 앱이 없습니다";
@@ -939,7 +1013,7 @@ public partial class MainWindow : Window
         {
             EmptyStateTitle.Text = updates ? "모두 최신입니다" : "일치하는 앱이 없습니다";
             EmptyStateText.Text = "";
-            EmptyStateButton.Content = "전체 앱 보기";
+            EmptyStateButton.Content = "전체 보기";
             EmptyStateButton.Tag = "clear";
         }
         EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "admin" && !IsApiManager ? Visibility.Collapsed : Visibility.Visible;
@@ -1017,46 +1091,68 @@ public partial class MainWindow : Window
     /// 검색 아래 가운데 버튼 줄 (앱스토어처럼): 전체 · 즐겨찾기 · 업데이트(있을 때), 그리고 분류마다 색이 다른 아이콘과 개수.
     /// 고른 것은 흰 버튼. 검색하는 동안은 숨김
     /// </summary>
+    /// <summary>
+    /// 왼쪽 메뉴 (앱스토어처럼): 스토어 · 분류마다 | 설치됨 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판.
+    /// 누르면 그 화면으로 (검색은 지움). 설정 · 관리자 메뉴에서는 메뉴를 숨김
+    /// </summary>
     private void RenderCategories()
     {
         CategoryButtons.Children.Clear();
-        bool show = SearchBox.Text.Trim().Length == 0;
-        CategoryButtons.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show) return;
+        bool searching = SearchBox.Text.Trim().Length > 0;
+        var store = _cards.Where(InStore).ToList();
+        var installed = _cards.Where(InInstalled).ToList();
         var programs = ProgramCards();
-        AddChip("전체", null, "all", CategoryLook.AllGlyph, Brushes.White, ChipOnText);
-        int favorites = _cards.Count(card => card.IsFavorite) + programs.Count;
-        if (favorites > 0 || _filter == "favorites") AddChip("즐겨찾기", favorites, "favorites", "\uE735", StarLight, StarInk);
-        int updates = _cards.Count(card => card.UpdateAvailable);
-        if (updates > 0 || _filter == "updates") AddChip("업데이트", updates, "updates", "\uE896", UpdateLight, UpdateInk);
-        var groups = _cards.Select(card => card.Category).Concat(programs.Select(card => card.Category))
-            .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
-        int index = 0;
-        foreach (var group in groups)
-        {
-            AddChip(group.Key, group.Count(), "category:" + group.Key, CategoryLook.Glyph(group.Key), CategoryLook.Light(index), CategoryLook.Ink(index));
-            index++;
-        }
+        AddItem("스토어", null, "store", "all", "\uE719", 0);
+        foreach (var group in store.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase)
+                     .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+            AddItem(group.Key, group.Count(), "store", "category:" + group.Key, CategoryLook.Glyph(group.Key), 0);
+        AddItem("설치됨", installed.Count + programs.Count, "installed", "all", "\uE8F1", 18);
+        int favorites = installed.Count(card => card.IsFavorite) + programs.Count;
+        if (favorites > 0 || _tab == "installed" && _filter == "favorites") AddItem("즐겨찾기", favorites, "installed", "favorites", "\uE735", 0);
+        int updates = installed.Count(card => card.UpdateAvailable);
+        if (updates > 0 || _tab == "installed" && _filter == "updates") AddItem("업데이트", updates, "installed", "updates", "\uE896", 0);
 
-        void AddChip(string name, int? count, string filter, string glyph, Brush color, Brush ink)
+        void AddItem(string name, int? count, string tab, string filter, string glyph, double gap)
         {
-            bool on = _filter == filter;
-            var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-            text.Inlines.Add(new System.Windows.Documents.Run(name));
-            if (count is { } n)
-                text.Inlines.Add(new System.Windows.Documents.Run("  " + n) { FontWeight = FontWeights.Normal, Foreground = on ? Brushes.Gray : (Brush)FindResource("MutedTextBrush") });
-            var icon = new TextBlock
+            bool on = !searching && _tab == tab && _filter == filter;
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(new TextBlock
             {
                 Text = glyph, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14, FontWeight = FontWeights.Normal,
-                Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = on ? ink : color
-            };
-            var content = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, text } };
-            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = content, Tag = on ? "on" : "off" };
-            if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
+                VerticalAlignment = VerticalAlignment.Center, Foreground = SideIconBrush
+            });
+            var label = new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            Grid.SetColumn(label, 1);
+            row.Children.Add(label);
+            if (count is { } n)
+            {
+                var number = new TextBlock { Text = n.ToString(), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Normal, Foreground = (Brush)FindResource("MutedTextBrush") };
+                Grid.SetColumn(number, 2);
+                row.Children.Add(number);
+            }
+            var button = new Button { Style = (Style)FindResource("SideItemStyle"), Content = row, Tag = on ? "on" : "off", Margin = new Thickness(0, gap + 1, 0, 1) };
             System.Windows.Automation.AutomationProperties.SetName(button, name);
-            button.Click += (_, _) => SelectFilter(filter);
+            button.Click += (_, _) => ShowView(tab, filter);
             CategoryButtons.Children.Add(button);
         }
+    }
+
+    private static readonly Brush SideIconBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xFF)));
+    private static Brush Frozen(Brush brush) { brush.Freeze(); return brush; }
+
+    /// <summary>왼쪽 메뉴에서 고름: 그 탭의 그 화면 (검색 지움, 맨 위로)</summary>
+    internal void ShowView(string tab, string filter)
+    {
+        CloseDetail();
+        _tabChosen = true;
+        _tab = tab;
+        _filter = filter;
+        if (SearchBox.Text.Length > 0) SearchBox.Text = "";  // TextChanged 가 다시 그림
+        Render();
+        CardScrollViewer.ScrollToTop();
     }
 
     /// <summary>분류 버튼 줄에서 고름: 전체 · 즐겨찾기 · 업데이트 · category:이름</summary>
@@ -1090,6 +1186,7 @@ public partial class MainWindow : Window
     {
         if (EmptyStateButton.Tag as string == "favorite-add") EditFavorite(null);
         else if (EmptyStateButton.Tag as string == "admin") OpenAdminMenu();
+        else if (EmptyStateButton.Tag as string == "store") ShowTab("store");
         else
         {
             _filter = "all";
@@ -1108,7 +1205,7 @@ public partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         _settingsView = null;
-        _detail = null;
+        CloseDetail();
         _filter = "settings";
         Render();
     }
@@ -1217,8 +1314,10 @@ public partial class MainWindow : Window
         double available = CardScrollViewer.ViewportWidth > 0 ? CardScrollViewer.ViewportWidth : CardScrollViewer.ActualWidth - 14;
         if (available <= 0) return;
         int columns = Math.Clamp((int)Math.Floor(available / CellWidth), 1, 12);
-        if (columns == RowColumns) return;
+        int storeColumns = Math.Clamp((int)Math.Floor(available / StoreRowWidth), 1, 4);
+        if (columns == RowColumns && storeColumns == _storeColumns) return;
         RowColumns = columns;
+        _storeColumns = storeColumns;
         if (IsLoaded) Render();  // 줄마다 카드 수가 열 수를 따름
     }
 

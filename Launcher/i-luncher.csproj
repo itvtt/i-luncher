@@ -41,6 +41,10 @@
     <Resource Include="Assets/Fonts/*.ttf" />
     <Content Include="Assets/Fonts/Pretendard-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Remove="Assets/Build-Icon.ps1;Assets/ILauncher.svg" />
+    <!-- 기본 목록 (모든 런처의 스토어, 런처 버전과 함께 바뀜): 저장소 맨 위 basic-apps.json -->
+    <EmbeddedResource Include="..\basic-apps.json" LogicalName="basic-apps.json" Link="basic-apps.json" />
+    <!-- 기본 목록의 스크린샷 (basic-apps.json 의 screenshots 에 파일 이름): 저장소 맨 위 basic-media\ -->
+    <EmbeddedResource Include="..\basic-media\*.png;..\basic-media\*.jpg" LogicalName="basic-media/%(Filename)%(Extension)" Link="basic-media\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- dotnet publish -p:ReleaseZip=<경로> 이면 게시 폴더를 릴리스 zip 으로도 묶음 (build\Publish-Release.ps1) -->

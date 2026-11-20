@@ -160,8 +160,14 @@ public sealed class LauncherSettings
     public static LauncherSettings Load(string? dataDirectory = null, string? buildDirectory = null)
     {
         string data = dataDirectory ?? DefaultDataDirectory;
-        return new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data);
+        var settings = new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data);
+        _ = settings.Group;  // 설정 파일을 쓰기 전에 정함 (처음 실행인지 알아봄)
+        return settings;
     }
+
+    private string? _group;
+    /// <summary>스토어 그룹 (StoreGroup.Basic = 런처에 든 기본 목록만, StoreGroup.Team = 기본 목록 + API 서버 앱 목록)</summary>
+    public string Group => _group ??= StoreGroup.Resolve(DataDirectory);
 
     public void SaveUser() => User.Save(UserSettingsPath);
 

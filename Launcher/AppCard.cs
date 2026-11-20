@@ -181,7 +181,7 @@ public sealed class AppCard : INotifyPropertyChanged
             if (_running == value) return;
             _running = value;
             Notify(); Notify(nameof(CellStateText)); Notify(nameof(CellStateBrush)); Notify(nameof(RunningDotOpacity)); Notify(nameof(RunningVisibility));
-            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled));
+            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled)); Notify(nameof(CellPillVisibility));
         }
     }
     public double RunningDotOpacity => IsRunning ? 1 : 0;
@@ -241,6 +241,8 @@ public sealed class AppCard : INotifyPropertyChanged
     };
 
     /// <summary>누를 수 있는 단추인지 (진행 중 · 확인 중 등은 글자만)</summary>
+    /// <summary>설치됨 탭의 이름 아래 단추: 열기는 아이콘을 누르면 되므로 숨김 (자리는 남겨 줄을 맞춤)</summary>
+    public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None ? Visibility.Hidden : Visibility.Visible;
     public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;
 
     /// <summary>아이콘 밖 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>
@@ -248,6 +250,17 @@ public sealed class AppCard : INotifyPropertyChanged
         : Latest?.Version?.ToString() is { } latest ? $"v{latest}" : "";
 
     public Visibility IconVersionVisibility => IconVersionText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>스토어 줄의 작은 회색 줄: 분류 · 버전 (설치한 앱은 "설치됨")</summary>
+    public string StoreMetaText
+    {
+        get
+        {
+            string version = IconVersionText;
+            string state = IsInstalled ? (version.Length > 0 ? $"설치됨 {version}" : "설치됨") : version;
+            return state.Length > 0 ? $"{Category} · {state}" : Category;
+        }
+    }
 
     /// <summary>아이콘이 없을 때 타일 글자: 단어 두 개 이상이면 앞 글자 둘 (Windows Terminal → WT), 아니면 한 글자</summary>
     public string Initials

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Input;
 using ILauncher.Services;
 
 namespace ILauncher;
@@ -135,6 +136,14 @@ public partial class MainWindow
         {
             ShowError($"{card.Name}: 파일이 없습니다. 우클릭 → 편집에서 경로를 고치세요. ({program.Path})");
             return false;
+        }
+        // 이미 실행 중인 프로그램(.exe)은 그 창을 앞으로. Ctrl+클릭은 하나 더 실행
+        if (!card.IsWeb && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && WindowFront.ActivateProgram(program.Path))
+        {
+            StatusText.Text = $"{card.Name} 앞으로 (Ctrl+클릭: 하나 더 실행)";
+            HideError();
+            _usage.Add(UsageStore.ProgramKey(program.Id));
+            return true;
         }
         try
         {

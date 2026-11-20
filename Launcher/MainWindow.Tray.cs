@@ -106,12 +106,13 @@ public partial class MainWindow
         if (card.IsInstalled) card.Installed = await Task.Run(() => _manager.Installer.Detect(card.App));
         if (card.IsInstalled)
         {
-            if (!Launch(card)) ShowFromTray();
+            if (!await BringToFrontAsync(card) && !Launch(card)) ShowFromTray();
             return;
         }
-        // 받지 않은 앱: 큰 창의 앱 페이지 (설명 · 스크린샷을 보고 받기)
+        // 받지 않은 앱: 큰 창의 스토어 탭에서 받기 (진행은 그 줄에)
         ShowFromTray();
-        ShowDetail(card);
+        ShowTab("store");
+        await OpenAsync(card);
     }
 
     /// <summary>트레이 창의 업데이트: 큰 창을 열고 그 앱을 업데이트 (실행 중이면 물어봄, 진행은 칸에)</summary>

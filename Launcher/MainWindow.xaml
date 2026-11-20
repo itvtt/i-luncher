@@ -175,6 +175,35 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <!-- 왼쪽 메뉴 한 줄: 아이콘 · 이름 · 개수, 고른 줄은 밝은 판 -->
+            <Style x:Key="SideItemStyle" TargetType="Button">
+                <Setter Property="Height" Value="34" />
+                <Setter Property="Margin" Value="0,1" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="Foreground" Value="#FFD1D1D6" />
+                <Setter Property="FontSize" Value="13.5" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Face" CornerRadius="8" Background="Transparent" BorderThickness="1" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Stretch" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF222327" /></Trigger>
+                                <Trigger Property="Tag" Value="on">
+                                    <Setter TargetName="Face" Property="Background" Value="#FF2E2F35" />
+                                    <Setter Property="Foreground" Value="#FFFFFFFF" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Face" Property="BorderBrush" Value="#FF4AA3FF" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <!-- 앱 페이지의 큰 버튼: 불투명한 흰 둥근 사각에 옅은 그림자, 아이콘 + 글자는 그 앱 색의 진한 톤(Ink) -->
             <Style x:Key="DetailActionButtonStyle" TargetType="Button">
                 <Setter Property="Height" Value="38" />
@@ -209,32 +238,15 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-            <!-- 큰 버튼 옆 네모 아이콘 버튼 (즐겨찾기 별 · 더 보기): 옅은 유리, 마우스를 올리면 조금 밝게 -->
-            <Style x:Key="DetailIconButtonStyle" TargetType="Button">
-                <Setter Property="Width" Value="38" />
-                <Setter Property="Height" Value="38" />
-                <Setter Property="Margin" Value="10,0,0,0" />
-                <Setter Property="Foreground" Value="#FFF2F2F7" />
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-                <Setter Property="FontSize" Value="15" />
+            <!-- 스토어 줄: 둥근 판, 마우스를 올리면 조금 밝게 (누르면 앱 페이지) -->
+            <Style x:Key="StoreRowStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FF232428" />
                 <Setter Property="Cursor" Value="Hand" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Grid>
-                                <Border x:Name="Face" CornerRadius="10" Background="#FF2C2C30" BorderBrush="#FF3D3D44" BorderThickness="1" />
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Grid>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF37373C" /><Setter TargetName="Face" Property="BorderBrush" Value="#FF52525A" /></Trigger>
-                                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF242427" /></Trigger>
-                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Face" Property="BorderBrush" Value="#FF4AA3FF" /></Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#FF2B2C31" /></Trigger>
+                </Style.Triggers>
             </Style>
-            <!-- 스크린샷 · 제목줄 로고: 모양 없는 버튼 -->
+<!-- 제목줄 로고: 모양 없는 버튼 -->
             <Style x:Key="PlainButtonStyle" TargetType="Button">
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Template">
@@ -325,18 +337,11 @@
         </Border>
 
         <Grid Grid.Row="1">
-            <!-- 홈 화면: 가운데 검색 · 분류 버튼 줄, 큰 아이콘 칸, 아래 독(즐겨찾기 · 실행 중 · 프로그램 추가) -->
-            <Grid x:Name="StorePane">
-                <Grid.Background>
-                    <RadialGradientBrush Center="0.5,0" GradientOrigin="0.5,0" RadiusX="0.75" RadiusY="0.6">
-                        <GradientStop Color="#263B82F6" Offset="0" />
-                        <GradientStop Color="#003B82F6" Offset="1" />
-                    </RadialGradientBrush>
-                </Grid.Background>
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-
-                <StackPanel Margin="24,22,24,0">
-                    <Border Width="360" Height="38" HorizontalAlignment="Center" Background="#FF2C2D32" CornerRadius="19">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 즐겨찾기 · 업데이트. 설정 · 관리자 메뉴에서는 숨김 -->
+            <Border x:Name="Sidebar" Background="#FF161618" BorderBrush="#FF2A2B30" BorderThickness="0,0,1,0">
+                <DockPanel Margin="12,16,12,12">
+                    <Border DockPanel.Dock="Top" Height="34" Background="#FF2C2D32" CornerRadius="9">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <Path Grid.Column="0" Width="14" Height="14" Margin="4,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 6.25,1.25 A 5,5 0 1 1 6.25,11.25 A 5,5 0 1 1 6.25,1.25 M 10,10 L 13.25,13.25" Stroke="#FF98989D" StrokeThickness="1.5" />
@@ -359,9 +364,17 @@
                             </TextBlock>
                         </Grid>
                     </Border>
-                    <!-- 전체 · 즐겨찾기 · 업데이트, 그리고 분류마다 (색이 다른 아이콘과 개수) -->
-                    <WrapPanel x:Name="CategoryButtons" Margin="0,16,0,0" HorizontalAlignment="Center" />
-                </StackPanel>
+                    <ScrollViewer Margin="0,14,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="CategoryButtons" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+            <!-- 오른쪽: 스토어(앱 줄) · 설치됨(큰 아이콘) · 앱 페이지, 아래 독(즐겨찾기 · 실행 중 · 프로그램 추가) -->
+            <Grid x:Name="StorePane" Grid.Column="1">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+
+                <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 즐겨찾기 · 업데이트 · 검색) -->
+                <TextBlock x:Name="ViewHeading" Margin="30,22,30,4" FontSize="26" FontWeight="Bold" Foreground="#FFF5F5F7" TextTrimming="CharacterEllipsis" />
 
                 <!-- 런처 업데이트 -->
                 <Border x:Name="LauncherUpdateBanner" Grid.Row="1" MaxWidth="760" Margin="24,8,24,0" Padding="12,8" Background="#FF1A2E27" BorderBrush="#FF3C6B58" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
@@ -386,15 +399,14 @@
                     <ScrollViewer x:Name="CardScrollViewer" Padding="24,4,24,118" SizeChanged="CardScrollViewer_SizeChanged" ScrollChanged="CardScrollViewer_ScrollChanged" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                         <ScrollViewer.Resources>
                             <!-- 앱 칸: 큰 아이콘(받지 않은 앱은 흐리게, 새 버전은 오른쪽 위 파란 ↑, 받을 수 있으면 오른쪽 아래 ↓), 이름, 상태 한 줄
-                                 아이콘 밖 오른쪽 위에 작은 버전(회색 판), 이름 아래 상태 단추(받기 · 업데이트 · 열기 · 실행 중 · 진행 중).
-                                 아이콘을 누르면 앱 페이지, 실행 · 설치 · 업데이트는 상태 단추. 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
+                                 아이콘 밖 오른쪽 위에 작은 버전(회색 판), 이름 아래 상태 단추(받기 · 업데이트 · 실행 중 · 진행 중, 열기는 없음).
+                                 아이콘을 누르면 바로 실행 (받기 · 업데이트는 상태 단추로도). 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
                                     <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="Cell_Click" ToolTip="{Binding RunToolTip}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="앱 정보" Icon="&#xE946;" Tag="{Binding}" Click="Card_Click" />
                                             <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
                                             <MenuItem Header="업데이트" Icon="&#xE896;" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
                                             <MenuItem Header="설치 / 다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
@@ -428,7 +440,7 @@
                                             </Grid>
                                             <TextBlock Margin="6,11,6,0" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />
                                             <Button Margin="0,7,0,0" HorizontalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding}" Click="CellAction_Click"
-                                                    Content="{Binding CellActionText}" Background="{Binding CellActionBackground}" Foreground="{Binding CellActionInk}"
+                                                    Visibility="{Binding CellPillVisibility}" Content="{Binding CellActionText}" Background="{Binding CellActionBackground}" Foreground="{Binding CellActionInk}"
                                                     IsHitTestVisible="{Binding CellActionEnabled}" ToolTip="{Binding VersionToolTip}" AutomationProperties.Name="{Binding CellActionText}" />
                                         </StackPanel>
                                     </Button>
@@ -446,7 +458,51 @@
                                 </DataTemplate.Triggers>
                             </DataTemplate>
 
-                            <!-- 내 PC 프로그램 칸: 둥근 판 위 아이콘, 이름, "내 PC". 누르면 실행, 우클릭은 편집 · 파일 위치 · 삭제 -->
+                            <!-- 스토어 줄 (앱스토어처럼): 아이콘 · 이름 · 분류와 버전 · 설명 두 줄 · 오른쪽 단추(받기 · 열기 · 업데이트 · 진행 중).
+                                 줄을 누르면 앱 페이지, 우클릭은 앱 칸과 같은 메뉴 -->
+                            <DataTemplate DataType="{x:Type local:StoreRow}">
+                                <Border Height="96" Margin="6" Padding="14,0" CornerRadius="14" BorderBrush="#12FFFFFF" BorderThickness="1" Style="{StaticResource StoreRowStyle}"
+                                        Tag="{Binding Card}" MouseLeftButtonUp="StoreRow_MouseLeftButtonUp" AutomationProperties.AutomationId="{Binding Card.AutomationId}" AutomationProperties.Name="{Binding Card.Name}">
+                                    <Border.ContextMenu>
+                                        <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                        <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
+                                        <MenuItem Header="업데이트" Icon="&#xE896;" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
+                                        <MenuItem Header="설치 / 다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
+                                        <Separator />
+                                        <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
+                                        <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
+                                        <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
+                                        <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
+                                        <Separator Visibility="{Binding InstalledMenuVisibility}" />
+                                        <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                  Style="{StaticResource DangerMenuItemStyle}" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <Grid Width="58" Height="58" VerticalAlignment="Center">
+                                            <Border CornerRadius="14" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
+                                            </Border>
+                                            <Image Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                        </Grid>
+                                        <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
+                                            <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Card.Name}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Margin="0,2,0,0" FontSize="11.5" Foreground="#FF8E8E93" Text="{Binding Card.StoreMetaText}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Margin="0,5,0,0" MaxHeight="34" FontSize="12" LineHeight="17" Foreground="#FFC7C7CC" Text="{Binding Card.DescriptionText}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.DescriptionText}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Height="28" MinWidth="64" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
+                                                Content="{Binding Card.CellActionText}" Background="{Binding Card.CellActionBackground}" Foreground="{Binding Card.CellActionInk}"
+                                                IsHitTestVisible="{Binding Card.CellActionEnabled}" ToolTip="{Binding Card.VersionToolTip}" AutomationProperties.Name="{Binding Card.CellActionText}" />
+                                        <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="72,0,0,10" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                                     IsIndeterminate="{Binding Card.IsIndeterminate}" Value="{Binding Card.ProgressValue, Mode=OneWay}" Visibility="{Binding Card.BusyVisibility}"
+                                                     Background="#FF2C2D32" BorderThickness="0" Foreground="#FF4AA3FF" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+
+<!-- 내 PC 프로그램 칸: 둥근 판 위 아이콘, 이름, "내 PC". 누르면 실행, 우클릭은 편집 · 파일 위치 · 삭제 -->
                             <DataTemplate DataType="{x:Type local:FavoriteCard}">
                                 <Grid Width="132" Margin="4,0,4,10">
                                     <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}"
@@ -479,7 +535,7 @@
                         <ItemsControl x:Name="SectionList" Focusable="False">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:StoreSection}">
-                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,6" HorizontalAlignment="Center">
+                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,6" HorizontalAlignment="Left">
                                         <DockPanel Margin="8,0,8,12" Visibility="{Binding HeaderVisibility}">
                                             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButtonStyle}" Content="{Binding ActionText}" Tag="{Binding}" Click="SectionAction_Click"
                                                     Visibility="{Binding ActionVisibility}" IsEnabled="{Binding ActionEnabled}" />
@@ -516,7 +572,6 @@
                                         <Button Style="{StaticResource DockItemStyle}" Tag="{Binding}" Click="StoreAction_Click" ToolTip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
                                             <Button.ContextMenu>
                                                 <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                                <MenuItem Header="앱 정보" Icon="&#xE946;" Tag="{Binding}" Click="Card_Click" />
                                                 <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" />
                                                 </ContextMenu>
                                             </Button.ContextMenu>
@@ -582,15 +637,15 @@
                 </Border>
             </Grid>
 
-            <!-- 앱 페이지 (우클릭 → 앱 정보): 아이콘·이름·버튼, 정보 줄, 스크린샷, 설명, 새로운 기능. 뒤로·Esc·마우스 뒤로 단추로 홈 -->
-            <Grid x:Name="DetailPane" Visibility="Collapsed">
+            <!-- 앱 페이지 (스토어 줄을 누르면): 아이콘·이름·버튼, 정보 줄, 스크린샷, 설명, 새로운 기능. 뒤로·Esc·마우스 뒤로 단추로 스토어 -->
+            <Grid x:Name="DetailPane" Grid.Column="1" Visibility="Collapsed">
                 <ScrollViewer x:Name="DetailScrollViewer" Padding="40,16,40,28" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="1000" HorizontalAlignment="Stretch">
                         <Button x:Name="DetailBackButton" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" VerticalAlignment="Top" Click="DetailBack_Click"
                                 AutomationProperties.Name="뒤로" ToolTip="뒤로 (Esc)">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,1,6,0" VerticalAlignment="Center" />
-                                <TextBlock x:Name="DetailBackText" Text="전체 앱" />
+                                <TextBlock x:Name="DetailBackText" Text="스토어" />
                             </StackPanel>
                         </Button>
 
@@ -613,26 +668,6 @@
                                                        FontSize="13" Margin="0,1,9,0" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
                                         </StackPanel>
-                                    </Button>
-                                    <Button Style="{StaticResource DetailIconButtonStyle}" Tag="{Binding}" Click="FavoriteToggleMenu_Click" Content="{Binding FavoriteGlyph}"
-                                            Foreground="{Binding FavoriteGlyphBrush}" ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
-                                    <Button x:Name="DetailMoreButton" Style="{StaticResource DetailIconButtonStyle}" Tag="{Binding}" Content="&#xE712;"
-                                            Click="DetailMore_Click" ToolTip="더 보기" AutomationProperties.Name="더 보기">
-                                        <Button.ContextMenu>
-                                            <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
-                                                <MenuItem Header="업데이트" Icon="&#xE896;" Tag="{Binding}" Click="UpdateMenu_Click" Visibility="{Binding UpdateMenuVisibility}" />
-                                                <MenuItem Header="다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
-                                                <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
-                                                <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
-                                                <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
-                                                <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMyApp_Click" Visibility="{Binding PersonalMenuVisibility}" />
-                                                <Separator Visibility="{Binding InstalledMenuVisibility}" />
-                                                <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
-                                                          Style="{StaticResource DangerMenuItemStyle}" />
-                                                <MenuItem Header="내 앱에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteMyApp_Click" Visibility="{Binding PersonalMenuVisibility}"
-                                                          Style="{StaticResource DangerMenuItemStyle}" />
-                                            </ContextMenu>
-                                        </Button.ContextMenu>
                                     </Button>
                                     <Border Style="{StaticResource TagStyle}" Height="20" Margin="12,0,0,0" VerticalAlignment="Center" Background="#29E6C07A" Visibility="{Binding BetaVisibility}">
                                         <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
@@ -706,13 +741,13 @@
                 </Grid>
             </Grid>
             <!-- 설정 · 관리자 메뉴: 위에 뒤로 (Esc 도), 아래에 그 화면 -->
-            <Grid x:Name="PagePane" Visibility="Collapsed">
+            <Grid x:Name="PagePane" Grid.ColumnSpan="2" Visibility="Collapsed">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                 <Button x:Name="PageBackButton" Margin="30,14,0,0" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Click="PageBack_Click"
                         AutomationProperties.Name="뒤로" ToolTip="뒤로 (Esc)">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,1,6,0" VerticalAlignment="Center" />
-                        <TextBlock Text="전체 앱" />
+                        <TextBlock Text="뒤로" />
                     </StackPanel>
                 </Button>
                 <ContentControl x:Name="PageContent" Grid.Row="1" Margin="0,-6,0,0" Focusable="False" />

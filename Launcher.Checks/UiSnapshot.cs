@@ -50,37 +50,28 @@ static class UiSnapshot
                     Pump(TimeSpan.FromMilliseconds(500));
                     Save((FrameworkElement)window.Content, Suffix(output, "-scrolled"));
                     window.CardScrollViewer.ScrollToHome();
-                    // 앱 페이지 (카드를 누르면): ILUNCHER_SNAPSHOT_DETAIL=<앱 id> 이면 그 앱, 없으면 처음 카드. 스크린샷을 받을 때까지 잠시 기다림
-                    string? detailId = Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_DETAIL");
-                    if (window.VisibleCards.FirstOrDefault(card => detailId is null || card.App.Id == detailId) is { } detailCard)
+                    // 두 탭을 따로: 스토어(한 줄씩, -store) · 설치됨(큰 아이콘, -installed). 처음 탭은 위 그림
+                    string firstTab = window.CurrentTab;
+                    Console.WriteLine($"first tab: {firstTab}");
+                    foreach (string tab in new[] { "store", "installed" })
                     {
-                        // ILUNCHER_SNAPSHOT_SHOTS=<이름,이름>: 앱 목록은 그대로 두고 이 화면에서만 스크린샷을 넣어 봄
-                        if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_SHOTS") is { Length: > 0 } shots)
+                        window.ShowTab(tab);
+                        Pump(TimeSpan.FromMilliseconds(700));
+                        Save((FrameworkElement)window.Content, Suffix(output, "-" + tab));
+                        Console.WriteLine($"{tab}: {window.ViewTitle} · {window.VisibleCards.Count}개 · chips: " + string.Join(", ", window.CategoryButtons.Children
+                            .OfType<System.Windows.Controls.Button>().Select(chip => System.Windows.Automation.AutomationProperties.GetName(chip))));
+                        if (window.EmptyState.Visibility == Visibility.Visible) Console.WriteLine($"  empty: {window.EmptyStateTitle.Text} / {window.EmptyStateText.Text}");
+                        // 스토어 줄을 누른 앱 페이지 (-detail): 상세 설명이 있는 첫 앱
+                        if (tab == "store" && window.VisibleCards.OfType<AppCard>().OrderByDescending(card => card.App.Details is { Length: > 0 }).FirstOrDefault() is { } shown)
                         {
-                            var app = detailCard.App.Clone();
-                            app.Screenshots = [.. shots.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
-                            detailCard.App = app;
+                            window.ShowDetail(shown);
+                            Pump(TimeSpan.FromMilliseconds(1500));
+                            Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
+                            Console.WriteLine($"detail: {shown.Name} · {shown.App.Screenshots?.Count ?? 0} screenshots · details {shown.App.Details?.Length ?? 0} chars");
                         }
-                        // ILUNCHER_SNAPSHOT_AUTHOR=<이름>: 이 화면에서만 제작자를 넣어 봄
-                        if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_AUTHOR") is { Length: > 0 } author)
-                        {
-                            var app = detailCard.App.Clone();
-                            app.Author = author;
-                            detailCard.App = app;
-                        }
-                        window.ShowDetail(detailCard);
-                        Pump(TimeSpan.FromSeconds(4));
-                        Save((FrameworkElement)window.Content, Suffix(output, "-detail"));
-                        Console.WriteLine($"detail: {detailCard.Name} · shots {window.DetailShots.Items.Count}");
-                        // 더 보기 메뉴 (따로 뜨는 창이라 메뉴만 그림)
-                        var menu = window.DetailMoreButton.ContextMenu;
-                        menu.PlacementTarget = window.DetailMoreButton;
-                        menu.IsOpen = true;
-                        Pump(TimeSpan.FromSeconds(1));
-                        Save(menu, Suffix(output, "-detail-menu"));
-                        menu.IsOpen = false;
-                        window.DetailBackButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     }
+                    window.ShowTab(firstTab);
+                    Pump(TimeSpan.FromMilliseconds(300));
                     Console.WriteLine($"title: {window.ViewTitle} · {window.VisibleCards.Count}개 · status: {window.StatusText.Text}");
                     Console.WriteLine($"catalog: {window.CatalogSourceText.Text}");
                     if (window.ErrorPanel.Visibility == Visibility.Visible) Console.WriteLine($"error: {window.ErrorText.Text}");
@@ -142,16 +133,11 @@ static class UiSnapshot
                     }
                     window.SelectFilter("all");
                     Pump(TimeSpan.FromMilliseconds(300));
-                    // 내 앱 편집: 제작자 · 상세 설명 · 스크린샷 두 장 · 기본 아이콘을 넣은 모습 (그림은 임시 폴더에)
+                    // 내 앱 편집: 기본 아이콘을 고른 모습 (이름 · 분류 · 설명 · 아이콘만)
                     if (window.VisibleCards.FirstOrDefault() is { } myAppCard)
                     {
-                        string media = Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-media");
-                        Directory.CreateDirectory(media);
                         var editing = myAppCard.App.Clone();
-                        editing.Author = "Tools Team";
-                        editing.Details = "설비 상태를 한 화면에서 봅니다.\n색으로 상태를 구분하고, 누르면 자세히 봅니다.";
                         editing.Icon = "builtin:chart";
-                        editing.Screenshots = [ShotPng(Path.Combine(media, "a.png"), Color.FromRgb(0x24, 0x3B, 0x5E)), ShotPng(Path.Combine(media, "b.png"), Color.FromRgb(0x2E, 0x4A, 0x3A))];
                         editing.Personal = true;
                         var editWindow = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구", "설비", "일정", "파일"], _ => null, editing)
                         { ShowActivated = false, Left = -4000, Top = 0, MaxHeight = 4000, RepositoryIcon = myAppCard.Icon };
@@ -161,7 +147,7 @@ static class UiSnapshot
                         editWindow.Body.ScrollToEnd();
                         Pump(TimeSpan.FromMilliseconds(400));
                         Save((FrameworkElement)editWindow.Content, Suffix(output, "-myapp-edit-end"));
-                        Console.WriteLine($"my app edit: {editWindow.NameBox.Text} · {editWindow.PreviewVersion.Text} · shots {editWindow.ShotStrip.Children.Count}");
+                        Console.WriteLine($"my app edit: {editWindow.NameBox.Text} · {editWindow.PreviewVersion.Text}");
                         editWindow.Close();
                     }
                     if (window.VisibleCards.FirstOrDefault(card => card.IsInstalled) is { } installedCard)
@@ -180,13 +166,6 @@ static class UiSnapshot
                     window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromMilliseconds(500));
                     Console.WriteLine($"home from settings: {window.ViewTitle} · list {window.StorePane.Visibility} · page {window.PagePane.Visibility}");
-                    if (window.VisibleCards.FirstOrDefault() is { } homeCard)
-                    {
-                        window.ShowDetail(homeCard);
-                        window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                        Pump(TimeSpan.FromMilliseconds(500));
-                        Console.WriteLine($"home from app page: {window.ViewTitle} · list {window.StorePane.Visibility} · app page {window.DetailPane.Visibility}");
-                    }
                     // 관리자 메뉴 (마스터 계정만 제목 표시줄에 보임, 창 전체). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
                     Console.WriteLine($"api manager: {window.ApiManagerButton.Visibility}");
                     if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerButton.Visibility == Visibility.Visible)

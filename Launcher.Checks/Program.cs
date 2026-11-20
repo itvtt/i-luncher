@@ -196,17 +196,72 @@ try
         ApiManager.ManagerView.KeepFormer(data, "formerIds", "fastcopy", "swiftcopy");
         Equal("[\"fastcopy\"]", data["formerIds"]!.ToJsonString(), "renamed back: the current id leaves the list, the other one stays");
     });
-    await CheckSync("app page: details and screenshots come from the app list, release notes read as plain text", () =>
+    await CheckSync("store group: setup marker wins, a launcher used before counts as team, a new one as basic", () =>
+    {
+        string fresh = Path.Combine(root, "group-new");
+        Equal(StoreGroup.Basic, StoreGroup.Resolve(fresh), "first run without a marker");
+        Equal("basic", File.ReadAllText(Path.Combine(fresh, StoreGroup.FileName)).Trim(), "remembered");
+        File.WriteAllText(Path.Combine(fresh, "settings.json"), "{}");
+        Equal(StoreGroup.Basic, StoreGroup.Resolve(fresh), "stays basic once settings exist");
+        File.WriteAllText(Path.Combine(fresh, StoreGroup.FileName), "TEAM\r\n");
+        Equal(StoreGroup.Team, StoreGroup.Resolve(fresh), "team setup marker");
+        string old = Path.Combine(root, "group-old");
+        Directory.CreateDirectory(old);
+        File.WriteAllText(Path.Combine(old, "favorites.json"), "[]");
+        Equal(StoreGroup.Team, StoreGroup.Resolve(old), "used before this version: keeps seeing every app");
+        Equal(StoreGroup.Team, LauncherSettings.Load(old).Group, "settings read the same marker");
+    });
+    await CheckSync("running app: a click brings its window to the front (a minimized one is restored), no window means launch instead", () =>
+    {
+        Assert(!WindowFront.Activate([]), "no process: nothing to bring forward");
+        Sta(() =>
+        {
+            var window = new System.Windows.Window { Title = "i-luncher checks front", Width = 300, Height = 200, ShowInTaskbar = false,
+                WindowStartupLocation = System.Windows.WindowStartupLocation.Manual, Left = -2000, Top = 0 };
+            window.Show();
+            window.WindowState = System.Windows.WindowState.Minimized;
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Assert(WindowFront.Activate([Environment.ProcessId]), "found the test window");
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Assert(window.WindowState == System.Windows.WindowState.Normal, "minimized window restored: " + window.WindowState);
+            window.Close();
+        });
+        Assert(!WindowFront.ActivateProgram(Path.Combine(root, "missing.exe")), "missing program: launch instead");
+    });
+    await CheckSync("basic list is built in, takes host and owner from the launcher repository, and team adds the API list without doubles", () =>
+    {
+        var launcher = GitHubRepository.Parse("https://ghe.example.com/team/i-luncher")!;
+        Equal("https://ghe.example.com/team/DeskCal", StoreGroup.ResolveRepository("DeskCal", launcher), "name only");
+        Equal("https://ghe.example.com/team/Tool", StoreGroup.ResolveRepository("Tool.git", launcher), ".git dropped");
+        Equal("other/Tool", StoreGroup.ResolveRepository("other/Tool", launcher), "owner/name kept");
+        Equal("Tool", StoreGroup.ResolveRepository("Tool", null), "no launcher repository: unchanged");
+        var basic = StoreGroup.LoadBasicApps(launcher);
+        string ids = string.Join(",", basic.Select(app => app.Id));
+        Equal("deskcal,compare,fastcopy,diskscan,capture,memopad", ids, "built-in basic-apps.json");
+        Assert(basic.All(app => app.Repository.StartsWith("https://ghe.example.com/team/") && app.Description.Length > 0 && app.Category.Length > 0
+                                && app.Details is { Length: > 0 }), "every basic app has a repository, a category, a description and details for its app page");
+        var missing = basic.SelectMany(app => app.Screenshots ?? []).Where(shot => ScreenshotService.BuiltIn(shot) is null).ToList();
+        Assert(missing.Count == 0, "screenshots named in basic-apps.json are built in (basic-media): missing " + string.Join(", ", missing));
+        var fewShots = basic.Where(app => app.Screenshots is not { Count: >= 3 }).Select(app => app.Id).ToList();
+        Assert(fewShots.Count == 0, "every basic app has at least 3 screenshots (user rule): " + string.Join(", ", fewShots));
+        var api = new List<AppDefinition>
+        {
+            new() { Id = "folder-compare", Name = "File Compare", Repository = "team/Compare" },
+            new() { Id = "terminal-notes", Name = "Terminal Notes", Repository = "team/TerminalNotes" }
+        };
+        var team = StoreGroup.Combine(basic, api);
+        Assert(team.Any(app => app.Id == "terminal-notes"), "API apps are added");
+        Equal(1, team.Count(app => app.HasId("compare") || app.HasId("folder-compare")), "same app under its old id is not doubled");
+        Assert(team.Any(app => app.Name == "File Compare"), "the API entry wins");
+        Equal(basic.Count + 1, team.Count, "count");
+    });
+    await CheckSync("app list keeps fields the launcher no longer shows (제작자 · 상세 설명 · 스크린샷), so saving does not lose them", () =>
     {
         var apps = CatalogSerializer.Parse("""
-            [ { "id": "a", "name": "A", "repository": "o/a", "details": "긴 설명", "screenshots": [ "0123456789abcdef.png", "https://example.com/s.png" ] } ]
+            [ { "id": "a", "name": "A", "repository": "o/a", "author": "팀", "details": "긴 설명", "screenshots": [ "0123456789abcdef.png" ] } ]
             """);
-        Equal("긴 설명", apps[0].Details, "details");
-        Equal(2, apps[0].Screenshots?.Count ?? 0, "screenshots");
-        Equal("새 기능\n• 하나\n• 둘\n\n고침", ILauncher.MainWindow.ReleaseNotes("## 새 기능\r\n- **하나**\r\n* `둘`\r\n\r\n\r\n\r\n고침\r\n"), "notes");
-        var shots = new ScreenshotService(Path.Combine(root, "shots"), () => "http://server:2003/");
-        Equal("http://server:2003/launcher/media/0123456789abcdef.png", shots.Address("0123456789abcdef.png")?.ToString(), "uploaded image address");
-        Equal("https://example.com/s.png", shots.Address("https://example.com/s.png")?.ToString(), "an address as it is");
+        string json = CatalogSerializer.Serialize(apps);
+        Assert(json.Contains("\"details\": \"긴 설명\"") && json.Contains("0123456789abcdef.png") && json.Contains("\"author\": \"팀\""), json);
     });
 
     var github = new FakeGitHub();
@@ -657,30 +712,23 @@ try
         });
     });
 
-    await Check("My app details: 제작자 · 상세 설명 · screenshots copied to this PC · a chosen icon are kept, and the screenshots load without a server", async () =>
+    await CheckSync("My app: older 제작자 · 상세 설명 · screenshots and a chosen icon are kept in my-apps.json, and deleting the app removes only its own pictures", () =>
     {
         MyAppStore.MediaFolder = Path.Combine(root, "my-media");
-        string source = Path.Combine(root, "shot.png");
-        Sta(() => WritePng((System.Windows.Media.Imaging.BitmapSource)ILauncher.CustomIcons.Load("builtin:chart")!, source));
-        string shot = MyAppStore.ImportScreenshot(source);
-        Assert(shot.StartsWith(MyAppStore.MediaFolder, StringComparison.OrdinalIgnoreCase) && File.Exists(source), "copied, the original stays");
+        Directory.CreateDirectory(MyAppStore.MediaFolder);
+        string shot = Path.Combine(MyAppStore.MediaFolder, "shot-old.png");
+        File.WriteAllBytes(shot, [1, 2, 3]);
+        string outside = Path.Combine(root, "shot.png");
+        File.WriteAllBytes(outside, [1, 2, 3]);
         var store = new MyAppStore(Path.Combine(root, "my-apps-details", "my-apps.json"));
         store.Save([new AppDefinition { Id = "my-x", Name = "X", Repository = "https://github.com/someone/X", Author = "Team A", Details = "line 1\nline 2",
                                         Screenshots = [shot], Icon = "builtin:code", Personal = true }]);
         var read = store.Load().Single();
         Assert(read.Author == "Team A" && read.Details == "line 1\nline 2" && read.Screenshots?.Single() == shot && read.Icon == "builtin:code", "kept");
-        Assert(CatalogSerializer.Serialize([new AppDefinition { Id = "a", Name = "A", Repository = "https://github.com/o/a", Author = "Team B" }]).Contains("\"author\": \"Team B\""),
-            "the app list stores 제작자 too");
-        using var shots = new ScreenshotService(Path.Combine(root, "shots-cache"), () => null);
-        Assert(await shots.LoadAsync(shot, 100, CancellationToken.None) is { PixelHeight: 100 }, "a local screenshot loads without a server");
-        Assert(await shots.LoadAsync(Path.Combine(root, "gone.png"), 100, CancellationToken.None) is null, "a missing one is skipped");
-        MyAppStore.DeleteMedia(source);
-        Assert(File.Exists(source), "a picture outside the folder is never deleted");
+        MyAppStore.DeleteMedia(outside);
+        Assert(File.Exists(outside), "a picture outside the folder is never deleted");
         MyAppStore.DeleteMedia(shot);
         Assert(!File.Exists(shot), "deleting the app removes its copied screenshot");
-        File.WriteAllText(Path.Combine(root, "notes.txt"), "text");
-        try { MyAppStore.ImportScreenshot(Path.Combine(root, "notes.txt")); throw new Exception("a text file was accepted"); }
-        catch (InvalidDataException) { }
     });
 }
 finally

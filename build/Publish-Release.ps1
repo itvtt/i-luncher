@@ -1,7 +1,9 @@
 ﻿# i-luncher 릴리스를 out\ 에 만듭니다:
 #   i-luncher-Setup.exe     처음 설치용 (사용자별, 관리자 권한 없음; 시작 메뉴·바탕화면 바로 가기, Windows "앱" 목록 등록;
 #                           Windows 에 들어 있는 .NET Framework 로 돌아가며, .NET 10 이 없는 PC 에는 .NET 10 실행 환경을 넣어 줌)
-#   i-luncher-win-x64.zip   설치된 런처가 GitHub Release 에서 내려받아 스스로 업데이트하는 패키지
+#   i-luncher-Team-Setup.exe  부서용 처음 설치 (위와 같고 설치할 때 부서 표시를 남김: 스토어에 API 서버 앱 목록도 보임).
+#                           릴리스에 올리지 않음 (release.yml 이 러너 PC 의 폴더에 둠)
+#   i-luncher-win-x64.zip   설치된 런처가 GitHub Release 에서 내려받아 스스로 업데이트하는 패키지 (일반 · 부서 같음)
 #   win-x64\                게시된 런처 폴더 (zip 의 내용)
 # .NET 10 SDK 만 있으면 됩니다 (NuGet 패키지 없음).
 # .github\workflows\release.yml 이 부르고, 손으로도 실행할 수 있습니다:
@@ -41,9 +43,10 @@ $out = [IO.Path]::Combine($root, $OutputDirectory)
 $publish = Join-Path $out 'win-x64'
 $zip = Join-Path $out 'i-luncher-win-x64.zip'
 $setup = Join-Path $out 'i-luncher-Setup.exe'
+$teamSetup = Join-Path $out 'i-luncher-Team-Setup.exe'
 $setupStage = Join-Path $out 'setup-build'
 foreach ($old in $publish, $setupStage) { if (Test-Path $old) { Remove-Item $old -Recurse -Force } }
-foreach ($old in $zip, $setup) { if (Test-Path $old) { Remove-Item $old -Force } }
+foreach ($old in $zip, $setup, $teamSetup) { if (Test-Path $old) { Remove-Item $old -Force } }
 
 Write-Host "Publishing i-luncher $Version (SDK $sdk)"
 & dotnet publish $launcherProject -c Release -r win-x64 --self-contained false -nologo -m:1 `
@@ -96,6 +99,15 @@ Write-Host 'Building i-luncher-Setup.exe'
 if ($LASTEXITCODE -ne 0) { throw "Installer build failed (exit $LASTEXITCODE)." }
 Move-Item -LiteralPath (Join-Path $setupStage 'i-luncher-Setup.exe') -Destination $setup -Force
 
+# 부서용: 같은 설치 프로그램을 TEAM_SETUP 으로 한 번 더 (설치할 때 store-group.txt 에 team)
+if (Test-Path $installerObj) { Remove-Item $installerObj -Recurse -Force }
+if (Test-Path $setupStage) { Remove-Item $setupStage -Recurse -Force }
+Write-Host 'Building i-luncher-Team-Setup.exe'
+& dotnet publish $setupProject -c Release -nologo -m:1 -o $setupStage "-p:Version=$Version" "-p:PayloadZip=$zip" `
+    "-p:RuntimeDirectory=$runtimeStage" "-p:UninstallerExe=$(Join-Path $uninstallStage 'i-luncher-Setup.exe')" -p:SetupGroup=team
+if ($LASTEXITCODE -ne 0) { throw "Team installer build failed (exit $LASTEXITCODE)." }
+Move-Item -LiteralPath (Join-Path $setupStage 'i-luncher-Setup.exe') -Destination $teamSetup -Force
+
 foreach ($stage in $setupStage, $uninstallStage, $runtimeStage) { if (Test-Path $stage) { Remove-Item $stage -Recurse -Force } }
 foreach ($intermediate in 'bin', 'obj') {
     $path = Join-Path (Join-Path $root 'installer') $intermediate
@@ -104,8 +116,10 @@ foreach ($intermediate in 'bin', 'obj') {
 
 Write-Host ("Release zip: {0} ({1:N1} MB, {2} files)" -f $zip, ((Get-Item $zip).Length / 1MB), @(Get-ChildItem $publish -Recurse -File).Count)
 Write-Host ("Installer:   {0} ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
+Write-Host ("Team setup:  {0} ({1:N1} MB)" -f $teamSetup, ((Get-Item $teamSetup).Length / 1MB))
 if ($env:GITHUB_OUTPUT) {
     Add-Content -Path $env:GITHUB_OUTPUT -Value "zip=$zip" -Encoding ASCII
     Add-Content -Path $env:GITHUB_OUTPUT -Value "setup=$setup" -Encoding ASCII
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "team_setup=$teamSetup" -Encoding ASCII
     Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$Version" -Encoding ASCII
 }

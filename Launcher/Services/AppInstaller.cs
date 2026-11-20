@@ -417,6 +417,15 @@ public sealed class AppInstaller
         Process.Start(start)?.Dispose();
     }
 
+    /// <summary>설치 폴더 안의 실행 파일로 돌고 있는 프로세스 번호 (창을 앞으로 가져올 때)</summary>
+    public static List<int> RunningProcessIds(string directory)
+    {
+        var running = FindRunning(directory);
+        var ids = running.Select(process => process.Id).ToList();
+        foreach (Process process in running) process.Dispose();
+        return ids;
+    }
+
     /// <summary>설치 폴더 안의 실행 파일로 돌고 있는 프로세스가 있는지</summary>
     public static bool IsRunning(string directory)
     {
