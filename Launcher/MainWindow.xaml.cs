@@ -56,6 +56,10 @@ public partial class MainWindow : Window
         _myApps = _myAppStore.Load();
         _usage = new UsageStore(Path.Combine(settings.DataDirectory, "usage.json"));
         InitializeComponent();
+        // 설치됨 아이콘 · 스토어 줄이 3줄은 독 위로 다 보이는 높이 (공지 · 업데이트 띠가 있어도). 화면이 작으면 그 화면에 맞춤
+        double workHeight = SystemParameters.WorkArea.Height;
+        MinHeight = Math.Min(MinHeight, workHeight);
+        Height = Math.Min(Height, workHeight);
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
         ApiManagerButton.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;

@@ -9,7 +9,7 @@
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
-        Width="1100" Height="680" MinWidth="640" MinHeight="460"
+        Width="1100" Height="860" MinWidth="640" MinHeight="840"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Loaded="Window_Loaded"
