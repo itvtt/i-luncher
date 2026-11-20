@@ -48,7 +48,7 @@ protected override void OnStartup(StartupEventArgs e)
 1. 빌드할 때 `.env`의 `UPDATE_*`(없으면 Actions 러너의 `GITHUB_API_URL`·`GITHUB_REPOSITORY`)로 실행 파일 옆 `update.json`을 만듭니다. 저장소가 비어 있으면(개발 빌드) 업데이트를 확인하지 않습니다.
 2. 앱이 `%LOCALAPPDATA%\Programs\<설치이름>`에서 실행 중이고 `HKCU\…\Uninstall\<설치이름>`의 `InstallLocation`이 그 폴더일 때만 동작합니다 (i-luncher나 앱 설치 프로그램이 만든 설치본). `bin\`에서 실행하는 개발 빌드는 건드리지 않습니다.
 3. 시작 5초 뒤 `releases/latest`를 확인하고, 태그 버전이 실행 중인 버전(`InformationalVersion`)보다 높으면 zip을 `%LOCALAPPDATA%\<설치이름>\updates`에 받습니다 (실행 파일이 들어 있는지 확인).
-4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`.
+4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`. 같은 앱 두 개가 함께 업데이트하면 먼저 끝난 쪽이 적용하고, 다시 시작도 앱이 떠 있지 않을 때 한 번만 합니다.
 5. 오프라인·권한 없음 등은 조용히 넘어가고 다음 실행 때 다시 확인합니다.
 
 ## 사용량 집계 (`AppUsage.cs`)

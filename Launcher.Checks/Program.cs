@@ -562,6 +562,15 @@ try
         Assert(Directory.Exists(Path.Combine(install, "dotnet")), "runtime folder kept");
         using (var updated = Registry.CurrentUser.OpenSubKey(key)) Equal("1.4.0", updated?.GetValue("DisplayVersion") as string, "DisplayVersion");
         Assert(!File.Exists(zip) && logText.Contains("updated to 1.4.0"), "package removed and logged");
+
+        // 같은 앱 두 사본의 둘째 업데이터: 패키지가 이미 적용돼 지워졌으면 실패로 남기지도, 앱을 또 켜지도 않음
+        string second = AppUpdater.BuildUpdaterScript(zip, install, "Tool.exe", sleeper.Id, log, "1.4.0", key, restart: true);
+        using var again = Process.Start(new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(second)))
+            { CreateNoWindow = true, UseShellExecute = false })!;
+        await again.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(90)).Token);
+        string secondLog = File.ReadAllText(log).Substring(logText.Length);
+        Assert(secondLog.Contains("package already applied") && !secondLog.Contains("failed"), "second updater stops quietly; log: " + secondLog);
     });
 
     Console.WriteLine("Notices");

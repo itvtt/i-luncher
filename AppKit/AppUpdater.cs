@@ -258,7 +258,10 @@ namespace ILuncher.AppKit
             string version, string uninstallKey, bool restart)
         {
             static string Quote(string value) => "'" + value.Replace("'", "''") + "'";
-            string start = restart ? "Start-Process -FilePath (Join-Path $target $exe) -WorkingDirectory $target" : "";
+            // 다시 시작은 그 앱이 아직 떠 있지 않을 때만 (같은 앱 두 개가 함께 업데이트하면 하나만 켜짐)
+            string start = restart
+                ? "if (-not (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Join-Path $target $exe) })) { Start-Process -FilePath (Join-Path $target $exe) -WorkingDirectory $target }"
+                : "";
             return string.Join("\n",
                 "$ErrorActionPreference = 'Stop'",
                 $"$zip = {Quote(zipPath)}; $target = {Quote(installDirectory)}; $exe = {Quote(executableName)}; $log = {Quote(logPath)}",
@@ -267,6 +270,8 @@ namespace ILuncher.AppKit
                 "try {",
                 $"  Log 'waiting for process {processId}'",
                 $"  Wait-Process -Id {processId} -Timeout 600 -ErrorAction SilentlyContinue",
+                // 같은 패키지를 다른 사본의 업데이터가 이미 적용하고 지웠으면 그쪽이 앱을 다시 켬
+                "  if (-not (Test-Path -LiteralPath $zip)) { Log 'package already applied'; return }",
                 "  Add-Type -AssemblyName System.IO.Compression.FileSystem",
                 "  $staging = Join-Path $env:TEMP ('AppUpdate_' + [guid]::NewGuid().ToString('N'))",
                 "  [IO.Compression.ZipFile]::ExtractToDirectory($zip, $staging)",
