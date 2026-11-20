@@ -14,7 +14,8 @@
 //   launch  = 실행 횟수
 // 모은 값은 날짜별로 5분마다 <API 서버>/launcher/usage 로 보내고, 못 보내면 %LOCALAPPDATA%\<앱>\usage-pending.json 에 두었다가 다시 보냄.
 // API 서버 주소: 설치된 i-luncher 의 launcher.env (API_SERVER), 없으면 앱 옆 update.json 의 Api 가 .../api/v3 일 때 그 앞부분.
-// 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지 않습니다.
+// 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
+// usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 // 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
 #nullable enable
 using System;
@@ -171,6 +172,8 @@ namespace ILuncher.AppKit
                     _days = new Dictionary<string, Dictionary<string, double[]>>();
                     app = _app;
                 }
+                // 개발 빌드: 버림. 같은 PC 에 설치된 앱의 대기 파일도 건드리지 않음
+                if (IsDevelopmentBuild()) return true;
                 using (var mutex = new Mutex(false, @"Local\AppUsage-" + app))
                 {
                     bool owned = false;
@@ -309,10 +312,17 @@ namespace ILuncher.AppKit
         public static string? Server()
         {
             if (!string.IsNullOrWhiteSpace(ServerOverride)) return ServerOverride!.Trim().TrimEnd('/');
-            string baseDirectory = AppContext.BaseDirectory.Replace('/', '\\');
-            if (baseDirectory.IndexOf(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                baseDirectory.IndexOf(@"\bin\Release\", StringComparison.OrdinalIgnoreCase) >= 0) return null;
+            if (IsDevelopmentBuild()) return null;
             return LauncherServer() ?? UpdateServer();
+        }
+
+        /// <summary>bin\Debug · bin\Release 에서 도는 개발 빌드 (ServerOverride 를 정하면 아님): 보내지도 파일에 두지도 않음</summary>
+        internal static bool IsDevelopmentBuild()
+        {
+            if (!string.IsNullOrWhiteSpace(ServerOverride)) return false;
+            string baseDirectory = AppContext.BaseDirectory.Replace('/', '\\');
+            return baseDirectory.IndexOf(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   baseDirectory.IndexOf(@"\bin\Release\", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>설치된 i-luncher 의 launcher.env 의 API_SERVER</summary>
