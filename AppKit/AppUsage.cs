@@ -15,10 +15,12 @@
 // 모은 값은 날짜별로 5분마다 <API 서버>/launcher/usage 로 보내고, 못 보내면 %LOCALAPPDATA%\<앱>\usage-pending.json 에 두었다가 다시 보냄.
 // API 서버 주소: 설치된 i-luncher 의 launcher.env (API_SERVER), 없으면 앱 옆 update.json 의 Api 가 .../api/v3 일 때 그 앞부분.
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지 않습니다.
+// 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
 #nullable enable
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -26,7 +28,6 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.Win32;
@@ -195,33 +196,34 @@ namespace ILuncher.AppKit
             finally { Interlocked.Exchange(ref _sending, 0); }
         }
 
-        internal static string Payload(string app, Dictionary<string, Dictionary<string, double[]>> days)
+        internal static string Payload(string app, Dictionary<string, Dictionary<string, double[]>> days) =>
+            "{\"app\":\"" + Safe(app) + "\",\"version\":\"" + Safe(Version()) + "\",\"user\":\"" + UserId() + "\",\"days\":" + DaysJson(days, 3) + "}";
+
+        /// <summary>{"YYYY-MM-DD":{"지표":[건수,양]}} (보낼 때와 대기 파일이 같은 모양)</summary>
+        private static string DaysJson(Dictionary<string, Dictionary<string, double[]>> days, int? digits)
         {
-            using var stream = new MemoryStream();
-            using (var json = new Utf8JsonWriter(stream))
+            var text = new StringBuilder("{");
+            foreach (var day in days.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
-                json.WriteStartObject();
-                json.WriteString("app", app);
-                json.WriteString("version", Version());
-                json.WriteString("user", UserId());
-                json.WriteStartObject("days");
-                foreach (var day in days.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                if (text.Length > 1) text.Append(',');
+                text.Append('"').Append(day.Key).Append("\":{");
+                bool first = true;
+                foreach (var metric in day.Value)
                 {
-                    json.WriteStartObject(day.Key);
-                    foreach (var metric in day.Value)
-                    {
-                        json.WriteStartArray(metric.Key);
-                        json.WriteNumberValue(Math.Round(metric.Value[0], 3));
-                        json.WriteNumberValue(Math.Round(metric.Value[1], 3));
-                        json.WriteEndArray();
-                    }
-                    json.WriteEndObject();
+                    if (!first) text.Append(',');
+                    first = false;
+                    text.Append('"').Append(metric.Key).Append("\":[").Append(Number(metric.Value[0], digits)).Append(',').Append(Number(metric.Value[1], digits)).Append(']');
                 }
-                json.WriteEndObject();
-                json.WriteEndObject();
+                text.Append('}');
             }
-            return Encoding.UTF8.GetString(stream.ToArray());
+            return text.Append('}').ToString();
         }
+
+        private static string Number(double value, int? digits) =>
+            (digits is int places ? Math.Round(value, places) : value).ToString("R", CultureInfo.InvariantCulture);
+
+        /// <summary>이름·버전에는 영문·숫자·.-_+ 만 (따옴표 등이 JSON 을 깨지 않게)</summary>
+        private static string Safe(string value) => Regex.Replace(value ?? "", "[^A-Za-z0-9._+-]", "");
 
         private static bool Post(string server, string app, Dictionary<string, Dictionary<string, double[]>> days, TimeSpan timeout)
         {
@@ -242,18 +244,29 @@ namespace ILuncher.AppKit
             try
             {
                 if (_pendingPath.Length == 0 || !File.Exists(_pendingPath)) return days;
-                using (var document = JsonDocument.Parse(File.ReadAllText(_pendingPath)))
-                    foreach (var day in document.RootElement.EnumerateObject())
-                    {
-                        if (day.Value.ValueKind != JsonValueKind.Object) continue;
-                        var metrics = days[day.Name] = new Dictionary<string, double[]>();
-                        foreach (var metric in day.Value.EnumerateObject())
-                            if (metric.Value.ValueKind == JsonValueKind.Array && metric.Value.GetArrayLength() == 2)
-                                metrics[metric.Name] = new[] { metric.Value[0].GetDouble(), metric.Value[1].GetDouble() };
-                    }
+                days = ParseDays(File.ReadAllText(_pendingPath));
                 File.Delete(_pendingPath);
             }
             catch { }
+            return days;
+        }
+
+        private static readonly Regex DayBlock = new Regex("\"(\\d{4}-\\d{2}-\\d{2})\"\\s*:\\s*\\{([^{}]*)\\}");
+        private static readonly Regex MetricPair = new Regex("\"([a-z0-9][a-z0-9._-]{0,39})\"\\s*:\\s*\\[\\s*([-+0-9.eE]+)\\s*,\\s*([-+0-9.eE]+)\\s*\\]");
+
+        /// <summary>DaysJson 이 쓴 모양을 다시 읽음 (맞지 않는 부분은 건너뜀)</summary>
+        internal static Dictionary<string, Dictionary<string, double[]>> ParseDays(string json)
+        {
+            var days = new Dictionary<string, Dictionary<string, double[]>>();
+            foreach (Match day in DayBlock.Matches(json ?? ""))
+            {
+                var metrics = new Dictionary<string, double[]>();
+                foreach (Match metric in MetricPair.Matches(day.Groups[2].Value))
+                    if (double.TryParse(metric.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double count) &&
+                        double.TryParse(metric.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double amount))
+                        metrics[metric.Groups[1].Value] = new[] { count, amount };
+                if (metrics.Count > 0) days[day.Groups[1].Value] = metrics;
+            }
             return days;
         }
 
@@ -262,26 +275,8 @@ namespace ILuncher.AppKit
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_pendingPath)!);
-                using var stream = new MemoryStream();
-                using (var json = new Utf8JsonWriter(stream))
-                {
-                    json.WriteStartObject();
-                    foreach (var day in days)
-                    {
-                        json.WriteStartObject(day.Key);
-                        foreach (var metric in day.Value)
-                        {
-                            json.WriteStartArray(metric.Key);
-                            json.WriteNumberValue(metric.Value[0]);
-                            json.WriteNumberValue(metric.Value[1]);
-                            json.WriteEndArray();
-                        }
-                        json.WriteEndObject();
-                    }
-                    json.WriteEndObject();
-                }
                 string temp = _pendingPath + ".tmp";
-                File.WriteAllBytes(temp, stream.ToArray());
+                File.WriteAllText(temp, DaysJson(days, null), new UTF8Encoding(false));
                 if (File.Exists(_pendingPath)) File.Delete(_pendingPath);
                 File.Move(temp, _pendingPath);
             }
@@ -360,14 +355,15 @@ namespace ILuncher.AppKit
             return server;
         }
 
+        /// <summary>앱 옆 update.json 의 문자열 값 하나 (AppKit.targets 가 만드는 한 줄짜리 파일)</summary>
         private static string? ReadUpdateJson(string name)
         {
             try
             {
                 string path = Path.Combine(AppContext.BaseDirectory, "update.json");
                 if (!File.Exists(path)) return null;
-                using var document = JsonDocument.Parse(File.ReadAllText(path));
-                return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                var match = Regex.Match(File.ReadAllText(path), "\"" + Regex.Escape(name) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                return match.Success ? Regex.Unescape(match.Groups[1].Value) : null;
             }
             catch { return null; }
         }

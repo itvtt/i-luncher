@@ -1,6 +1,6 @@
 // 부서 목록(API 서버 앱 목록)에 넣을 앱. 설명 · 상세 설명 · 스크린샷(media\)까지 들어 있으니 지어내지 말고 이 값을 그대로 씁니다.
 // 넣는 방법: python import_app_list.py (CDEP\README.md "부서 목록 넣기"). repository 는 저장소 이름만 (주소는 스크립트가 붙임).
-// 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 i-luncherasic-apps.json 입니다.
+// 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 i-luncher\basic-apps.json 입니다.
 {
   "schemaVersion": 1,
   "apps": [
@@ -51,6 +51,22 @@
         "file-shared-1.png",
         "file-shared-2.png",
         "file-shared-3.png"
+      ]
+    },
+    {
+      "id": "imperformance",
+      "name": "ImPerformance",
+      "repository": "ImPerformance",
+      "category": "업무",
+      "installName": "ImPerformance",
+      "order": 100,
+      "description": "자동화 • 업무 성과를 금액으로",
+      "details": "만든 앱과 원래 하던 업무의 효과를 재무성과(금액)로 보여 줍니다.\n\n주요 기능\n• 앱 사용량 자동 집계: 실제로 쓰는 시간과 앱마다의 작업량(캡처 · 비교 · 복사 용량 · 설비 알림 등)을 API 서버가 모음\n• 계산: 수량 × (개선 전 − 개선 후 분) × 시간당 인건비, 또는 단위당 금액\n• 연간 효과 · 기간 실적 · 절감 시간 · 인력 효율화(명), 분류별 합계\n• 원래 하던 업무 직접 입력 (횟수 × 주기 × 인원)\n• 항목마다 근거 한 줄, 엑셀(CSV) · 보고용 글 내보내기",
+      "author": "jy01.ahn",
+      "screenshots": [
+        "imperformance-1.png",
+        "imperformance-2.png",
+        "imperformance-3.png"
       ]
     }
   ]

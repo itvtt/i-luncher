@@ -53,7 +53,7 @@ protected override void OnStartup(StartupEventArgs e)
 
 ## 사용량 집계 (`AppUsage.cs`)
 
-앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`)에 모읍니다. ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 됩니다 (자체 업데이터가 따로 있는 앱).
+앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`, 코드는 `CDEP\relay.py` 의 `Usage`)에 모읍니다. ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 되고(자체 업데이터가 따로 있는 앱), 다른 DLL 을 쓰지 않아 실행 파일만 복사해 도는 서비스 사본(File Shared)에서도 동작합니다.
 
 ```csharp
 ILuncher.AppKit.AppUsage.Start();                                   // 시작 때 한 번 (상주·감시 앱은 UsageKind.Resident)
