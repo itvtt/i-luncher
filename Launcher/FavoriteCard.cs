@@ -21,6 +21,8 @@ public sealed class FavoriteCard(FavoriteProgram program)
     public ImageSource? Icon { get; } = CustomIcons.Load(program.Icon) ?? (program.IsWeb ? SiteInfo.Cached(program.Path) : FavoriteIcons.Load(program.Path));
     /// <summary>메뉴의 첫 줄: 프로그램은 실행, 웹사이트는 열기</summary>
     public string RunMenuText => IsWeb ? "열기" : "실행";
+    public string FavoriteMenuHeader => Program.Starred ? "즐겨찾기에서 빼기" : "즐겨찾기에 추가";
+    public string FavoriteGlyph => Program.Starred ? "\uE735" : "\uE734";
     /// <summary>파일 위치 열기 (웹사이트는 없음)</summary>
     public Visibility FolderMenuVisibility => IsWeb ? Visibility.Collapsed : Visibility.Visible;
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;

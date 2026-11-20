@@ -22,6 +22,17 @@ public partial class MainWindow
         SaveFavorites(removed ? $"{card.Name} 즐겨찾기에서 뺌" : $"{card.Name} 즐겨찾기에 추가");
     }
 
+    /// <summary>이 PC 프로그램 · 웹사이트의 우클릭 → 즐겨찾기에 추가 / 빼기 (등록만 해서는 즐겨찾기가 아님)</summary>
+    private void ProgramFavoriteMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not FavoriteCard card) return;
+        card.Program.Starred = !card.Program.Starred;
+        // 즐겨찾기에 넣으면 독 · 즐겨찾기의 맨 뒤로 (등록한 순서)
+        if (card.Program.Starred && _favorites.Remove(card.Program)) _favorites.Add(card.Program);
+        _programCards.Remove(card.Program);  // 메뉴 글자 · 별을 새로 그림
+        SaveFavorites(card.Program.Starred ? $"{card.Name} 즐겨찾기에 추가" : $"{card.Name} 즐겨찾기에서 뺌");
+    }
+
     /// <summary>이름을 바꾼 앱(FormerIds): 예전 id 로 된 즐겨찾기를 새 id 로 옮겨 저장</summary>
     private void MigrateFavorites(IReadOnlyList<Models.AppDefinition> apps)
     {

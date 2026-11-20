@@ -510,6 +510,7 @@
                                         <Button.ContextMenu>
                                             <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="{Binding RunMenuText}" Icon="&#xE768;" Tag="{Binding}" Click="FavoriteRunMenu_Click" />
+                                            <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="ProgramFavoriteMenu_Click" />
                                             <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
                                             <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" Visibility="{Binding FolderMenuVisibility}" />
                                             <Separator />
@@ -590,6 +591,7 @@
                                         <Button Style="{StaticResource DockItemStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
                                             <Button.ContextMenu>
                                                 <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem Header="{Binding FavoriteMenuHeader}" Icon="{Binding FavoriteGlyph}" Tag="{Binding}" Click="ProgramFavoriteMenu_Click" />
                                                 <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="FavoriteEditMenu_Click" />
                                                 <MenuItem Header="파일 위치 열기" Icon="&#xE838;" Tag="{Binding}" Click="FavoriteFolderMenu_Click" Visibility="{Binding FolderMenuVisibility}" />
                                                 <Separator />

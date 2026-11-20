@@ -948,7 +948,7 @@ public partial class MainWindow : Window
         else if (!store && _filter == "favorites")
         {
             _title = "즐겨찾기";
-            items = [.. pool.Where(card => card.IsFavorite), .. programs];
+            items = [.. pool.Where(card => card.IsFavorite), .. programs.Where(card => card.Program.Starred)];
         }
         else if (updates)
         {
@@ -990,9 +990,9 @@ public partial class MainWindow : Window
         if (!store && _filter == "favorites" && search.Length == 0)
         {
             EmptyStateTitle.Text = "즐겨찾기가 없습니다";
-            EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 아래 + 또는 끌어 놓기";
-            EmptyStateButton.Content = "프로그램 추가";
-            EmptyStateButton.Tag = "favorite-add";
+            EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 우클릭 → 즐겨찾기에 추가";
+            EmptyStateButton.Content = "설치됨";
+            EmptyStateButton.Tag = "installed";
         }
         else if (!store && _filter == "all" && search.Length == 0)
         {
@@ -1060,7 +1060,7 @@ public partial class MainWindow : Window
         {
             object? item = favorite.IsApp
                 ? _cards.FirstOrDefault(card => string.Equals(card.App.Id, favorite.AppId, StringComparison.OrdinalIgnoreCase))
-                : programs.FirstOrDefault(card => ReferenceEquals(card.Program, favorite));
+                : favorite.Starred ? programs.FirstOrDefault(card => ReferenceEquals(card.Program, favorite)) : null;
             if (item is not null) items.Add(item);
         }
         return items;
@@ -1107,7 +1107,7 @@ public partial class MainWindow : Window
                      .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
             AddItem(group.Key, group.Count(), "store", "category:" + group.Key, CategoryLook.Glyph(group.Key), 0);
         AddItem("설치됨", installed.Count + programs.Count, "installed", "all", "\uE8F1", 18);
-        int favorites = installed.Count(card => card.IsFavorite) + programs.Count;
+        int favorites = installed.Count(card => card.IsFavorite) + programs.Count(card => card.Program.Starred);
         if (favorites > 0 || _tab == "installed" && _filter == "favorites") AddItem("즐겨찾기", favorites, "installed", "favorites", "\uE735", 0);
         int updates = installed.Count(card => card.UpdateAvailable);
         if (updates > 0 || _tab == "installed" && _filter == "updates") AddItem("업데이트", updates, "installed", "updates", "\uE896", 0);
@@ -1187,6 +1187,7 @@ public partial class MainWindow : Window
         if (EmptyStateButton.Tag as string == "favorite-add") EditFavorite(null);
         else if (EmptyStateButton.Tag as string == "admin") OpenAdminMenu();
         else if (EmptyStateButton.Tag as string == "store") ShowTab("store");
+        else if (EmptyStateButton.Tag as string == "installed") ShowTab("installed");
         else
         {
             _filter = "all";

@@ -17,6 +17,8 @@ public sealed class FavoriteProgram
     public string AppId { get; set; } = "";
     /// <summary>고른 아이콘 (CustomIcons: 비우면 자동 = 프로그램 · 사이트 아이콘, "builtin:이름", 복사해 둔 그림 경로)</summary>
     public string Icon { get; set; } = "";
+    /// <summary>이 PC 프로그램 · 웹사이트를 즐겨찾기(별)에 넣었는지. 등록만 해서는 즐겨찾기가 아님 (설치됨에만 보임)</summary>
+    public bool Starred { get; set; }
     public bool IsApp => AppId.Length > 0;
     /// <summary>웹사이트 (누르면 기본 브라우저로 엶)</summary>
     [System.Text.Json.Serialization.JsonIgnore]
