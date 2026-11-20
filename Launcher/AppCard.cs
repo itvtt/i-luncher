@@ -33,6 +33,9 @@ public sealed class AppCard : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public AppDefinition App { get => _app; set { _app = value; NotifyAll(); } }
+    /// <summary>처음 낸 릴리스 날짜 (앱 페이지를 열 때 한 번 읽음)</summary>
+    public DateTimeOffset? FirstReleasedAt { get; set; }
+    public bool FirstReleaseLoaded { get; set; }
     public InstalledApp? Installed { get => _installed; set { _installed = value; NotifyAll(); } }
     public GitHubRelease? Latest { get => _latest; private set { _latest = value; NotifyAll(); } }
     public string? LatestError { get => _latestError; private set { _latestError = value; NotifyAll(); } }

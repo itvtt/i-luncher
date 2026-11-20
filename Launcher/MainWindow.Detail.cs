@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
@@ -46,6 +47,25 @@ public partial class MainWindow
         DetailShotsScroller.ScrollToLeftEnd();
         ShowPage();
         _ = LoadScreenshotsAsync(card);
+        _ = LoadFirstReleaseAsync(card);
+    }
+
+    /// <summary>최초 출시일: 앱마다 한 번 읽어 둠 (실패하면 칸을 비움)</summary>
+    private async Task LoadFirstReleaseAsync(AppCard card)
+    {
+        if (card.FirstReleaseLoaded || GitHubRepository.Parse(card.App.Repository, _settings.DefaultHost) is not { } repository) return;
+        card.FirstReleaseLoaded = true;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            card.FirstReleasedAt = await _github.GetFirstReleaseDateAsync(repository, timeout.Token);
+        }
+        catch (Exception error) when (error is GitHubApiException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            card.FirstReleaseLoaded = false;  // 다음에 다시
+            return;
+        }
+        if (ReferenceEquals(card, _detail)) FillDetail(card);
     }
 
     private void CloseDetail()
@@ -75,7 +95,18 @@ public partial class MainWindow
         string version = release?.Version is { } latest ? "v" + latest : release?.Tag ?? (card.Installed?.Version is { } own ? "v" + own : "—");
         facts.Add(new DetailFact("버전", version,
             card.Installed is { } installed ? (card.UpdateAvailable ? $"설치됨 v{installed.Version}" : "설치됨") : "설치 안 됨"));
+        if (release?.PublishedAt is { } updated)
+        {
+            var local = updated.ToLocalTime();
+            facts.Add(new DetailFact("최근 업데이트", When(local), local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
+        if (card.FirstReleasedAt is { } first)
+        {
+            var local = first.ToLocalTime();
+            facts.Add(new DetailFact("최초 출시", local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), ""));
+        }
         facts.Add(new DetailFact("분류", card.Category, ""));
+        if (card.App.Author?.Trim() is { Length: > 0 } author) facts.Add(new DetailFact("개발자", author, ""));
         if (release is not null && AppManager.ResolveKind(card.App, release) is var kind &&
             (kind == InstallKinds.Zip ? AppManager.SelectZipAsset(card.App, release) : AppManager.SelectSetupAsset(card.App, release)) is { Size: > 0 } asset)
             facts.Add(new DetailFact("크기", $"{asset.Size / 1048576.0:0.#} MB", kind == InstallKinds.Zip ? "zip" : "설치 프로그램"));

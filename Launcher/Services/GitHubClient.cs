@@ -270,6 +270,26 @@ public sealed class GitHubClient : IDisposable
         }
     }
 
+    /// <summary>처음 낸 릴리스의 날짜 (앱 페이지의 "최초 출시"). 초안은 빼고, 100개씩 5쪽까지 봄</summary>
+    public async Task<DateTimeOffset?> GetFirstReleaseDateAsync(GitHubRepository repository, CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset? first = null;
+        for (int page = 1; page <= 5; page++)
+        {
+            using var list = await SendJsonAsync(Request(HttpMethod.Get, repository, RepositoryUrl(repository) + $"/releases?per_page=100&page={page}"),
+                repository, cancellationToken).ConfigureAwait(false);
+            int count = 0;
+            foreach (var item in list.RootElement.EnumerateArray())
+            {
+                count++;
+                if (item.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True) continue;
+                if (ReadRelease(item).PublishedAt is { } published && (first is null || published < first)) first = published;
+            }
+            if (count < 100) break;
+        }
+        return first;
+    }
+
     private static GitHubRelease ReadRelease(JsonElement root)
     {
         string tag = String(root, "tag_name") ?? "";
