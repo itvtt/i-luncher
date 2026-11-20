@@ -9,7 +9,7 @@
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
-        Width="1100" Height="860" MinWidth="640" MinHeight="840"
+        Width="1100" Height="900" MinWidth="640" MinHeight="880"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Loaded="Window_Loaded"
@@ -372,7 +372,11 @@
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
 
                 <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 즐겨찾기 · 업데이트 · 검색) -->
-                <TextBlock x:Name="ViewHeading" Margin="30,22,30,4" FontSize="26" FontWeight="Bold" Foreground="#FFF5F5F7" TextTrimming="CharacterEllipsis" />
+                <StackPanel Margin="30,22,30,4">
+                    <TextBlock x:Name="ViewHeading" FontSize="26" FontWeight="Bold" Foreground="#FFF5F5F7" TextTrimming="CharacterEllipsis" />
+                    <!-- 설치됨: 분류별 필터 단추 (전체 · 분류마다 개수), 검색 중에는 숨김 -->
+                    <WrapPanel x:Name="InstalledChips" Margin="-4,14,0,0" Visibility="Collapsed" />
+                </StackPanel>
 
                 <!-- 런처 업데이트 -->
                 <Border x:Name="LauncherUpdateBanner" Grid.Row="1" MaxWidth="760" Margin="24,8,24,0" Padding="12,8" Background="#FF1A2E27" BorderBrush="#FF3C6B58" BorderThickness="1" CornerRadius="9" Visibility="Collapsed">
@@ -401,6 +405,22 @@
                                  아이콘을 누르면 바로 실행 (받기 · 업데이트는 상태 단추로도). 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
+                                    <!-- 실행 중: 칸 배경을 옅게 물들이고 테두리가 천천히 밝아졌다 어두워짐 (배지 없음) -->
+                                    <Border CornerRadius="18" Background="#1A5BE3A3" BorderBrush="#FF5BE3A3" BorderThickness="1.5" IsHitTestVisible="False"
+                                            Visibility="{Binding RunningVisibility}">
+                                        <Border.Triggers>
+                                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.35" To="1" Duration="0:0:1.4"
+                                                                         AutoReverse="True" RepeatBehavior="Forever">
+                                                            <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </EventTrigger>
+                                        </Border.Triggers>
+                                    </Border>
                                     <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="Cell_Click" ToolTip="{Binding RunToolTip}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -490,7 +510,7 @@
                                             <TextBlock Margin="0,3,0,0" FontSize="11" Foreground="#FF8E8E93" Text="{Binding Card.StoreMetaText}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Height="28" MinWidth="70" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
-                                                Content="{Binding Card.CellActionText}" Background="#FF2C2C2E" Foreground="{Binding Card.StoreCapsuleInk}" FontWeight="Bold"
+                                                Content="{Binding Card.StoreCapsuleText}" Background="#FF2C2C2E" Foreground="{Binding Card.StoreCapsuleInk}" FontWeight="Bold"
                                                 IsHitTestVisible="{Binding Card.CellActionEnabled}" ToolTip="{Binding Card.VersionToolTip}" AutomationProperties.Name="{Binding Card.CellActionText}" />
                                         <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="74,0,0,8" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                      IsIndeterminate="{Binding Card.IsIndeterminate}" Value="{Binding Card.ProgressValue, Mode=OneWay}" Visibility="{Binding Card.BusyVisibility}"

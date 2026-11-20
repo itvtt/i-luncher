@@ -970,6 +970,7 @@ public partial class MainWindow : Window
             items = [.. pool, .. programs];
         }
         ViewHeading.Text = _title;
+        RenderInstalledChips(search.Length == 0 && !store);
         // 스토어는 같은 앱 칸을 한 줄 모양으로
         if (store) items = items.Select(item => item is AppCard card ? new StoreRow(card) : item).ToList();
 
@@ -1155,6 +1156,32 @@ public partial class MainWindow : Window
             System.Windows.Automation.AutomationProperties.SetName(button, name);
             button.Click += (_, _) => ShowView(tab, filter);
             CategoryButtons.Children.Add(button);
+        }
+    }
+
+    /// <summary>설치됨 위쪽의 분류 필터 단추: 전체 · 분류마다 (설치한 앱 · 내 앱 · 내 PC 프로그램의 개수). 고른 것은 흰 단추</summary>
+    private void RenderInstalledChips(bool show)
+    {
+        InstalledChips.Children.Clear();
+        InstalledChips.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+        var categories = _cards.Where(InInstalled).Select(card => card.Category).Concat(ProgramCards().Select(card => card.Category)).ToList();
+        AddChip("전체", categories.Count, "all");
+        foreach (var group in categories.GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+                     .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+            AddChip(group.Key, group.Count(), "category:" + group.Key);
+
+        void AddChip(string name, int count, string filter)
+        {
+            bool on = _filter == filter;
+            var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            text.Inlines.Add(new System.Windows.Documents.Run(name));
+            text.Inlines.Add(new System.Windows.Documents.Run("  " + count) { FontWeight = FontWeights.Normal, Foreground = on ? Brushes.Gray : (Brush)FindResource("MutedTextBrush") });
+            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = text, Tag = on ? "on" : "off" };
+            if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
+            System.Windows.Automation.AutomationProperties.SetName(button, name);
+            button.Click += (_, _) => ShowView("installed", filter);
+            InstalledChips.Children.Add(button);
         }
     }
 

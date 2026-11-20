@@ -43,7 +43,7 @@ public sealed class AppCard : INotifyPropertyChanged
     public bool IsChecking { get => _checking; set { _checking = value; NotifyAll(); } }
     public bool IsBusy { get => _busy; private set { _busy = value; NotifyAll(); } }
     public string? BusyText { get => _busyText; private set { _busyText = value; Notify(); Notify(nameof(DescriptionText)); } }
-    public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); Notify(nameof(CellActionText)); } }
+    public double? Progress { get => _progress; private set { _progress = value; Notify(); Notify(nameof(IsIndeterminate)); Notify(nameof(ProgressValue)); Notify(nameof(CellActionText)); Notify(nameof(StoreCapsuleText)); } }
     public ImageSource? Icon
     {
         get => _icon;
@@ -184,7 +184,7 @@ public sealed class AppCard : INotifyPropertyChanged
             if (_running == value) return;
             _running = value;
             Notify(); Notify(nameof(CellStateText)); Notify(nameof(CellStateBrush)); Notify(nameof(RunningDotOpacity)); Notify(nameof(RunningVisibility));
-            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled)); Notify(nameof(CellPillVisibility)); Notify(nameof(StoreCapsuleInk));
+            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled)); Notify(nameof(CellPillVisibility)); Notify(nameof(StoreCapsuleInk)); Notify(nameof(StoreCapsuleText));
         }
     }
     public double RunningDotOpacity => IsRunning ? 1 : 0;
@@ -244,13 +244,15 @@ public sealed class AppCard : INotifyPropertyChanged
     };
 
     /// <summary>누를 수 있는 단추인지 (진행 중 · 확인 중 등은 글자만)</summary>
-    /// <summary>스토어 줄의 캡슐 단추 글자색 (앱스토어처럼 회색 캡슐에 파란 글씨, 실행 중은 초록)</summary>
-    public Brush StoreCapsuleInk => CellAction == CellActionKind.Running ? CellGreenBrush : StoreBlue;
+    /// <summary>스토어 줄의 캡슐 단추 글자색 (앱스토어처럼 회색 캡슐에 파란 글씨)</summary>
+    public Brush StoreCapsuleInk => StoreBlue;
+    /// <summary>스토어 줄의 캡슐 글자: 실행 중이어도 "열기" (누르면 그 창을 앞으로, 실행 중 표시는 설치됨 칸의 테두리로)</summary>
+    public string StoreCapsuleText => CellAction == CellActionKind.Running ? "열기" : CellActionText;
     private static readonly Brush StoreBlue = FrozenBrush(0x0A, 0x84, 0xFF);
     private static Brush FrozenBrush(byte r, byte g, byte b) { var brush = new SolidColorBrush(Color.FromRgb(r, g, b)); brush.Freeze(); return brush; }
 
     /// <summary>설치됨 탭의 이름 아래 단추: 열기는 아이콘을 누르면 되므로 숨김 (자리는 남겨 줄을 맞춤)</summary>
-    public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None ? Visibility.Hidden : Visibility.Visible;
+    public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None or CellActionKind.Running ? Visibility.Hidden : Visibility.Visible;
     public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;
 
     /// <summary>아이콘 밖 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>
