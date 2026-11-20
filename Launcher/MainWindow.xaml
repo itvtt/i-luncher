@@ -451,7 +451,7 @@
                                                       Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <StackPanel Margin="0,14,0,11">
+                                        <StackPanel Margin="0,26,0,12" VerticalAlignment="Center">
                                             <Grid Width="76" Height="76" HorizontalAlignment="Center">
                                                 <Grid Opacity="{Binding CellIconOpacity}">
                                                     <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
@@ -486,7 +486,7 @@
                                 </DataTemplate.Triggers>
                             </DataTemplate>
 
-                            <!-- 스토어 줄 (앱스토어처럼): 아이콘 · 이름 · 분류와 버전 · 설명 두 줄 · 오른쪽 단추(받기 · 열기 · 업데이트 · 진행 중).
+                            <!-- 스토어 줄 (앱스토어처럼): 아이콘 · 이름 · 한 줄 설명 · 오른쪽 단추(받기 · 열기 · 업데이트 · 진행 중).
                                  줄을 누르면 앱 페이지, 우클릭은 앱 칸과 같은 메뉴 -->
                             <DataTemplate DataType="{x:Type local:StoreRow}">
                                 <Border Height="88" Margin="10,0" Padding="2,0,4,0" BorderBrush="#FF2C2D32" BorderThickness="0,0,0,1" Style="{StaticResource StoreRowStyle}"
@@ -517,7 +517,6 @@
                                         <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
                                             <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Card.Name}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Margin="0,3,0,0" FontSize="12.5" Foreground="#FFAEAEB2" Text="{Binding Card.DescriptionText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.DescriptionText}" />
-                                            <TextBlock Margin="0,3,0,0" FontSize="11" Foreground="#FF8E8E93" Text="{Binding Card.StoreMetaText}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Height="28" MinWidth="70" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
                                                 Content="{Binding Card.StoreCapsuleText}" Background="#FF2C2C2E" Foreground="{Binding Card.StoreCapsuleInk}" FontWeight="Bold"
