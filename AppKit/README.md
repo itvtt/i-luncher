@@ -51,6 +51,29 @@ protected override void OnStartup(StartupEventArgs e)
 4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`.
 5. 오프라인·권한 없음 등은 조용히 넘어가고 다음 실행 때 다시 확인합니다.
 
+## 사용량 집계 (`AppUsage.cs`)
+
+앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`)에 모읍니다. ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 됩니다 (자체 업데이터가 따로 있는 앱).
+
+```csharp
+ILuncher.AppKit.AppUsage.Start();                                   // 시작 때 한 번 (상주·감시 앱은 UsageKind.Resident)
+ILuncher.AppKit.AppUsage.Count("capture");                          // 작업 한 건
+ILuncher.AppKit.AppUsage.Count("copy-bytes", bytes);                 // 작업 한 건 + 양
+using (ILuncher.AppKit.AppUsage.Measure("copy-time")) { /* … */ }   // 작업 한 건 + 걸린 초
+```
+
+| 지표 | 뜻 |
+|---|---|
+| `active` | 사용 시간(초): 이 앱 창이 맨 앞이고 마지막 입력이 2분 안 (10초마다 자동) |
+| `running` | 가동 시간(초, `Resident` 만): 앱이 떠 있고 사용자가 PC 앞에 있음 (잠금 아님, 입력 5분 안) |
+| `launch` | 실행 횟수 (자동) |
+| 그 밖 | 앱이 `Count`·`Measure` 로 남기는 작업 (영문 소문자·숫자·`.-_`, 40자까지) |
+
+- 5분마다 보내고, 못 보내면 `%LOCALAPPDATA%\<설치이름>\usage-pending.json` 에 두었다가 다시 보냅니다 (90일까지).
+- 서버 주소: 설치된 i-luncher 의 `launcher.env` 의 `API_SERVER`, 없으면 `update.json` 의 `Api` 가 `…/api/v3` 일 때 그 앞부분 (`UPDATE_GITHUB_API` 를 API 서버 중계로 둔 경우).
+- 사용자는 PC 이름·계정의 해시(12자리)로만 구분합니다. `bin\Debug`·`bin\Release` 에서 도는 개발 빌드는 보내지 않습니다.
+- API 서버도 따로 기록합니다: 앱이 시작할 때 묻는 자기 최신 릴리스(`check`), 릴리스 파일 받기(`download`). 아직 AppUsage 가 없는 앱도 시작·설치 수는 잡힙니다.
+
 ## 설정 (`.env`, 빌드할 때만)
 
 저장소에 `.env` 가 없으면 프로필 폴더(사용자 환경 변수 `APPS_ENV_DIR`)의 `<저장소 폴더 이름>.env` 를 읽습니다. 프로젝트 폴더에는 설정 파일을 두지 않는 것을 권장합니다.

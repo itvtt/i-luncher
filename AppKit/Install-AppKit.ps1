@@ -1,7 +1,7 @@
 ﻿# 앱 저장소에 i-luncher AppKit 을 넣습니다 (자체 업데이트 + Actions 릴리스). 여러 번 실행해도 됩니다 (키트 파일만 새로 고침).
 #   powershell -NoProfile -ExecutionPolicy Bypass -File AppKit\Install-AppKit.ps1 -Project <앱 저장소>\MyApp\MyApp.csproj [-RepositoryRoot <앱 저장소>]
 # 하는 일:
-#   <프로젝트 폴더>\AppKit\AppUpdater.cs, AppKit.targets    복사 (원본이 바뀌면 다시 실행해 갱신)
+#   <프로젝트 폴더>\AppKit\AppUpdater.cs, AppUsage.cs, AppKit.targets    복사 (원본이 바뀌면 다시 실행해 갱신)
 #   <프로젝트>.csproj                                         <Import Project="AppKit\AppKit.targets" /> 추가 (없을 때만)
 #   <저장소>\build\Publish-App.ps1, Get-NextVersion.ps1, New-GitHubRelease.ps1   복사
 #   <저장소>\.github\workflows\release.yml                    없을 때만 만듦 (있으면 release-appkit.yml 로 만들고 알림)
@@ -34,7 +34,7 @@ $relativeProject = $projectPath.Substring($RepositoryRoot.Length).TrimStart('\')
 # 1. 키트 파일
 $target = Join-Path $projectDir 'AppKit'
 New-Item -ItemType Directory -Force -Path $target | Out-Null
-foreach ($file in 'AppUpdater.cs', 'AppKit.targets') { Copy-Item -LiteralPath (Join-Path $kit $file) -Destination (Join-Path $target $file) -Force }
+foreach ($file in 'AppUpdater.cs', 'AppUsage.cs', 'AppKit.targets') { Copy-Item -LiteralPath (Join-Path $kit $file) -Destination (Join-Path $target $file) -Force }
 Write-Host "Kit files -> $target"
 
 # 2. 프로젝트에 Import
@@ -104,5 +104,6 @@ Write-Host @'
             Shutdown();
         }
     }));
+    ILuncher.AppKit.AppUsage.Start();   // 사용 시간·작업량 집계 (상주·감시 앱은 AppUsage.Start(ILuncher.AppKit.UsageKind.Resident))
 '@
 Write-Host "Install name (folder, Windows apps list, release zip): $name  ->  $name-win-x64.zip"

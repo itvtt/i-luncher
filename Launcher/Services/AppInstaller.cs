@@ -197,6 +197,7 @@ public sealed class AppInstaller
         CancellationToken cancellationToken = default)
     {
         string target = GetInstallDirectory(app);
+        bool update = Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any();
         Directory.CreateDirectory(_programsRoot);
         // 같은 드라이브의 임시 폴더: 옮기기가 빠르고, 설치 폴더 이름과 겹치지 않음
         string staging = Path.Combine(_programsRoot, $".{app.EffectiveInstallName}.new-{Guid.NewGuid():N}");
@@ -254,6 +255,7 @@ public sealed class AppInstaller
             Register(app, target, installedExecutable, versionText);
             TryCreateShortcut(app, installedExecutable, target);
             RemoveFormerInstalls(app);
+            ILuncher.AppKit.AppUsage.Count(update ? "update" : "install");
             return Detect(app) ?? throw new IOException("설치한 앱을 확인하지 못했습니다: " + target);
         }
         finally

@@ -51,6 +51,7 @@ public partial class App : Application
         var settings = LauncherSettings.Load(Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data ? data : null);
         var window = new MainWindow(settings);
         MainWindow = window;
+        ILuncher.AppKit.AppUsage.Start(app: "i-luncher");
         window.EnableTray();
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray), null, -1, executeOnlyOnce: false);

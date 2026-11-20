@@ -31,6 +31,8 @@
   <ItemGroup>
     <!-- 앱들과 같은 자체 업데이터 (AppKit) 로 런처도 업데이트 -->
     <Compile Include="..\AppKit\AppUpdater.cs" Link="AppKit\AppUpdater.cs" />
+    <!-- 사용 시간과 설치·업데이트 건수 집계 (API 서버 /launcher/usage) -->
+    <Compile Include="..\AppKit\AppUsage.cs" Link="AppKit\AppUsage.cs" />
     <InternalsVisibleTo Include="Launcher.Checks" />
   </ItemGroup>
 

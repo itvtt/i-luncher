@@ -33,6 +33,12 @@ i-luncher가 쓰는 API(키 없이 읽고, 고칠 때만 관리자 비밀번호 
     GET  /launcher/media/<이름>     앱 페이지 스크린샷(PNG·JPG, 이름 = 내용의 SHA-256 앞 16자리). 앱 목록의 screenshots가 이 이름을 씀
     POST /launcher/media           이미지 올리기(본문 = PNG·JPG, 8 MB까지) → {name}. 어느 앱도 쓰지 않는 이미지는 하루 뒤 지움
 
+앱 사용량(키 없음, 집계만. 데이터 폴더의 usage\YYYY-MM.json, ImPerformance 가 읽어 성과 금액으로 환산)
+    POST /launcher/usage           앱이 보냄(AppKit AppUsage): {app, version, user(해시), days: {YYYY-MM-DD: {지표: [건수, 양]}}}
+                                   active·running = 사용·가동 시간(초), launch = 실행, 그 밖에 앱마다의 작업 지표
+                                   GitHub 중계도 자동 기록: 앱 자신의 releases/latest 확인 = check, 릴리스 파일 받기 = download
+    GET  /launcher/usage?from=YYYY-MM-DD&to=YYYY-MM-DD   앱별 {users, pcs, userDays, pcDays, metrics, months}, since = 첫 기록일
+
 EQ Status가 쓰는 API(앱에 내장된 키 X-EQStatus-API-Key, SETTINGS의 EQUIPMENT_API_KEY를 쓸 때만 확인)
     GET  /api/v1/equipment-status  설비 상태 {items: [{line, sdwt, process, equipmentId, status, hours, downTime, comment}], updatedAt}
                                    SETTINGS의 EQUIPMENT_DB_*(MySQL)를 EQUIPMENT_REFRESH_SECONDS마다 읽어 두고 ETag로 바뀐 경우에만 내려 줌
@@ -78,6 +84,7 @@ import ipaddress
 import json
 import logging
 import logging.handlers
+import math
 import os
 import queue
 import re
@@ -147,7 +154,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.19.1"
+VERSION = "2.20.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -385,6 +392,8 @@ class Config:
         self.github_sync_seconds = number("RELAY_GITHUB_SYNC_SECONDS", 0) or self.github_sync_minutes * 60
         # i-luncher: its app list and notices, and the GitHub relay that lets apps read private releases without a token.
         self.launcher_dir = directory("LAUNCHER_DIR", "launcher", None)
+        # App usage per day (apps' AppKit AppUsage reports + what the GitHub relay sees), read by ImPerformance.
+        self.usage_dir = self.data_root / "usage"
         self.github_proxy_repos = [item.strip().lower() for item in text("LAUNCHER_GITHUB_REPOS").split(",") if item.strip()]
         # Without RELAY_GITHUB_TOKEN the relay asks this PC's git credential helper (the account that pushes the repos).
         self.github_git_credential = text("RELAY_GITHUB_GIT_CREDENTIAL", "1") != "0"
@@ -853,6 +862,190 @@ class Clients:
         with self._lock:
             entries = [dict(entry, features=set(entry["features"])) for entry in self._seen.values()]
         return sorted(entries, key=lambda entry: entry["last"], reverse=True)
+
+
+# ── 앱 사용량 (ImPerformance 성과 계산용) ────────────────────────────────────────────────────────────
+
+USAGE_APP = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+USAGE_USER = re.compile(r"^[a-f0-9]{6,64}$")
+USAGE_METRIC = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
+USAGE_DAY = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+USAGE_BODY_MAX = 65536
+USAGE_TIME_METRICS = ("active", "running")  # seconds: at most a day's worth per post
+USAGE_COUNT_MAX = 1_000_000
+USAGE_AMOUNT_MAX = 1e15  # bytes and the like
+USAGE_FLUSH_SECONDS = 15
+
+
+class Usage:
+    """How much each app is really used, per day: the apps' own reports (AppKit AppUsage: active/running seconds, launches and
+    each app's work counts) and what the GitHub relay sees (an app's own update check = a start, a release download = an
+    install or update). Kept per month in <data>\\usage\\YYYY-MM.json; users are hashes only (the apps hash PC and account,
+    the relay hashes the address), the read API returns counts only."""
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+        self._lock = threading.Lock()
+        self._months = {}
+        self._dirty = set()
+        self._flusher = threading.Thread(target=self._flush_loop, name="usage-flush", daemon=True)
+        self._flusher.start()
+
+    # Recording -------------------------------------------------------------------------------------
+
+    def add_report(self, body, address: str) -> int:
+        """An app's POST /launcher/usage: {app, version, user, days: {YYYY-MM-DD: {metric: [count, amount]}}}. Returns the days kept."""
+        if not isinstance(body, dict):
+            raise RelayError(400, "JSON 객체가 필요합니다.")
+        app, user, days = body.get("app"), body.get("user"), body.get("days")
+        if not isinstance(app, str) or not USAGE_APP.match(app):
+            raise RelayError(400, "app 이름이 올바르지 않습니다.")
+        if not isinstance(user, str) or not USAGE_USER.match(user):
+            raise RelayError(400, "user 가 올바르지 않습니다.")
+        if not isinstance(days, dict) or len(days) > 120:
+            raise RelayError(400, "days 가 올바르지 않습니다.")
+        today = now().astimezone().date()
+        clean = {}
+        for day, metrics in days.items():
+            if not isinstance(day, str) or not USAGE_DAY.match(day) or not isinstance(metrics, dict) or len(metrics) > 64:
+                raise RelayError(400, "days 형식이 올바르지 않습니다.")
+            try:
+                moment = datetime.strptime(day, "%Y-%m-%d").date()
+            except ValueError:
+                raise RelayError(400, "날짜가 올바르지 않습니다.")
+            if not (today - timedelta(days=100) <= moment <= today + timedelta(days=1)):
+                continue  # too old or from a PC with a wrong clock: dropped, not refused (the app would only send it again)
+            kept = {}
+            for name, value in metrics.items():
+                if not isinstance(name, str) or not USAGE_METRIC.match(name):
+                    raise RelayError(400, "지표 이름이 올바르지 않습니다.")
+                if not isinstance(value, list) or len(value) != 2 or not all(isinstance(part, (int, float)) and not isinstance(part, bool) for part in value):
+                    raise RelayError(400, "지표 값은 [건수, 양] 입니다.")
+                count, amount = (float(part) for part in value)
+                if not all(math.isfinite(part) and part >= 0 for part in (count, amount)):
+                    raise RelayError(400, "지표 값이 올바르지 않습니다.")
+                amount = min(amount, 86400.0) if name in USAGE_TIME_METRICS else min(amount, USAGE_AMOUNT_MAX)
+                kept[name] = (min(count, USAGE_COUNT_MAX), amount)
+            clean[day] = kept
+        with self._lock:
+            for day, metrics in clean.items():
+                entry = self._entry(day, app)
+                if user not in entry["users"]:
+                    entry["users"].append(user)
+                for name, (count, amount) in metrics.items():
+                    total = entry["metrics"].setdefault(name, [0, 0])
+                    total[0] = round(total[0] + count, 3)
+                    total[1] = round(total[1] + amount, 3)
+        return len(clean)
+
+    def observe_github(self, parts: list, agent: str, accept: str, address: str) -> None:
+        """The GitHub relay's view: an app asking for its own latest release (User-Agent product = repository name) has just
+        started; a release file streamed as octet-stream is an install or update. Counts apps that do not report yet."""
+        if len(parts) < 4 or parts[0] != "repos":
+            return
+        name, tail = parts[2], parts[3:]
+        if not USAGE_APP.match(name):
+            return
+        product = (agent or "").split("/", 1)[0].strip().lower()
+        if tail == ["releases", "latest"] and product == name.lower():
+            metric = "check"
+        elif len(tail) == 3 and tail[:2] == ["releases", "assets"] and "octet-stream" in (accept or "").lower():
+            metric = "download"
+        else:
+            return
+        day = now().astimezone().strftime("%Y-%m-%d")
+        pc = sha256_hex(("relay:" + address).encode("utf-8"))[:12]
+        with self._lock:
+            entry = self._entry(day, name)
+            if pc not in entry["pcs"]:
+                entry["pcs"].append(pc)
+            total = entry["metrics"].setdefault(metric, [0, 0])
+            total[0] += 1
+
+    def _entry(self, day: str, app: str) -> dict:
+        month = self._month(day[:7])
+        self._dirty.add(day[:7])
+        apps = month["days"].setdefault(day, {})
+        entry = apps.setdefault(app, {})
+        entry.setdefault("users", [])
+        entry.setdefault("pcs", [])
+        entry.setdefault("metrics", {})
+        return entry
+
+    def _month(self, key: str) -> dict:
+        month = self._months.get(key)
+        if month is None:
+            data = read_json(self.directory / f"{key}.json")
+            month = data if isinstance(data, dict) and isinstance(data.get("days"), dict) else {"days": {}}
+            self._months[key] = month
+        return month
+
+    # Reading ---------------------------------------------------------------------------------------
+
+    def summary(self, start: str, end: str) -> dict:
+        """Totals per app between two days (both included): users (app reports) and pcs (relay), user-days, metrics and the same per month."""
+        for value in (start, end):
+            if not USAGE_DAY.match(value or ""):
+                raise RelayError(400, "from·to 는 YYYY-MM-DD 입니다.")
+        if start > end:
+            start, end = end, start
+        apps, since = {}, None
+        with self._lock:
+            keys = sorted(set(self._months) | {path.stem for path in self._files()})
+            for key in keys:
+                month = self._month(key)
+                for day in sorted(month["days"]):
+                    since = day if since is None or day < since else since
+                    if not (start <= day <= end):
+                        continue
+                    for app, entry in month["days"][day].items():
+                        total = apps.setdefault(app, {"users": set(), "pcs": set(), "userDays": 0, "pcDays": 0, "metrics": {}, "months": {}})
+                        months = total["months"].setdefault(day[:7], {"users": set(), "userDays": 0, "pcDays": 0, "metrics": {}})
+                        users, pcs = entry.get("users", []), entry.get("pcs", [])
+                        for target in (total, months):
+                            target["users"].update(users)
+                            target["userDays"] += len(users)
+                            target["pcDays"] += len(pcs)
+                            for name, (count, amount) in entry.get("metrics", {}).items():
+                                summed = target["metrics"].setdefault(name, [0, 0])
+                                summed[0] = round(summed[0] + count, 3)
+                                summed[1] = round(summed[1] + amount, 3)
+                        total["pcs"].update(pcs)
+        for total in apps.values():
+            total["users"], total["pcs"] = len(total["users"]), len(total["pcs"])
+            for months in total["months"].values():
+                months["users"] = len(months["users"])
+        return {"from": start, "to": end, "since": since, "today": now().astimezone().strftime("%Y-%m-%d"), "apps": apps}
+
+    def _files(self) -> list:
+        try:
+            return [path for path in self.directory.glob("*.json") if re.match(r"^[0-9]{4}-[0-9]{2}$", path.stem)]
+        except OSError:
+            return []
+
+    # Saving ----------------------------------------------------------------------------------------
+
+    def flush(self) -> None:
+        with self._lock:
+            pending = [(key, json.dumps(self._months[key], ensure_ascii=False, separators=(",", ":")).encode("utf-8")) for key in sorted(self._dirty)]
+            self._dirty.clear()
+        if pending:
+            self.directory.mkdir(parents=True, exist_ok=True)
+        for key, data in pending:
+            try:
+                atomic_write(self.directory / f"{key}.json", data)
+            except OSError:
+                log.exception("usage %s not saved", key)
+                with self._lock:
+                    self._dirty.add(key)
+
+    def _flush_loop(self) -> None:
+        while True:
+            time.sleep(USAGE_FLUSH_SECONDS)
+            try:
+                self.flush()
+            except Exception:
+                log.exception("usage flush failed")
 
 
 # ── 문제 보고 ─────────────────────────────────────────────────────────────────────────────────────────
@@ -3352,6 +3545,7 @@ class RelayServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.limiter = RateLimiter()
         self.notifier = Notifier(config.webhook_url)
         self.clients = Clients()
+        self.usage = Usage(config.usage_dir)
         self.started = now()
         super().__init__((config.bind, config.port), handler)
 
@@ -3408,6 +3602,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise RelayError(405, "GitHub 중계는 읽기(GET)만 합니다.")
             self._limit("github", 3000, 3600)
             self.server.clients.touch(self.client_address[0], self.headers.get("User-Agent", ""), "github")
+            self.server.usage.observe_github(parts[2:], self.headers.get("User-Agent", ""), self.headers.get("Accept", ""), self.client_address[0])
             return self.server.github.request(self, parts[2:])
         if parts[:1] == ["launcher"]:
             return self._launcher(method, parts[1:])
@@ -3590,6 +3785,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json(200, catalog, {"ETag": etag})
         if parts == ["notices"] and method == "GET":
             return self._json(200, store.notices())
+        if parts == ["usage"] and method == "POST":
+            # Apps' usage reports (AppKit AppUsage): open like the app list, small, counts only.
+            self._limit("usage", 1200, 3600)
+            length = self.headers.get("Content-Length")
+            if length is not None and length.isdigit() and int(length) > USAGE_BODY_MAX:
+                raise RelayError(413, "사용량은 한 번에 64KB까지 받습니다.")
+            body = self._body()
+            if len(body) > USAGE_BODY_MAX:
+                raise RelayError(413, "사용량은 한 번에 64KB까지 받습니다.")
+            try:
+                report = json.loads(body.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                raise RelayError(400, "형식이 올바르지 않습니다.")
+            return self._json(200, {"days": self.server.usage.add_report(report, self.client_address[0])})
+        if parts == ["usage"] and method == "GET":
+            today = now().astimezone().strftime("%Y-%m-%d")
+            start = (self.query.get("from") or [today[:4] + "-01-01"])[0]
+            end = (self.query.get("to") or [today])[0]
+            return self._json(200, self.server.usage.summary(start, end))
         if len(parts) == 2 and parts[0] == "media" and method == "GET":
             # The app pages' screenshots: open like the app list, named by content (never changes).
             path = store.media_file(parts[1])
@@ -3610,7 +3824,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 log.info("launcher catalog saved from %s: %d apps", self.client_address[0], len(saved["apps"]))
                 return self._json(200, saved)
             return self._json(200, store.save_notices(body.get("text"), revision))
-        raise RelayError(404 if parts not in (["catalog"], ["notices"], ["media"]) else 405, "찾을 수 없는 주소입니다.")
+        raise RelayError(404 if parts not in (["catalog"], ["notices"], ["media"], ["usage"]) else 405, "찾을 수 없는 주소입니다.")
 
     def public_base(self) -> str:
         """How the client reached this server (scheme and Host): GitHub relay answers point back the same way."""
@@ -4497,7 +4711,8 @@ BACKUP_NAME = re.compile(r"^store-[0-9]{8}-[0-9]{6}\.zip$")
 
 
 def store_folders(config: Config) -> list:
-    return [("skills", config.skills_dir), ("plugins", config.plugins_dir), ("announcements", config.announcements_dir), ("launcher", config.launcher_dir)]
+    return [("skills", config.skills_dir), ("plugins", config.plugins_dir), ("announcements", config.announcements_dir), ("launcher", config.launcher_dir),
+            ("usage", config.usage_dir)]
 
 
 def store_backups(config: Config) -> list:
@@ -4717,6 +4932,7 @@ def main(argv: list | None = None) -> int:
     finally:
         stop.set()
         server.server_close()
+        server.usage.flush()
         log.info("중계 서버 종료")
     return 0
 

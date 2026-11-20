@@ -1199,6 +1199,57 @@ class LauncherApiTest(unittest.TestCase):
         status, body, _ = self.call("GET", "/api/v3/repos/owner1/app/contents/" + urllib.parse.quote("공지.txt") + "?ref=main", headers={"Accept": "application/vnd.github.v3.raw"})
         self.assertEqual((status, body.decode()), (200, "공지"))
 
+    def usage_days(self, offset=0):
+        return (relay.now().astimezone() + relay.timedelta(days=offset)).strftime("%Y-%m-%d")
+
+    def test_usage_reports_add_up_per_day_and_app_and_survive_a_restart(self):
+        today, yesterday = self.usage_days(), self.usage_days(-1)
+        first = {"app": "Capture", "version": "1.0.9", "user": "a1b2c3d4e5f6",
+                 "days": {yesterday: {"active": [0, 100.5], "launch": [1, 0]}, today: {"active": [0, 90000], "capture": [3, 0]}}}
+        second = {"app": "Capture", "version": "1.0.9", "user": "0f0f0f0f0f0f", "days": {today: {"capture": [2, 0], "record": [1, 42.5]}}}
+        for report in (first, second):
+            status, body, _ = self.call("POST", "/launcher/usage", report)
+            self.assertEqual(status, 200, body)
+        status, body, _ = self.call("GET", f"/launcher/usage?from={yesterday}&to={today}")
+        self.assertEqual(status, 200, body)
+        summary = json.loads(body)
+        capture = summary["apps"]["Capture"]
+        self.assertEqual((capture["users"], capture["userDays"]), (2, 3), "two people, three person-days")
+        self.assertEqual(capture["metrics"]["capture"], [5, 0])
+        self.assertEqual(capture["metrics"]["active"], [0, 100.5 + 86400], "a day holds at most 86,400 seconds per report")
+        self.assertEqual(capture["metrics"]["record"], [1, 42.5])
+        self.assertEqual(summary["since"], yesterday)
+        self.assertNotIn("a1b2c3d4e5f6", body.decode(), "counts only, no user ids")
+        self.assertEqual(sum(month["metrics"]["capture"][0] for month in capture["months"].values()), 5)
+        status, body, _ = self.call("GET", f"/launcher/usage?from={today}&to={today}")
+        self.assertEqual(json.loads(body)["apps"]["Capture"]["metrics"].get("launch"), None, "only the asked days")
+        self.server.usage.flush()
+        self.assertTrue(list((self.root / "usage").glob("*.json")), "kept in the data folder")
+        again = relay.Usage(self.root / "usage")
+        self.assertEqual(again.summary(yesterday, today)["apps"]["Capture"]["metrics"]["capture"], [5, 0], "read back after a restart")
+
+    def test_usage_refuses_bad_reports_and_drops_days_out_of_range(self):
+        good = {"app": "Capture", "user": "a1b2c3d4e5f6", "days": {self.usage_days(): {"capture": [1, 0]}}}
+        for bad in ({**good, "app": "bad name"}, {**good, "user": "Kim"}, {**good, "days": {self.usage_days(): {"Capture!": [1, 0]}}},
+                    {**good, "days": {self.usage_days(): {"capture": [1]}}}, {**good, "days": {self.usage_days(): {"capture": [-1, 0]}}},
+                    {**good, "days": {"2026-13-40": {"capture": [1, 0]}}}, ["not", "an", "object"]):
+            self.assertEqual(self.call("POST", "/launcher/usage", bad)[0], 400, bad)
+        status, body, _ = self.call("POST", "/launcher/usage", {**good, "days": {self.usage_days(-400): {"capture": [1, 0]}}})
+        self.assertEqual((status, json.loads(body)["days"]), (200, 0), "a year-old day is dropped, not refused (the app would only send it again)")
+        huge = {**good, "days": {self.usage_days(): {f"m{index}": [1, 0] for index in range(60)}}, "pad": "x" * 70000}
+        self.assertEqual(self.call("POST", "/launcher/usage", huge)[0], 413)
+        self.assertEqual(self.call("GET", "/launcher/usage?from=yesterday")[0], 400)
+
+    def test_usage_counts_app_starts_and_downloads_seen_by_the_github_relay(self):
+        self.assertEqual(self.call("GET", "/api/v3/repos/owner1/app/releases/latest", headers={"User-Agent": "App/1.2.0"})[0], 200)
+        self.call("GET", "/api/v3/repos/owner1/app/releases/latest", headers={"User-Agent": "i-luncher/1.4.0"})
+        self.call("GET", "/api/v3/repos/owner1/app/releases/assets/7")
+        self.call("GET", "/api/v3/repos/owner1/app/releases/assets/7", headers={"Accept": "application/octet-stream", "User-Agent": "i-luncher/1.4.0"})
+        app = json.loads(self.call("GET", "/launcher/usage")[1])["apps"]["app"]
+        self.assertEqual(app["metrics"]["check"], [1, 0], "the app's own update check is a start; the launcher's check of it is not")
+        self.assertEqual(app["metrics"]["download"], [1, 0], "only the file itself counts, not its JSON")
+        self.assertEqual((app["pcs"], app["users"]), (1, 0), "relay-seen PCs are kept apart from the apps' users")
+
     def test_github_relay_opens_only_allowed_repositories_and_reads(self):
         self.assertEqual(self.call("GET", "/api/v3/repos/other/tool")[0], 404, "another account's repository is closed")
         self.call("PUT", "/launcher/catalog", {"apps": [{"id": "tool", "name": "Tool", "repository": "https://github.com/other/tool.git"}],
