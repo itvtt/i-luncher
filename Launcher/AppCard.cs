@@ -184,7 +184,7 @@ public sealed class AppCard : INotifyPropertyChanged
             if (_running == value) return;
             _running = value;
             Notify(); Notify(nameof(CellStateText)); Notify(nameof(CellStateBrush)); Notify(nameof(RunningDotOpacity)); Notify(nameof(RunningVisibility));
-            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled)); Notify(nameof(CellPillVisibility));
+            Notify(nameof(CellAction)); Notify(nameof(CellActionText)); Notify(nameof(CellActionBackground)); Notify(nameof(CellActionInk)); Notify(nameof(CellActionEnabled)); Notify(nameof(CellPillVisibility)); Notify(nameof(StoreCapsuleInk));
         }
     }
     public double RunningDotOpacity => IsRunning ? 1 : 0;
@@ -244,6 +244,11 @@ public sealed class AppCard : INotifyPropertyChanged
     };
 
     /// <summary>누를 수 있는 단추인지 (진행 중 · 확인 중 등은 글자만)</summary>
+    /// <summary>스토어 줄의 캡슐 단추 글자색 (앱스토어처럼 회색 캡슐에 파란 글씨, 실행 중은 초록)</summary>
+    public Brush StoreCapsuleInk => CellAction == CellActionKind.Running ? CellGreenBrush : StoreBlue;
+    private static readonly Brush StoreBlue = FrozenBrush(0x0A, 0x84, 0xFF);
+    private static Brush FrozenBrush(byte r, byte g, byte b) { var brush = new SolidColorBrush(Color.FromRgb(r, g, b)); brush.Freeze(); return brush; }
+
     /// <summary>설치됨 탭의 이름 아래 단추: 열기는 아이콘을 누르면 되므로 숨김 (자리는 남겨 줄을 맞춤)</summary>
     public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None ? Visibility.Hidden : Visibility.Visible;
     public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;

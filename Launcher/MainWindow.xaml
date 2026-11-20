@@ -206,10 +206,11 @@
             </Style>
             <!-- 앱 페이지의 큰 버튼: 불투명한 흰 둥근 사각에 옅은 그림자, 아이콘 + 글자는 그 앱 색의 진한 톤(Ink) -->
             <Style x:Key="DetailActionButtonStyle" TargetType="Button">
-                <Setter Property="Height" Value="38" />
-                <Setter Property="MinWidth" Value="116" />
-                <Setter Property="Padding" Value="20,0,22,0" />
-                <Setter Property="Background" Value="White" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="MinWidth" Value="92" />
+                <Setter Property="Padding" Value="22,0" />
+                <Setter Property="Background" Value="#FF0A84FF" />
+                <Setter Property="Foreground" Value="White" />
                 <Setter Property="FontSize" Value="14" />
                 <Setter Property="FontWeight" Value="Bold" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -219,17 +220,14 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
                             <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
-                                <Border CornerRadius="10" Background="#40000000" Margin="2,3,2,-2">
-                                    <Border.Effect><BlurEffect Radius="8" /></Border.Effect>
-                                </Border>
-                                <Border x:Name="Face" CornerRadius="10" Background="{TemplateBinding Background}">
+                                <Border x:Name="Face" CornerRadius="16" Background="{TemplateBinding Background}">
                                     <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </Grid>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FFF4F4F7" /></Trigger>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Face" Property="Background" Value="#FF3395FF" /></Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Face" Property="Background" Value="#FFE9E9EE" />
+                                    <Setter TargetName="Face" Property="Background" Value="#FF0071E3" />
                                     <Setter TargetName="Root" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97" /></Setter.Value></Setter>
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.6" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
@@ -240,10 +238,10 @@
             </Style>
             <!-- 스토어 줄: 둥근 판, 마우스를 올리면 조금 밝게 (누르면 앱 페이지) -->
             <Style x:Key="StoreRowStyle" TargetType="Border">
-                <Setter Property="Background" Value="#FF232428" />
+                <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#FF2B2C31" /></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#FF1E1F23" /></Trigger>
                 </Style.Triggers>
             </Style>
 <!-- 제목줄 로고: 모양 없는 버튼 -->
@@ -461,7 +459,7 @@
                             <!-- 스토어 줄 (앱스토어처럼): 아이콘 · 이름 · 분류와 버전 · 설명 두 줄 · 오른쪽 단추(받기 · 열기 · 업데이트 · 진행 중).
                                  줄을 누르면 앱 페이지, 우클릭은 앱 칸과 같은 메뉴 -->
                             <DataTemplate DataType="{x:Type local:StoreRow}">
-                                <Border Height="96" Margin="6" Padding="14,0" CornerRadius="14" BorderBrush="#12FFFFFF" BorderThickness="1" Style="{StaticResource StoreRowStyle}"
+                                <Border Height="88" Margin="10,0" Padding="2,0,4,0" BorderBrush="#FF2C2D32" BorderThickness="0,0,0,1" Style="{StaticResource StoreRowStyle}"
                                         Tag="{Binding Card}" MouseLeftButtonUp="StoreRow_MouseLeftButtonUp" AutomationProperties.AutomationId="{Binding Card.AutomationId}" AutomationProperties.Name="{Binding Card.Name}">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
@@ -479,8 +477,8 @@
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid>
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                        <Grid Width="58" Height="58" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="60" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <Grid Width="60" Height="60" VerticalAlignment="Center">
                                             <Border CornerRadius="14" Background="{Binding Card.TileBrush}" Visibility="{Binding Card.InitialsVisibility}">
                                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Card.Initials}" />
                                             </Border>
@@ -488,14 +486,13 @@
                                         </Grid>
                                         <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
                                             <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Card.Name}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Margin="0,2,0,0" FontSize="11.5" Foreground="#FF8E8E93" Text="{Binding Card.StoreMetaText}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Margin="0,5,0,0" MaxHeight="34" FontSize="12" LineHeight="17" Foreground="#FFC7C7CC" Text="{Binding Card.DescriptionText}"
-                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.DescriptionText}" />
+                                            <TextBlock Margin="0,3,0,0" FontSize="12.5" Foreground="#FFAEAEB2" Text="{Binding Card.DescriptionText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.DescriptionText}" />
+                                            <TextBlock Margin="0,3,0,0" FontSize="11" Foreground="#FF8E8E93" Text="{Binding Card.StoreMetaText}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
-                                        <Button Grid.Column="2" Height="28" MinWidth="64" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
-                                                Content="{Binding Card.CellActionText}" Background="{Binding Card.CellActionBackground}" Foreground="{Binding Card.CellActionInk}"
+                                        <Button Grid.Column="2" Height="28" MinWidth="70" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
+                                                Content="{Binding Card.CellActionText}" Background="#FF2C2C2E" Foreground="{Binding Card.StoreCapsuleInk}" FontWeight="Bold"
                                                 IsHitTestVisible="{Binding Card.CellActionEnabled}" ToolTip="{Binding Card.VersionToolTip}" AutomationProperties.Name="{Binding Card.CellActionText}" />
-                                        <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="72,0,0,10" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                        <ProgressBar Grid.ColumnSpan="3" Height="3" Margin="74,0,0,8" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                      IsIndeterminate="{Binding Card.IsIndeterminate}" Value="{Binding Card.ProgressValue, Mode=OneWay}" Visibility="{Binding Card.BusyVisibility}"
                                                      Background="#FF2C2D32" BorderThickness="0" Foreground="#FF4AA3FF" />
                                     </Grid>
@@ -536,12 +533,12 @@
                         <ItemsControl x:Name="SectionList" Focusable="False">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:StoreSection}">
-                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,6" HorizontalAlignment="Left">
-                                        <DockPanel Margin="8,0,8,12" Visibility="{Binding HeaderVisibility}">
+                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,26" HorizontalAlignment="Left">
+                                        <DockPanel Margin="12,6,12,4" Visibility="{Binding HeaderVisibility}">
                                             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButtonStyle}" Content="{Binding ActionText}" Tag="{Binding}" Click="SectionAction_Click"
                                                     Visibility="{Binding ActionVisibility}" IsEnabled="{Binding ActionEnabled}" />
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock FontSize="18" FontWeight="Bold" Text="{Binding Title}" />
+                                                <TextBlock FontSize="20" FontWeight="Bold" Text="{Binding Title}" />
                                                 <TextBlock Margin="8,0,0,2" VerticalAlignment="Bottom" FontSize="13" Foreground="#FF98989D" Text="{Binding Note}" />
                                             </StackPanel>
                                         </DockPanel>
@@ -663,13 +660,9 @@
                                 <TextBlock FontSize="28" FontWeight="Bold" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}" /><Run FontSize="16" FontWeight="Normal" Foreground="#FF8E8E93" Text="{Binding EnglishSuffix, Mode=OneWay}" /></TextBlock>
                                 <TextBlock Margin="0,6,0,0" FontSize="14" Foreground="#FF98989D" Text="{Binding App.Description}" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                                    <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}" Foreground="{Binding Ink}"
+                                    <Button Style="{StaticResource DetailActionButtonStyle}" Tag="{Binding}" Click="StoreAction_Click" IsEnabled="{Binding CanInteract}"
                                             Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" AutomationProperties.Name="{Binding StoreButtonText}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding StoreButtonGlyph}" Visibility="{Binding StoreButtonGlyphVisibility}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                       FontSize="13" Margin="0,1,9,0" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
-                                        </StackPanel>
+                                        <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
                                     </Button>
                                     <Border Style="{StaticResource TagStyle}" Height="20" Margin="12,0,0,0" VerticalAlignment="Center" Background="#29E6C07A" Visibility="{Binding BetaVisibility}">
                                         <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />

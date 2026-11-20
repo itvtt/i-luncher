@@ -971,7 +971,21 @@ public partial class MainWindow : Window
 
         var sections = new List<StoreSection>();
         _updatesSection = null;
-        if (items.Count > 0) sections.Add(updates ? _updatesSection = UpdatesSection(items) : new StoreSection("", items));
+        if (store && search.Length == 0 && category is null && items.Count > 0)
+        {
+            // 앱스토어처럼: 분류마다 섹션, 두 줄까지만 (더 있으면 모두 보기 → 그 분류 화면). 순서는 앱 목록 순서
+            int shown = StoreColumns * 2;
+            foreach (var group in items.OfType<StoreRow>().GroupBy(row => row.Card.Category, StringComparer.CurrentCultureIgnoreCase)
+                         .OrderBy(group => group.Min(row => row.Card.App.Order)))
+            {
+                string name = group.Key;
+                var rows = group.Cast<object>().ToList();
+                sections.Add(rows.Count > shown
+                    ? new StoreSection(name, rows.Take(shown).ToList(), "", "모두 보기", () => ShowView("store", "category:" + name))
+                    : new StoreSection(name, rows));
+            }
+        }
+        else if (items.Count > 0) sections.Add(updates ? _updatesSection = UpdatesSection(items) : new StoreSection("", items));
         // 칸은 늘 같은 크기 (창을 키우면 열만 늘어남). 제목 없는 묶음은 한 줄이 안 차면 그 개수만큼만 열을 두어 가운데로
         int columns = store ? StoreColumns : RowColumns;
         foreach (var section in sections)
