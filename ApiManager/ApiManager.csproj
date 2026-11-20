@@ -19,7 +19,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="server\relay.py;server\README.md;server\*.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="server\README.md;server\*.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- API 서버 원본은 저장소 맨 위 CDEP\relay.py (C-DEP 배포와 같은 파일). 설치 폴더에는 예전처럼 server\relay.py 로 -->
+    <Content Include="..\CDEP\relay.py" Link="server\relay.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets\ApiManager.ico" />
     <InternalsVisibleTo Include="Launcher.Checks" />
   </ItemGroup>

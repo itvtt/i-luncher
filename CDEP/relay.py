@@ -2,7 +2,9 @@
 """API 서버(예전 이름 Terminal Notes 중계 서버) — 이 PC의 앱들이 쓰는 API를 한 곳에서 제공합니다.
 Terminal Notes 문제 보고 · 스킬 스토어 · 공지, i-luncher 앱 목록 · 공지, 비공개 GitHub 저장소의 릴리스 중계.
 
-표준 라이브러리만 씁니다(Python 3.8 이상, pip 설치 없음). 설정은 모두 이 파일 맨 위 SETTINGS에서 고칩니다(.env를 쓰지 않음).
+표준 라이브러리만 씁니다(Python 3.8 이상, pip 설치 없음). 설정은 이 파일 맨 위 SETTINGS에서 고칩니다.
+컨테이너 · 배포 환경(C-DEP 등)에서는 SETTINGS 와 같은 이름의 환경 변수가 그 값을 대신합니다 (예: RELAY_PORT=2003,
+RELAY_BIND=0.0.0.0, RELAY_DATA_ROOT=/data, RELAY_GITHUB_TOKEN=…). 순서: SETTINGS < 환경 변수 < --set. Dockerfile · env.sample 참고.
 
     python relay.py                     SETTINGS대로 실행
     python relay.py --set RELAY_PORT=5081 --set RELAY_BIND=127.0.0.1   이번 실행만 SETTINGS 값을 바꿈
@@ -154,7 +156,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.20.0"
+VERSION = "2.21.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -322,11 +324,26 @@ def settings_values(block: str) -> dict:
     return {str(key): str(value) for key, value in values.items()} if isinstance(values, dict) else {}
 
 
+# Not read from the environment: they are this PC's runner and Task Scheduler settings, not a deployment's.
+ENVIRONMENT_EXCLUDED = ("RUNNERS_ROOT", "RUNNER_PACKAGE", "RUNNERS_ENV_DIR")
+# Read by Config although SETTINGS does not list them (added to SETTINGS by hand when needed), e.g. the GitHub Enterprise API.
+ENVIRONMENT_EXTRA = ("RELAY_GITHUB_API", "RELAY_GITHUB_GIT_CREDENTIAL", "RELAY_GITHUB_SYNC_SECONDS")
+
+
+def settings_from_environment(environ=None) -> dict:
+    """SETTINGS keys set in the environment (an empty value counts, so a deployment can clear a key)."""
+    environ = os.environ if environ is None else environ
+    keys = [*SETTINGS, *ENVIRONMENT_EXTRA]
+    return {key: str(environ[key]).strip() for key in keys if key in environ and key not in ENVIRONMENT_EXCLUDED}
+
+
 class Config:
-    """SETTINGS at the top of this file, then --set KEY=VALUE for this run (tests, a one-off port), then the other options."""
+    """SETTINGS at the top of this file, then environment variables with the same names (a container or a deployment
+    platform sets these instead of editing the file), then --set KEY=VALUE for this run (tests, a one-off port), then the other options."""
 
     def __init__(self, args: argparse.Namespace):
         values = {key: str(value) for key, value in SETTINGS.items()}
+        values.update(settings_from_environment())
         # Kept for the start at login, which runs this relay with the same --set values.
         self.set_args = list(args.set or [])
         self.overrides = len(self.set_args)

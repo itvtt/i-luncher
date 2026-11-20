@@ -58,6 +58,34 @@ internal static partial class ServerManager
     /// <summary>관리 기능(관리 페이지·이 프로그램의 창)의 비밀번호. 비어 있으면 비밀번호 없이 열림</summary>
     public static string ReadAdminPassword(string script) => Setting(SettingsBlock(script), "RELAY_ADMIN_PASSWORD");
 
+    /// <summary>
+    /// 관리자 메뉴가 서버에 쓰는 비밀번호: 이 PC 에 설치된 relay.py 의 SETTINGS, 없으면(서버가 배포 환경 C-DEP 등에 있을 때)
+    /// 관리자 PC 의 환경 변수 API_ADMIN_PASSWORD 또는 프로필 폴더(APPS_ENV_DIR)의 i-luncher.env 의 API_ADMIN_PASSWORD.
+    /// 런처 화면에서 묻거나 저장하지 않음
+    /// </summary>
+    public static string AdminPassword()
+    {
+        string local = ReadAdminPassword(DeployedScript);
+        if (local.Length > 0) return local;
+        if (Environment.GetEnvironmentVariable("API_ADMIN_PASSWORD") is { Length: > 0 } variable) return variable.Trim();
+        if (Environment.GetEnvironmentVariable("APPS_ENV_DIR") is { Length: > 0 } folder)
+        {
+            string file = Path.Combine(folder.Trim(), "i-luncher.env");
+            try
+            {
+                if (File.Exists(file))
+                    foreach (string line in File.ReadAllLines(file, Encoding.UTF8))
+                    {
+                        string text = line.Trim();
+                        if (text.StartsWith("API_ADMIN_PASSWORD=", StringComparison.Ordinal))
+                            return text["API_ADMIN_PASSWORD=".Length..].Trim().Trim('"');
+                    }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+        return "";
+    }
+
     /// <summary>SETTINGS 의 RELAY_HOST·RELAY_PORT·RELAY_BIND 로 정한 주소 (relay.py 의 listen_address·health_url 과 같은 규칙)</summary>
     public static ServerAddress ReadAddress(string script)
     {

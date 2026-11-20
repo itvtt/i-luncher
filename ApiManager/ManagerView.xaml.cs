@@ -142,7 +142,7 @@ public partial class ManagerView : UserControl
     {
         _admin?.Dispose();
         _address = ServerManager.ReadAddress(ServerManager.DeployedScript);
-        _admin = new AdminClient(_address.ApiBase, ServerManager.ReadAdminPassword(ServerManager.DeployedScript));
+        _admin = new AdminClient(_address.ApiBase, ServerManager.AdminPassword());
     }
 
     private void UpdateVersions()
@@ -220,7 +220,7 @@ public partial class ManagerView : UserControl
 
     private void BrowserButton_Click(object sender, RoutedEventArgs e)
     {
-        string password = ServerManager.ReadAdminPassword(ServerManager.DeployedScript);
+        string password = ServerManager.AdminPassword();
         try
         {
             if (password.Length > 0) Clipboard.SetText(password);

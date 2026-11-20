@@ -1,0 +1,57 @@
+// 부서 목록(API 서버 앱 목록)에 넣을 앱. 설명 · 상세 설명 · 스크린샷(media\)까지 들어 있으니 지어내지 말고 이 값을 그대로 씁니다.
+// 넣는 방법: python import_app_list.py (CDEP\README.md "부서 목록 넣기"). repository 는 저장소 이름만 (주소는 스크립트가 붙임).
+// 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 i-luncherasic-apps.json 입니다.
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "id": "terminal-notes",
+      "name": "Terminal Notes",
+      "repository": "TerminalNotes",
+      "category": "개발",
+      "installName": "TerminalNotes",
+      "order": 20,
+      "description": "OpenCode 작업 공간 • 플랜 • 스킬",
+      "details": "AI 코딩 도구 OpenCode 를 Windows 에서 편하게 쓰는 작업 공간입니다. 프로젝트마다 터미널을 열고, 할 일을 플랜으로 정리해 AI 에게 보내며 작업합니다.\n\n주요 기능\n• 일반 모드: 터미널 하나에 말하듯 입력 (처음 쓰는 사람용)\n• 플랜 · 고급 모드: 프로젝트별 터미널, 여러 개를 나눠 보기\n• 플랜메이커: 요청을 정리해 플랜으로 만들고 한 번에 전송, 플랜 정리\n• 진행 상태를 색으로 (진행 중 녹색 · 승인 대기 주황), 메모리 · CPU 가 높으면 실행 대기\n• 스킬 스토어 · 공지 · 문제 보고\n\n실제 화면으로 따라 하는 실습 가이드가 들어 있습니다.",
+      "author": "jy01.ahn",
+      "screenshots": [
+        "terminal-notes-1.png",
+        "terminal-notes-2.png",
+        "terminal-notes-3.png"
+      ]
+    },
+    {
+      "id": "eqstatus",
+      "name": "EQ Status",
+      "repository": "EQStatus",
+      "category": "설비",
+      "installName": "EQStatus",
+      "order": 60,
+      "kind": "setup",
+      "description": "설비 상태 • 조건 알림",
+      "details": "설비 상태를 실시간으로 보고, 정한 조건이 되면 팝업으로 알려 줍니다. 처음 실행하면 설정 마법사로 볼 설비와 알림 조건을 고릅니다.\n\n주요 기능\n• 설비 현상태: 고른 설비의 상태와 지속 시간을 한 화면에\n• 조건 알림: 상태 · 지속 시간 · 시간 기준 조건이 맞으면 팝업 (자동으로 닫지 않게도 설정)\n• 공정 · 분임조 범위로 설비 고르기, 설비 리스트 관리\n• 백업 데이터 조회, 장비 이름을 누르면 장비 링크 열기\n• 트레이에서 계속 실행, 맨 앞 고정, Windows 시작 때 자동 실행\n\n설비 데이터는 API 서버에서 받습니다.",
+      "author": "jy01.ahn",
+      "screenshots": [
+        "eqstatus-1.png",
+        "eqstatus-2.png",
+        "eqstatus-3.png"
+      ]
+    },
+    {
+      "id": "file-shared",
+      "name": "File Shared",
+      "repository": "file_shared",
+      "category": "파일",
+      "installName": "file_shared",
+      "order": 70,
+      "description": "파일 공유 링크 • 이미지 미리보기",
+      "details": "파일을 올리면 바로 다운로드 링크가 만들어집니다. 메일 첨부나 USB 없이, 같은 네트워크의 다른 사람에게 링크만 보내면 됩니다.\n\n주요 기능\n• 파일을 골라 올리면 링크를 만들어 바로 복사\n• 이미지는 미리보기 링크와 임베드 코드도 복사\n• 받는 사람은 브라우저에서 링크를 열어 내려받기 (프로그램 설치 필요 없음)\n• Capture · Compare 의 [공유]가 이 프로그램으로 링크를 만듦\n\n링크는 이 PC 에서 File Shared 가 실행 중일 때 열립니다 (포트 5000).",
+      "author": "jy01.ahn",
+      "screenshots": [
+        "file-shared-1.png",
+        "file-shared-2.png",
+        "file-shared-3.png"
+      ]
+    }
+  ]
+}

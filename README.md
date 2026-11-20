@@ -8,7 +8,7 @@ GitHub에 프로젝트별로 릴리스된 앱을 한곳에서 설치·업데이�
 - 앱마다 아이콘 밖 오른쪽 위에 작은 **버전**(설치된 버전, 받지 않은 앱은 최신 버전. 회색 판)이, 이름 아래에 **상태 단추**가 있습니다: **받기**(파랑, 설치 확인) · **업데이트**(파랑) · **실행 중**(초록, 누르면 앞으로) · **진행 중 42%**(받는 중). 설치됨 탭에는 **열기** 단추가 없습니다 (아이콘을 누르면 실행, 스토어 줄에는 있음).
 - 트레이 아이콘을 한 번 누르면 자주 쓰는 앱만 담은 작은 **트레이 창**, 두 번 누르면 큰 창이 열립니다.
 - 설치된 앱은 런처 없이 **따로 실행해도 스스로 업데이트**합니다 (각 앱의 자체 업데이터: [AppKit](AppKit/README.md), DeskCal·Terminal Notes는 자체 구현).
-- 기본 목록은 [`basic-apps.json`](basic-apps.json)(런처에 포함), 부서 목록은 **API 서버**(이 저장소의 `ApiManager\server\relay.py`, 예: `http://<서버 IP>:2003`)가 관리합니다. 런처는 누구나 목록을 읽고, 추가·수정·삭제는 마스터 계정(`MASTER_USERS`)의 **관리자 메뉴 → 앱 목록**에서 합니다. API 서버가 없으면 i-luncher 저장소의 [`catalog/apps.json`](catalog/apps.json)을 읽습니다 (GitHub에서 직접 고침).
+- 기본 목록은 [`basic-apps.json`](basic-apps.json)(런처에 포함), 부서 목록은 **API 서버**(이 저장소의 `CDEP\relay.py`, 예: `http://<서버 IP>:2003`)가 관리합니다. 런처는 누구나 목록을 읽고, 추가·수정·삭제는 마스터 계정(`MASTER_USERS`)의 **관리자 메뉴 → 앱 목록**에서 합니다. API 서버가 없으면 i-luncher 저장소의 [`catalog/apps.json`](catalog/apps.json)을 읽습니다 (GitHub에서 직접 고침).
 - 앱 저장소는 비공개라도 됩니다. API 서버의 **GitHub 중계**가 서버 PC의 GitHub 자격 증명으로 릴리스를 대신 받아 주므로 사용자 PC와 앱에 GitHub 토큰을 넣지 않습니다.
 - i-luncher 자신도 이 저장소의 **Actions 러너가 릴리스**하고, 설치된 런처는 시작할 때 **스스로 업데이트**합니다.
 
@@ -150,7 +150,7 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `%LOCALAPPDATA%
 
 ## API 서버
 
-`ApiManager\server\relay.py`가 이 PC의 모든 API를 맡습니다 (예전 Terminal Notes 중계 서버, 포트 2003 그대로).
+`CDEP\relay.py`가 모든 API를 맡습니다 (회사의 배포 환경 C-DEP 에서도 같은 파일, [CDEP](CDEP/README.md)) (예전 Terminal Notes 중계 서버, 포트 2003 그대로).
 
 | 주소 | 쓰는 곳 |
 |---|---|

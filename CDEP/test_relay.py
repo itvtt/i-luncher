@@ -1458,5 +1458,23 @@ class LauncherApiTest(unittest.TestCase):
         self.assertEqual(FakeGitHub.dispatched[-1][1], {"ref": "main"}, "started without inputs")
 
 
+
+class EnvironmentSettingsTests(unittest.TestCase):
+    """A container or deployment platform (C-DEP) sets SETTINGS by environment variables instead of editing relay.py."""
+
+    def test_environment_values_replace_settings_and_set_still_wins(self):
+        environment = {"RELAY_PORT": "5099", "RELAY_ADMIN_PASSWORD": "", "RUNNERS_ROOT": "C:/runners", "UNRELATED": "1",
+                       "RELAY_GITHUB_API": "https://github.example.com/api/v3"}
+        values = relay.settings_from_environment(environment)
+        self.assertEqual(values["RELAY_GITHUB_API"], "https://github.example.com/api/v3", "GitHub Enterprise API is not in SETTINGS but is read")
+        self.assertEqual(values["RELAY_PORT"], "5099")
+        self.assertEqual(values["RELAY_ADMIN_PASSWORD"], "", "an empty value clears the key")
+        self.assertNotIn("RUNNERS_ROOT", values, "this PC's runner settings stay in the file")
+        self.assertNotIn("UNRELATED", values)
+        with mock.patch.dict(os.environ, {"RELAY_PORT": "5099"}):
+            self.assertEqual(relay.Config(relay.parse_args([])).port, 5099)
+            self.assertEqual(relay.Config(relay.parse_args(["--set", "RELAY_PORT=5100"])).port, 5100, "--set wins")
+
+
 if __name__ == "__main__":
     unittest.main()
