@@ -48,7 +48,7 @@ namespace ILuncher.AppKit
 
         private static readonly object Gate = new object();
         private static Dictionary<string, Dictionary<string, double[]>> _days = new Dictionary<string, Dictionary<string, double[]>>();
-        private static Timer? _timer;
+        private static System.Threading.Timer? _timer;
         private static Stopwatch? _clock;
         private static TimeSpan _lastTick, _lastSend;
         private static int _sending;
@@ -75,7 +75,7 @@ namespace ILuncher.AppKit
                 _clock = Stopwatch.StartNew();
                 _lastTick = _lastSend = TimeSpan.Zero;
                 AddLocked(Launch, 1, 0);
-                _timer = new Timer(_ => OnTick(), null, Tick, Tick);
+                _timer = new System.Threading.Timer(_ => OnTick(), null, Tick, Tick);
             }
             AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
             // 지난번에 못 보낸 것은 조금 뒤 함께 보냄
@@ -107,7 +107,7 @@ namespace ILuncher.AppKit
         /// <summary>종료: 마지막 시간을 더하고 짧게 보내 본 뒤 못 보낸 것은 파일로</summary>
         public static void Stop()
         {
-            Timer? timer;
+            System.Threading.Timer? timer;
             lock (Gate) { timer = _timer; _timer = null; }
             if (timer == null) return;
             timer.Dispose();
