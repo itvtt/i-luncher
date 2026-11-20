@@ -251,8 +251,8 @@ public sealed class AppCard : INotifyPropertyChanged
     private static readonly Brush StoreBlue = FrozenBrush(0x0A, 0x84, 0xFF);
     private static Brush FrozenBrush(byte r, byte g, byte b) { var brush = new SolidColorBrush(Color.FromRgb(r, g, b)); brush.Freeze(); return brush; }
 
-    /// <summary>설치됨 탭의 이름 아래 단추: 열기는 아이콘을 누르면 되므로 숨김 (자리는 남겨 줄을 맞춤)</summary>
-    public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None or CellActionKind.Running ? Visibility.Hidden : Visibility.Visible;
+    /// <summary>설치됨 칸의 이름 아래 단추: 받기 · 업데이트 · 진행 중일 때만 (열기 · 실행 중은 단추 없이 칸 크기도 줄임)</summary>
+    public Visibility CellPillVisibility => CellAction is CellActionKind.Open or CellActionKind.None or CellActionKind.Running ? Visibility.Collapsed : Visibility.Visible;
     public bool CellActionEnabled => CellAction is CellActionKind.Get or CellActionKind.Update or CellActionKind.Open or CellActionKind.Running;
 
     /// <summary>아이콘 밖 오른쪽 위 버전: 설치된 버전, 받지 않은 앱은 최신 릴리스 버전</summary>

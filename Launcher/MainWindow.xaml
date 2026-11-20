@@ -9,7 +9,7 @@
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
         TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
-        Width="1100" Height="900" MinWidth="640" MinHeight="880"
+        Width="1100" Height="860" MinWidth="640" MinHeight="840"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         Loaded="Window_Loaded"
@@ -405,17 +405,27 @@
                                  아이콘을 누르면 바로 실행 (받기 · 업데이트는 상태 단추로도). 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
                                 <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
-                                    <!-- 실행 중: 칸 배경을 옅게 물들이고 테두리가 천천히 밝아졌다 어두워짐 (배지 없음) -->
-                                    <Border CornerRadius="18" Background="#1A5BE3A3" BorderBrush="#FF5BE3A3" BorderThickness="1.5" IsHitTestVisible="False"
+                                    <!-- 실행 중: 형형색색 형광 테두리가 칸을 따라 돎 (배지 없음) -->
+                                    <Border CornerRadius="18" Background="#0EFFFFFF" BorderThickness="2.5" IsHitTestVisible="False"
                                             Visibility="{Binding RunningVisibility}">
+                                        <Border.BorderBrush>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <LinearGradientBrush.RelativeTransform>
+                                                    <RotateTransform CenterX="0.5" CenterY="0.5" Angle="0" />
+                                                </LinearGradientBrush.RelativeTransform>
+                                                <GradientStop Color="#FFFF2BD6" Offset="0" />
+                                                <GradientStop Color="#FF00E5FF" Offset="0.25" />
+                                                <GradientStop Color="#FF39FF14" Offset="0.5" />
+                                                <GradientStop Color="#FFFFE600" Offset="0.75" />
+                                                <GradientStop Color="#FFFF2BD6" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Border.BorderBrush>
                                         <Border.Triggers>
                                             <EventTrigger RoutedEvent="FrameworkElement.Loaded">
                                                 <BeginStoryboard>
                                                     <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.35" To="1" Duration="0:0:1.4"
-                                                                         AutoReverse="True" RepeatBehavior="Forever">
-                                                            <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                                                        </DoubleAnimation>
+                                                        <DoubleAnimation Storyboard.TargetProperty="BorderBrush.(LinearGradientBrush.RelativeTransform).(RotateTransform.Angle)"
+                                                                         From="0" To="360" Duration="0:0:2.4" RepeatBehavior="Forever" />
                                                     </Storyboard>
                                                 </BeginStoryboard>
                                             </EventTrigger>
