@@ -546,8 +546,8 @@ public partial class ManagerView : UserControl
 
     private void AddAppButton_Click(object sender, RoutedEventArgs e)
     {
-        // 새로 추가한 앱은 NEW 배지가 켜진 채로 시작
-        var app = new AppRow(new JsonObject { ["id"] = "", ["name"] = "새 앱", ["repository"] = "https://github.com/", ["new"] = true });
+        // NEW 는 켜지 않음: i-luncher 가 처음 출시 14일 동안 저절로 NEW 를 붙임 (켜 두면 그 뒤에도)
+        var app = new AppRow(new JsonObject { ["id"] = "", ["name"] = "새 앱", ["repository"] = "https://github.com/" });
         _apps.Add(app);
         RefreshAppsList(select: app);
         SetAppsDirty(true);

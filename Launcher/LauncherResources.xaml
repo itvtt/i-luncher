@@ -407,6 +407,18 @@
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
+    <!-- 베타 · NEW 태그 묶음 (AppCard 에 묶음): 스토어 줄의 이름 옆 · 설치됨 칸의 아이콘 아래 모서리. 불투명 판이라 아이콘 위에서도 읽힘
+         베타 = 앱 목록의 beta, NEW = 처음 출시 14일 안 또는 앱 목록의 new -->
+    <DataTemplate x:Key="AppTagsTemplate">
+        <StackPanel Orientation="Horizontal" Visibility="{Binding TagsVisibility}">
+            <Border Style="{StaticResource TagStyle}" Height="17" Padding="6,0" Margin="0,0,4,0" Background="#FF3C372F" Visibility="{Binding BetaVisibility}">
+                <TextBlock VerticalAlignment="Center" FontSize="10.5" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
+            </Border>
+            <Border Style="{StaticResource TagStyle}" Height="17" Padding="6,0" Background="#FF213B32" Visibility="{Binding NewVisibility}">
+                <TextBlock VerticalAlignment="Center" FontSize="10.5" FontWeight="Bold" Foreground="#FF7FE2B0" Text="NEW" />
+            </Border>
+        </StackPanel>
+    </DataTemplate>
     <!-- 메뉴 (카드 우클릭 · 앱 페이지 더 보기): 둥근 어두운 판에 그림자, 줄마다 아이콘 + 글자, 마우스를 올린 줄은 둥글게 밝게 -->
     <Style TargetType="ContextMenu">
         <Setter Property="OverridesDefaultStyle" Value="True" />

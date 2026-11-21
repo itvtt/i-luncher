@@ -698,6 +698,28 @@ try
         Assert(again[0].Beta && again[0].New && !saved.Contains("\"beta\": false") && !again[1].Beta, "a saved list keeps them (and writes nothing for off)");
     });
 
+    await CheckSync("NEW is automatic for 14 days after the first release, the list's new flag keeps it on, and first release dates are kept on this PC", () =>
+    {
+        var plain = new AppDefinition { Id = "plain", Name = "Plain", Repository = "https://github.com/o/p" };
+        var fresh = new ILauncher.AppCard(plain) { FirstReleasedAt = DateTimeOffset.Now.AddDays(-3) };
+        var old = new ILauncher.AppCard(plain) { FirstReleasedAt = DateTimeOffset.Now.AddDays(-20) };
+        var unknown = new ILauncher.AppCard(plain);
+        var flagged = new ILauncher.AppCard(new AppDefinition { Id = "f", Name = "F", Repository = "https://github.com/o/f", New = true }) { FirstReleasedAt = DateTimeOffset.Now.AddDays(-200) };
+        Assert(fresh.IsNew && !old.IsNew && !unknown.IsNew && flagged.IsNew, "first release within 14 days or the new flag");
+        Assert(fresh.TagsVisibility == System.Windows.Visibility.Visible && old.TagsVisibility == System.Windows.Visibility.Collapsed, "the tag row hides when there is nothing to show");
+        var beta = new ILauncher.AppCard(new AppDefinition { Id = "b", Name = "B", Repository = "https://github.com/o/b", Beta = true });
+        Assert(beta.TagsVisibility == System.Windows.Visibility.Visible && beta.NewVisibility == System.Windows.Visibility.Collapsed, "beta alone shows the tag row");
+
+        string file = Path.Combine(root, "first-releases", "first-releases.json");
+        var repository = GitHubRepository.Parse("https://github.com/Owner/Repo")!;
+        var date = new DateTimeOffset(2026, 11, 20, 10, 7, 5, TimeSpan.Zero);
+        new FirstReleaseStore(file).Set(repository, date);
+        Assert(new FirstReleaseStore(file).TryGet(GitHubRepository.Parse("https://github.com/owner/repo")!, out var read) && read == date, "saved date read back (case-insensitive repository)");
+        Assert(!new FirstReleaseStore(Path.Combine(root, "first-releases", "missing.json")).TryGet(repository, out _), "no file: nothing known");
+        File.WriteAllText(Path.Combine(root, "first-releases", "broken.json"), "{not json");
+        Assert(!new FirstReleaseStore(Path.Combine(root, "first-releases", "broken.json")).TryGet(repository, out _), "broken file: nothing known, no crash");
+    });
+
     await CheckSync("My apps (GitHub projects added on this PC) are saved locally, read back as personal, and never written to the app list", () =>
     {
         var store = new MyAppStore(Path.Combine(root, "my-apps", "my-apps.json"));

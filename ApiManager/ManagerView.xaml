@@ -236,10 +236,10 @@
                                       ToolTip="런처의 MASTER_USERS(.env)에 있는 계정에만 i-luncher에 보입니다"
                                       Checked="AppMasterOnly_Changed" Unchecked="AppMasterOnly_Changed" />
                             <CheckBox x:Name="AppBetaBox" Content="베타 (정식 서비스 전)" Margin="0,10,0,0" Foreground="{StaticResource TextBrush}"
-                                      ToolTip="i-luncher 카드에 '베타' 배지를 붙입니다. 끄면 정식 서비스"
+                                      ToolTip="i-luncher 의 스토어 줄 · 설치됨 칸 · 앱 페이지에 '베타' 태그. 끄면 정식 서비스"
                                       Checked="AppBadge_Changed" Unchecked="AppBadge_Changed" />
                             <CheckBox x:Name="AppNewBox" Content="NEW (새로 추가한 앱)" Margin="0,10,0,0" Foreground="{StaticResource TextBrush}"
-                                      ToolTip="i-luncher 카드에 'NEW' 배지를 붙입니다. 새로 추가하면 켜져 있고, 알릴 만큼 지나면 끄세요"
+                                      ToolTip="'NEW' 태그. 처음 출시 14일 동안은 꺼 두어도 저절로 붙고, 켜 두면 그 뒤에도 붙습니다 (알릴 만큼 지나면 끄세요)"
                                       Checked="AppBadge_Changed" Unchecked="AppBadge_Changed" />
                         </StackPanel>
                     </ScrollViewer>

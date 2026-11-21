@@ -50,15 +50,22 @@ public partial class MainWindow
         _ = LoadFirstReleaseAsync(card);
     }
 
-    /// <summary>최초 출시일: 앱마다 한 번 읽어 둠 (실패하면 칸을 비움)</summary>
+    /// <summary>최초 출시일: 앱마다 한 번 GitHub 에서 읽어 이 PC 에 둠 (실패하면 칸을 비우고 다음에 다시). NEW 태그도 이 날짜로</summary>
     private async Task LoadFirstReleaseAsync(AppCard card)
     {
         if (card.FirstReleaseLoaded || GitHubRepository.Parse(card.App.Repository, _settings.DefaultHost) is not { } repository) return;
         card.FirstReleaseLoaded = true;
+        if (_firstReleases.TryGet(repository, out var stored))
+        {
+            card.FirstReleasedAt = stored;
+            if (ReferenceEquals(card, _detail)) FillDetail(card);
+            return;
+        }
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             card.FirstReleasedAt = await _github.GetFirstReleaseDateAsync(repository, timeout.Token);
+            if (card.FirstReleasedAt is { } first) _firstReleases.Set(repository, first);
         }
         catch (Exception error) when (error is GitHubApiException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
