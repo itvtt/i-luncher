@@ -334,6 +334,11 @@ try
         Equal(LauncherSettings.ModeApi, settings.CatalogMode, "API server first");
         Assert(settings.Build.IsListedMaster(@"CORP\Boss") && !settings.Build.IsListedMaster("someone"), "master by this PC's Windows account");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
+        Equal("https://github.com/owner/i-luncher-notices", settings.NoticesRepository?.WebUrl, "notices from GitHub: i-luncher-notices of the launcher's owner by default");
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "LAUNCHER_REPOSITORY=https://ghe.example.com/team/i-luncher\nNOTICES_REPOSITORY=board\n");
+        Equal("https://ghe.example.com/team/board", LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir).NoticesRepository?.WebUrl, "a name only: same host and owner");
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "NOTICES_PATH=notes/공지.txt\n");
+        Assert(LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir).NoticesRepository is null, "no launcher repository: this PC's file");
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
     });

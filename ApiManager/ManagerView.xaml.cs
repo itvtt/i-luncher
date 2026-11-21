@@ -30,7 +30,7 @@ public partial class ManagerView : UserControl
     private string _catalogRevision = "";
     private bool _appsDirty, _fillingAppForm;
     // 런처 공지 · 공지
-    private string _launcherNoticesRevision = "", _launcherNoticesSaved = "";
+    private string _launcherNoticesError = "";
     private string _announcementRevision = "", _announcementSaved = "";
     private bool _announcementExists;
     // 문제 보고
@@ -300,7 +300,7 @@ public partial class ManagerView : UserControl
         {
             "Apps" => _appsDirty,
             "Runners" => RunnerEnvDirty,
-            "Notices" => NoticeDirty(launcher: NoticeKindLauncher.IsChecked == true),
+            "Notices" => NoticeKindLauncher.IsChecked != true && NoticeDirty(),
             _ => false,
         };
         if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "관리자 메뉴",
@@ -360,8 +360,7 @@ public partial class ManagerView : UserControl
         var unsaved = new List<string>();
         if (_appsDirty) unsaved.Add("앱 목록");
         if (RunnerEnvDirty) unsaved.Add("러너 .env");
-        if (_loaded.Contains("Notices") && NoticeDirty(launcher: false)) unsaved.Add("Terminal Notes 공지");
-        if (_loaded.Contains("Notices") && NoticeDirty(launcher: true)) unsaved.Add("i-luncher 공지");
+        if (_loaded.Contains("Notices") && NoticeDirty()) unsaved.Add("Terminal Notes 공지");
         if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "관리자 메뉴",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             e.Cancel = true;
@@ -612,9 +611,8 @@ public partial class ManagerView : UserControl
     private string _announcementInfo = "";
     private List<string> _announcementHistory = [];
 
-    private bool NoticeDirty(bool launcher) => launcher
-        ? LauncherNoticesBox.Text != _launcherNoticesSaved
-        : AnnouncementBox.Text.Replace("\r\n", "\n") != _announcementSaved;
+    /// <summary>Terminal Notes 공지에 저장하지 않은 편집이 있음 (런처 공지는 GitHub 에서 고치므로 여기서 편집하지 않음)</summary>
+    private bool NoticeDirty() => AnnouncementBox.Text.Replace("\r\n", "\n") != _announcementSaved;
 
     private void NoticeKind_Checked(object sender, RoutedEventArgs e)
     {
@@ -623,6 +621,8 @@ public partial class ManagerView : UserControl
         AnnouncementBox.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
         LauncherNoticesBox.Visibility = launcher ? Visibility.Visible : Visibility.Collapsed;
         HistoryButton.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
+        SaveNoticeButton.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
+        EditLauncherNoticesButton.Visibility = launcher ? Visibility.Visible : Visibility.Collapsed;
         UpdateNoticeState();
     }
 
@@ -630,21 +630,39 @@ public partial class ManagerView : UserControl
     private void UpdateNoticeState()
     {
         bool launcher = ShowingLauncherNotices;
-        SaveNoticeButton.IsEnabled = NoticeDirty(launcher);
-        NoticeInfoText.Text = launcher ? "i-luncher 위쪽에 보입니다." : _announcementInfo;
+        SaveNoticeButton.IsEnabled = !launcher && NoticeDirty();
+        NoticeInfoText.Text = launcher
+            ? (_launcherNoticesError.Length > 0 ? _launcherNoticesError : "모든 사용자의 i-luncher 에 보입니다. 원본은 GitHub 공지 저장소의 공지.txt 입니다 (첫 줄 제목, 다음 줄부터 본문, 공지 사이 ---).")
+            : _announcementInfo;
         HistoryButton.IsEnabled = _announcementHistory.Count > 0;
     }
 
-    private void LauncherNoticesBox_TextChanged(object sender, TextChangedEventArgs? e) => UpdateNoticeState();
     private void AnnouncementBox_TextChanged(object sender, TextChangedEventArgs? e) => UpdateNoticeState();
 
+    /// <summary>런처 공지: GitHub 공지 저장소의 공지.txt 를 보여 줌 (고치기는 [GitHub에서 편집])</summary>
     private async Task LoadLauncherNoticesAsync()
     {
-        var notices = (await Admin.GetAsync("launcher/notices")).AsObject();
-        _launcherNoticesRevision = Str(notices["revision"]);
-        _launcherNoticesSaved = Str(notices["text"]).Replace("\n", "\r\n");
-        LauncherNoticesBox.Text = _launcherNoticesSaved;
+        _launcherNoticesError = "";
+        try
+        {
+            string text = ManagerHost.LoadLauncherNotices is { } load ? await load() : "";
+            LauncherNoticesBox.Text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+        }
+        catch (InvalidOperationException error)
+        {
+            _launcherNoticesError = "GitHub 에서 공지를 읽지 못했습니다: " + error.Message;
+        }
         UpdateNoticeState();
+    }
+
+    private async void EditLauncherNoticesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ManagerHost.LauncherNoticesEditUrl is not { } editUrl || await editUrl() is not { } url)
+        {
+            SetMessage("공지 저장소를 알 수 없습니다 (빌드 설정 LAUNCHER_REPOSITORY · NOTICES_REPOSITORY).", warning: true);
+            return;
+        }
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
     }
 
     private async Task LoadAnnouncementAsync() => ShowAnnouncement((await Admin.GetAsync("admin/api/announcements")).AsObject());
@@ -664,21 +682,15 @@ public partial class ManagerView : UserControl
 
     private async void SaveNoticeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ShowingLauncherNotices)
-            await Run(async () =>
+        if (ShowingLauncherNotices) return;  // 런처 공지는 GitHub 에서 고침
+        await Run(async () =>
+        {
+            var board = await Admin.SendAsync(HttpMethod.Put, "admin/api/announcements", new JsonObject
             {
-                await Admin.SendAsync(HttpMethod.Put, "launcher/notices", new JsonObject { ["text"] = LauncherNoticesBox.Text.Replace("\r\n", "\n"), ["revision"] = _launcherNoticesRevision });
-                await LoadLauncherNoticesAsync();
-            }, done: "i-luncher 공지를 저장했습니다.");
-        else
-            await Run(async () =>
-            {
-                var board = await Admin.SendAsync(HttpMethod.Put, "admin/api/announcements", new JsonObject
-                {
-                    ["text"] = AnnouncementBox.Text.Replace("\r\n", "\n"), ["revision"] = _announcementRevision, ["exists"] = _announcementExists
-                });
-                ShowAnnouncement(board.AsObject());
-            }, done: "공지를 저장했습니다.");
+                ["text"] = AnnouncementBox.Text.Replace("\r\n", "\n"), ["revision"] = _announcementRevision, ["exists"] = _announcementExists
+            });
+            ShowAnnouncement(board.AsObject());
+        }, done: "공지를 저장했습니다.");
     }
 
     /// <summary>[이전 공지]: 고른 공지를 편집 칸에 불러옴 (저장해야 바뀜)</summary>

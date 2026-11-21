@@ -68,6 +68,13 @@ public partial class MainWindow : Window
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
         ApplyViewMode();
+        // 관리자 메뉴 → 공지 → i-luncher: GitHub 공지 파일을 보여 주고 GitHub 에서 고치게 함
+        ApiManager.ManagerHost.LoadLauncherNotices = async () =>
+        {
+            try { return await FetchNoticesAsync(CancellationToken.None) ?? ""; }
+            catch (Exception error) when (error is GitHubApiException or IOException) { throw new InvalidOperationException(error.Message, error); }
+        };
+        ApiManager.ManagerHost.LauncherNoticesEditUrl = NoticesEditUrlAsync;
         // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서, 새로 넣은 앱의 릴리스도 확인)
         ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: true));
         PreviewMouseUp += Window_PreviewMouseUp;
@@ -133,22 +140,26 @@ public partial class MainWindow : Window
         ShowRole();
     }
 
+    /// <summary>
+    /// 런처 공지: GitHub 공지 저장소(기본 i-luncher-notices, 공개)의 공지.txt. 일반 · 마스터 모두 GitHub 에서 바로 읽음 (API 서버를 거치지 않음).
+    /// 공지 저장소를 모르면(런처 저장소가 없는 개발 빌드) 이 PC 의 공지.txt
+    /// </summary>
     private async Task<string?> FetchNoticesAsync(CancellationToken cancellationToken)
     {
-        if (_store is ApiCatalogStore api)
-        {
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            using var response = await client.GetAsync(api.Server + "/launcher/notices", cancellationToken);
-            if (!response.IsSuccessStatusCode) throw new IOException($"API 서버 공지 응답 {(int)response.StatusCode}");
-            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            return document.RootElement.TryGetProperty("text", out var text) ? text.GetString() : null;
-        }
-        if (_settings.CatalogRepository is not { } repository)
-        {
-            string local = Path.Combine(_settings.DataDirectory, LauncherSettings.DefaultNoticesPath);
-            return File.Exists(local) ? await File.ReadAllTextAsync(local, cancellationToken) : null;
-        }
-        return (await _github.GetFileAsync(repository, _settings.NoticesPath, _settings.CatalogBranch, cancellationToken))?.Content;
+        if (_settings.NoticesRepository is { } repository)
+            return (await _github.GetFileAsync(repository, _settings.NoticesPath, null, cancellationToken))?.Content;
+        string local = Path.Combine(_settings.DataDirectory, LauncherSettings.DefaultNoticesPath);
+        return File.Exists(local) ? await File.ReadAllTextAsync(local, cancellationToken) : null;
+    }
+
+    /// <summary>공지 파일을 GitHub 에서 고치는 페이지 (공지 저장소의 기본 브랜치). 관리자 메뉴 → 공지 → i-luncher 에서 엶</summary>
+    private async Task<string?> NoticesEditUrlAsync()
+    {
+        if (_settings.NoticesRepository is not { } repository) return null;
+        string branch = "main";
+        try { branch = (await _github.GetRepositoryAsync(repository)).DefaultBranch; }
+        catch (GitHubApiException) { }
+        return $"{repository.WebUrl}/edit/{Uri.EscapeDataString(branch)}/{string.Join('/', _settings.NoticesPath.Split('/').Select(Uri.EscapeDataString))}";
     }
 
     // ───────────────────────── 시작 · 새로고침 ─────────────────────────
@@ -281,10 +292,8 @@ public partial class MainWindow : Window
         try { _settings.SaveUser(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("화면 전환을 저장하지 못했습니다: " + error.Message); }
         ApplyViewMode();
-        ShowNotices(_notices.CachedNotices);
         StatusText.Text = general ? "일반 화면" : "마스터 화면";
         await RefreshAsync(checkReleases: true);
-        if (IsMaster) await RefreshNoticesAsync();
     }
 
     /// <summary>앱 목록: 런처에 든 기본 목록(basic-apps.json). 마스터는 여기에 서버 목록을 더함 (같은 앱이면 서버 쪽 값)</summary>
@@ -296,10 +305,9 @@ public partial class MainWindow : Window
         return snapshot with { Apps = BasicApps.Combine(basic, snapshot.Apps) };
     }
 
-    /// <summary>공지 단추는 마스터만, 설정의 목록 출처</summary>
+    /// <summary>설정의 목록 출처 (공지는 모두: GitHub 공지 저장소)</summary>
     private void ShowRole()
     {
-        NoticeButton.Visibility = IsMaster ? Visibility.Visible : Visibility.Collapsed;
         CatalogSourceText.Text = "앱 목록: 기본" + (IsMaster ? " + " + _store.Location : "");
     }
 
@@ -1418,10 +1426,9 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 공지 ─────────────────────────
 
-    /// <summary>공지는 마스터만 (일반 사용자는 서버에 묻지도 않고 공지 단추 · 띠도 없음)</summary>
+    /// <summary>공지: 일반 · 마스터 모두 GitHub 공지 저장소에서 (시작 · 새로고침 때)</summary>
     private async Task RefreshNoticesAsync()
     {
-        if (!IsMaster) return;
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -1438,7 +1445,7 @@ public partial class MainWindow : Window
 
     private void ShowNotices(IReadOnlyList<Notice> notices)
     {
-        var unread = IsMaster ? notices.Where(notice => !_notices.IsRead(notice)).ToList() : [];
+        var unread = notices.Where(notice => !_notices.IsRead(notice)).ToList();
         NoticeUnreadDot.Visibility = unread.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         NoticeBanner.Visibility = unread.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         NoticeBannerTitle.Text = unread.Count switch { 0 => "", 1 => unread[0].Title, _ => $"{unread[0].Title} 외 {unread.Count - 1}건" };

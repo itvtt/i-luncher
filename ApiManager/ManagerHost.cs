@@ -19,6 +19,12 @@ public static class ManagerHost
     /// <summary>런처 오른쪽 화면에 넣을 관리자 메뉴. 런처가 하나 만들어 두고 다시 씀</summary>
     public static ManagerView CreateView() => new();
 
+    /// <summary>런처 공지(GitHub 공지 저장소의 공지.txt)의 지금 내용. 런처가 정함 (실패하면 InvalidOperationException)</summary>
+    public static Func<Task<string>>? LoadLauncherNotices { get; set; }
+
+    /// <summary>런처 공지를 GitHub 에서 고치는 페이지 주소. 런처가 정함</summary>
+    public static Func<Task<string?>>? LauncherNoticesEditUrl { get; set; }
+
     /// <summary>관리자 메뉴에서 앱 목록을 저장함: 런처가 목록을 다시 읽음</summary>
     public static event Action? CatalogSaved;
 

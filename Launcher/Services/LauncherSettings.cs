@@ -20,6 +20,8 @@ public sealed class BuildSettings
     public string CatalogPath { get; init; } = "";
     public string CatalogBranch { get; init; } = "";
     public string NoticesPath { get; init; } = "";
+    /// <summary>공지 저장소 (NOTICES_REPOSITORY): 이름만이면 런처 저장소와 같은 호스트 · 소유자. 비우면 i-luncher-notices</summary>
+    public string NoticesRepository { get; init; } = "";
     public string DefaultHost { get; init; } = "";
     public string Token { get; init; } = "";
     /// <summary>마스터 계정 (MASTER_USERS, 쉼표로 Windows 계정 이름): 앱 목록의 "마스터만" 앱은 이 계정에만 보임. 비우면 제한 없음</summary>
@@ -67,6 +69,7 @@ public sealed class BuildSettings
             CatalogPath = Read("CATALOG_PATH"),
             CatalogBranch = Read("CATALOG_BRANCH"),
             NoticesPath = Read("NOTICES_PATH"),
+            NoticesRepository = Read("NOTICES_REPOSITORY"),
             DefaultHost = Read("GITHUB_HOST"),
             Token = Read("LAUNCHER_TOKEN"),
             MasterUsers = Read("MASTER_USERS").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -213,6 +216,15 @@ public sealed class LauncherSettings
     public string CatalogPath => Clean(User.CatalogPath) ?? Clean(Build.CatalogPath) ?? DefaultCatalogPath;
     public string? CatalogBranch => Clean(User.CatalogBranch) ?? Clean(Build.CatalogBranch);
     public string NoticesPath => Clean(Build.NoticesPath) ?? DefaultNoticesPath;
+
+    public const string DefaultNoticesRepository = "i-luncher-notices";
+
+    /// <summary>
+    /// 런처 공지를 읽는 GitHub 저장소 (공개라 토큰 없이 모두 읽음): 빌드 설정 NOTICES_REPOSITORY, 비우면 i-luncher-notices.
+    /// 이름만이면 런처 저장소와 같은 호스트 · 소유자. 런처 저장소를 모르면 null (이 PC 의 공지.txt)
+    /// </summary>
+    public GitHubRepository? NoticesRepository =>
+        GitHubRepository.Parse(BasicApps.ResolveRepository(Clean(Build.NoticesRepository) ?? DefaultNoticesRepository, LauncherRepository), DefaultHost);
 
     /// <summary>사용자가 등록한 토큰이 먼저, 없으면 빌드에 들어간 읽기 전용 토큰 (런처 저장소와 같은 호스트일 때만)</summary>
     public string? GetToken(string host)
