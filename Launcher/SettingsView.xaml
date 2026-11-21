@@ -33,11 +33,35 @@
 
         <TextBlock Text="설정" FontSize="28" FontWeight="Bold" />
 
-        <ScrollViewer Grid.Row="1" Margin="0,22,0,0" Padding="0,0,8,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel MaxWidth="560" HorizontalAlignment="Left" MinWidth="360">
+        <ScrollViewer Grid.Row="1" Margin="0,22,0,0" Padding="0,0,8,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" FocusVisualStyle="{x:Null}">
+            <StackPanel Width="440" HorizontalAlignment="Left">
                 <TextBlock Style="{StaticResource SectionLabelStyle}" Text="업데이트" />
                 <Border Style="{StaticResource PageCardStyle}">
                     <CheckBox x:Name="AutoUpdateBox" Margin="0" FontSize="13" Content="i-luncher 자동 업데이트" Checked="AutoUpdateBox_Changed" Unchecked="AutoUpdateBox_Changed" />
+                </Border>
+
+                <!-- 내 GitHub 토큰: 비공개 저장소를 추가하고 새 버전을 확인할 때 씀. 저장하기 전에 GitHub 에 맞는지 물어봄 -->
+                <TextBlock Style="{StaticResource SectionLabelStyle}" Text="GitHub 토큰" />
+                <Border Style="{StaticResource PageCardStyle}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="TokenBox" Style="{StaticResource FieldPasswordBoxStyle}" PasswordChanged="TokenBox_PasswordChanged" KeyDown="TokenBox_KeyDown"
+                                         ToolTip="비공개 저장소를 추가하고 새 버전을 확인할 때 씁니다 (읽기 권한이면 충분). 이 PC 의 이 Windows 계정에만 암호화해 둡니다." />
+                            <TextBlock x:Name="TokenPlaceholder" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                            <Button x:Name="SaveTokenButton" Grid.Column="1" Margin="8,0,0,0" Content="저장" Style="{StaticResource PrimaryButtonStyle}"
+                                    IsEnabled="False" Click="SaveToken_Click" />
+                        </Grid>
+                        <DockPanel x:Name="TokenStatePanel" Margin="2,10,0,0" Visibility="Collapsed">
+                            <Button x:Name="ClearTokenButton" DockPanel.Dock="Right" Content="지우기" Style="{StaticResource ToolbarButtonStyle}" Padding="12,5"
+                                    Click="ClearToken_Click" />
+                            <TextBlock x:Name="TokenStatus" VerticalAlignment="Center" FontSize="12.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                        </DockPanel>
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>

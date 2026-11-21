@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -45,8 +46,13 @@ public sealed class GitHubClient : IDisposable
     private readonly Func<string, string?> _tokenProvider;
     private readonly Func<GitHubRepository, string?>? _apiBaseOverride;
     private readonly string _userAgent;
+    // 중계를 쓸 수 있는 저장소(내 저장소)를 GitHub 에 바로 물어 본 결과 (이번 실행 동안): true = 공개라 직접, false = 비공개라 중계
+    private readonly ConcurrentDictionary<string, bool> _direct = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <param name="apiBaseOverride">저장소마다 다른 API 주소 (API 서버의 GitHub 중계). 그 주소로 보낼 때는 GitHub 토큰을 붙이지 않음</param>
+    /// <param name="apiBaseOverride">
+    /// 저장소마다 다른 API 주소 (API 서버의 GitHub 중계, 내 저장소만). 릴리스는 먼저 GitHub 에 바로 묻고, 읽히지 않을 때(비공개)만 이 주소로.
+    /// 중계로 보낼 때는 GitHub 토큰을 붙이지 않음
+    /// </param>
     public GitHubClient(Func<string, string?> tokenProvider, string userAgentVersion, HttpMessageHandler? handler = null,
         Func<GitHubRepository, string?>? apiBaseOverride = null)
     {
@@ -62,11 +68,17 @@ public sealed class GitHubClient : IDisposable
 
     private string Target(GitHubRepository repository) => IsRelayed(repository) ? "API 서버" : repository.Host;
 
-    /// <summary>API 서버의 GitHub 중계로 보내는 저장소인지</summary>
-    public bool IsRelayed(GitHubRepository repository) => _apiBaseOverride?.Invoke(repository) is not null;
+    /// <summary>API 서버의 GitHub 중계로 보내는 저장소인지 (중계 대상인데 GitHub 에 바로 읽히는 공개 저장소면 직접)</summary>
+    public bool IsRelayed(GitHubRepository repository) =>
+        _apiBaseOverride?.Invoke(repository) is not null && !(_direct.TryGetValue(Key(repository), out bool direct) && direct);
+
+    private static string Key(GitHubRepository repository) => repository.TokenHost + "/" + repository.FullName;
+
+    /// <summary>토큰을 바꾼 뒤: 직접 · 중계 판단을 다시 (새 토큰으로 읽히는 저장소가 달라짐)</summary>
+    public void ForgetRoutes() => _direct.Clear();
 
     private string RepositoryUrl(GitHubRepository repository) =>
-        _apiBaseOverride?.Invoke(repository) is { } relay
+        IsRelayed(repository) && _apiBaseOverride?.Invoke(repository) is { } relay
             ? $"{relay.TrimEnd('/')}/repos/{Uri.EscapeDataString(repository.Owner)}/{Uri.EscapeDataString(repository.Name)}"
             : repository.ApiRepositoryUrl;
 
@@ -142,13 +154,26 @@ public sealed class GitHubClient : IDisposable
             401 => $"{repository.Host} 토큰이 올바르지 않거나 만료되었습니다. 설정에서 토큰을 확인하세요.",
             _ when rateLimited => hasToken
                 ? $"{repository.Host} API 사용 한도를 넘었습니다. 잠시 후 다시 시도하세요."
-                : $"{repository.Host} API 사용 한도를 넘었습니다. 설정에서 토큰을 등록하면 한도가 늘어납니다.",
-            403 => hasToken ? $"{repository.FullName}에 대한 권한이 없습니다. 토큰 권한을 확인하세요." : $"{repository.FullName}에 접근하려면 토큰이 필요합니다.",
-            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 토큰으로 읽을 수 없습니다." : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개·내부(internal) 저장소라면 설정에서 {repository.Host} 토큰을 등록하세요.",
+                : $"{repository.Host} API 사용 한도(토큰 없이 시간당 60번)를 넘었습니다. 설정에 GitHub 토큰을 넣으면 한도가 늘어납니다.",
+            403 => hasToken ? $"{repository.FullName}에 대한 권한이 없습니다. 토큰 권한을 확인하세요." : $"{repository.FullName}에 접근하려면 설정에 GitHub 토큰이 필요합니다.",
+            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 토큰으로 읽을 수 없습니다." : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개 저장소라면 설정에 GitHub 토큰을 넣으세요.",
             409 or 422 => "다른 사람이 먼저 목록을 바꿨습니다. 새로 고친 뒤 다시 시도하세요.",
             _ => $"{repository.Host} 응답 {status}" + (detail.Length > 0 ? $": {detail}" : "")
         };
         return new GitHubApiException(status, text);
+    }
+
+    /// <summary>설정에 넣을 토큰이 그 호스트에서 통하는지: 토큰 주인의 계정 이름 (GET /user). 틀리면 GitHubApiException</summary>
+    public async Task<string> GetLoginAsync(string host, string token, CancellationToken cancellationToken = default)
+    {
+        var account = new GitHubRepository(GitHubRepository.NormalizeHost(host), "user", "token");
+        using var request = new HttpRequestMessage(HttpMethod.Get, account.ApiBase + "/user");
+        request.Headers.UserAgent.ParseAdd(_userAgent);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", "2022-11-28");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var document = await SendJsonAsync(request, account, cancellationToken).ConfigureAwait(false);
+        return String(document.RootElement, "login") ?? "";
     }
 
     public async Task<GitHubRepositoryInfo> GetRepositoryAsync(GitHubRepository repository, CancellationToken cancellationToken = default)
@@ -242,8 +267,24 @@ public sealed class GitHubClient : IDisposable
         }
     }
 
-    /// <summary>최신 릴리스. 릴리스가 하나도 없으면 null. 프리릴리스 포함이면 버전이 가장 높은 것</summary>
+    /// <summary>
+    /// 최신 릴리스. 릴리스가 하나도 없으면 null. 프리릴리스 포함이면 버전이 가장 높은 것.
+    /// 중계 대상(내 저장소)은 이번 실행에서 처음 물을 때 GitHub 에 바로 묻고, 읽히지 않으면(비공개 · 연결 안 됨 · 한도) 중계로
+    /// </summary>
     public async Task<GitHubRelease?> GetLatestReleaseAsync(GitHubRepository repository, bool includePrerelease, CancellationToken cancellationToken = default)
+    {
+        string key = Key(repository);
+        if (_apiBaseOverride?.Invoke(repository) is not null && !_direct.ContainsKey(key))
+        {
+            _direct[key] = true;
+            try { return await ReadLatestReleaseAsync(repository, includePrerelease, cancellationToken).ConfigureAwait(false); }
+            catch (GitHubApiException error) when (error.Status is 0 or 401 or 403 or 404 or 429) { _direct[key] = false; }
+            catch { _direct.TryRemove(key, out _); throw; }
+        }
+        return await ReadLatestReleaseAsync(repository, includePrerelease, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<GitHubRelease?> ReadLatestReleaseAsync(GitHubRepository repository, bool includePrerelease, CancellationToken cancellationToken)
     {
         if (includePrerelease)
         {

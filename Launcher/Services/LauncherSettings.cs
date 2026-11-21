@@ -202,14 +202,17 @@ public sealed class LauncherSettings
     }
 
     /// <summary>
-    /// 저장소를 API 서버의 GitHub 중계(&lt;API 서버&gt;/api/v3)로 읽을 때 그 주소. 중계를 쓰면 토큰이 필요 없고
-    /// 사용자 PC 에 GitHub 토큰을 두지 않아도 비공개 저장소의 릴리스를 받음.
-    /// github.com 과 빌드 설정의 기본 호스트(GITHUB_HOST, GitHub Enterprise: 서버의 RELAY_GITHUB_API 와 같은 호스트)가 대상
+    /// 저장소를 API 서버의 GitHub 중계(&lt;API 서버&gt;/api/v3)로 읽을 때 그 주소. 내 저장소(런처 저장소와 같은 호스트 · 소유자,
+    /// 서버 토큰의 계정)만 대상이고, 그중에서도 GitHub 에 바로 읽히지 않는 비공개 저장소만 실제로 중계로 감 (GitHubClient).
+    /// 그래서 사용자 PC 에 토큰이 없어도 내 비공개 저장소의 릴리스를 받음. 다른 저장소는 각 PC 가 GitHub 에 바로 물음
     /// </summary>
     public string? ApiBaseFor(GitHubRepository repository) =>
-        ApiServerUrl is { } server && (repository.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
-                                       Build.DefaultHost.Length > 0 && repository.Host.Equals(GitHubRepository.NormalizeHost(Build.DefaultHost), StringComparison.OrdinalIgnoreCase))
+        ApiServerUrl is { } server && MyRepositories is { } mine
+        && repository.Host.Equals(mine.Host, StringComparison.OrdinalIgnoreCase) && repository.Owner.Equals(mine.Owner, StringComparison.OrdinalIgnoreCase)
             ? server + "/api/v3" : null;
+
+    /// <summary>내 저장소의 기준: 런처 저장소 (호스트를 빼고 적었으면 기본 호스트)</summary>
+    private GitHubRepository? MyRepositories => GitHubRepository.Parse(Build.LauncherRepository, Build.DefaultHost.Length > 0 ? Build.DefaultHost : null);
 
     /// <summary>앱 목록을 둔 저장소. 따로 정하지 않으면 런처 저장소</summary>
     public GitHubRepository? CatalogRepository => CatalogMode == ModeGitHub ? RepositoryCatalog : null;

@@ -10,7 +10,8 @@ namespace ILauncher;
 
 /// <summary>
 /// GitHub 프로젝트 추가 · 내 앱 편집.
-/// 추가: 저장소 주소를 넣고 [확인] (또는 Enter) 하면 API 서버의 GitHub 중계로 최신 릴리스와 설치 파일(zip · 설치 프로그램)을 확인.
+/// 추가: 저장소 주소를 넣고 [확인] (또는 Enter) 하면 GitHub 에 바로 최신 릴리스와 설치 파일(zip · 설치 프로그램)을 확인
+/// (비공개는 설정의 GitHub 토큰으로, 내 비공개 저장소는 API 서버의 GitHub 중계로).
 /// 이름 · 분류 · 설명 · 아이콘을 정해 [추가]하면 Result 가 이 PC 의 내 앱 (Personal, 설치됨 탭).
 /// 이미 있는 저장소 · 릴리스 없음 · 열 수 없는 저장소는 알려 줌.
 /// 편집(editing): 저장소는 그대로, 나머지를 바꿔 [저장]. 아이콘 그림은 CustomIcons.Folder 에 복사해 둠.
@@ -175,16 +176,12 @@ public partial class GitHubProjectWindow : Window
         catch (OperationCanceledException)
         {
             if (_checking?.Token != cancel) return;  // 그사이 다시 확인을 시작함
-            Say("응답이 없습니다. API 서버가 켜져 있는지 확인하고 다시 누르세요.");
+            Say("응답이 없습니다. 다시 누르세요.");
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            // API 서버는 앱 목록 · LAUNCHER_GITHUB_REPOS · 서버 토큰 계정의 저장소만 열어 줌
-            Say(error.Message.Contains("열려 있지 않습니다")
-                ? $"{repository.FullName} 은(는) API 서버가 열어 주지 않는 저장소입니다. 관리자에게 서버 설정 LAUNCHER_GITHUB_REPOS 에 넣어 달라고 하세요."
-                : error.Message.Contains("404") || error.Message.Contains("Not Found", StringComparison.OrdinalIgnoreCase)
-                    ? $"{repository.FullName} 저장소를 찾지 못했습니다. 주소를 확인하세요."
-                    : $"{repository.FullName} 을(를) 확인하지 못했습니다: {error.Message}");
+            // GitHubApiException 은 이유를 알려 줌 (비공개면 설정의 GitHub 토큰, 한도 초과 등)
+            Say(error is GitHubApiException ? error.Message : $"{repository.FullName} 을(를) 확인하지 못했습니다: {error.Message}");
         }
         finally
         {

@@ -313,16 +313,47 @@ try
         var offline = await store.LoadAsync();
         Assert(offline.FromCache && offline.Apps.Count == 2, "cache when the server is down");
     });
-    await Check("GitHub relay: github.com repositories go through the API server without the GitHub token", async () =>
+    await Check("GitHub relay: a private repository of mine goes through the API server (without the token) once GitHub does not answer it", async () =>
     {
         github.AddRelease("team/Relayed", "v2.0.1", ("Relayed-win-x64.zip", [1, 2]));
+        // github.com 은 이 가짜 GitHub 에 없음 = 바로 물으면 404 (비공개)
         using var relayed = new GitHubClient(host => host == "github.com" ? "gh-personal-token" : null, "checks", github,
             repository => repository.Host == "github.com" ? "https://ghe.test/api/v3" : null);
+        var repository = GitHubRepository.Parse("https://github.com/team/Relayed")!;
         int before = github.Requests.Count;
-        var release = await relayed.GetLatestReleaseAsync(GitHubRepository.Parse("https://github.com/team/Relayed")!, false);
+        var release = await relayed.GetLatestReleaseAsync(repository, false);
         Equal("2.0.1", release?.Version?.ToString(), "release through the relay");
         var sent = github.Requests.Skip(before).ToList();
-        Assert(sent.All(r => r.Contains("https://ghe.test/api/v3/repos/team/Relayed") && !r.Contains("gh-personal-token")), string.Join(" | ", sent));
+        Assert(sent.Any(r => r.Contains("https://api.github.com/repos/team/Relayed")), "GitHub asked first: " + string.Join(" | ", sent));
+        Assert(sent.Where(r => r.Contains("https://ghe.test/")).All(r => !r.Contains("gh-personal-token")), "no token to the relay: " + string.Join(" | ", sent));
+        before = github.Requests.Count;
+        await relayed.GetLatestReleaseAsync(repository, false);
+        sent = github.Requests.Skip(before).ToList();
+        Assert(sent.Count == 1 && sent[0].Contains("https://ghe.test/api/v3/repos/team/Relayed/releases/latest"), "remembered for this run: " + string.Join(" | ", sent));
+    });
+    await Check("GitHub relay: a public repository of mine and other owners' repositories are asked directly", async () =>
+    {
+        github.AddRelease("team/Open", "v1.2.0", ("Open-win-x64.zip", [3]));
+        // 중계 주소(relay.test)는 이 가짜 GitHub 가 답하지 않음: 중계로 가면 실패
+        using var client = new GitHubClient(_ => null, "checks", github,
+            repository => repository.Owner == "team" ? "https://relay.test/api/v3" : null);
+        int before = github.Requests.Count;
+        Equal("1.2.0", (await client.GetLatestReleaseAsync(GitHubRepository.Parse("https://ghe.test/team/Open")!, false))?.Version?.ToString(), "public: GitHub");
+        github.AddRelease("someone/Tool", "v0.3.0", ("Tool-win-x64.zip", [4]));
+        Equal("0.3.0", (await client.GetLatestReleaseAsync(GitHubRepository.Parse("https://ghe.test/someone/Tool")!, false))?.Version?.ToString(), "other owner: GitHub");
+        var sent = github.Requests.Skip(before).ToList();
+        Assert(sent.All(r => !r.Contains("relay.test")), "never the relay: " + string.Join(" | ", sent));
+    });
+    await Check("GitHub token in settings: checked against GitHub before it is saved", async () =>
+    {
+        using var client = new GitHubClient(_ => null, "checks", github);
+        Equal("me", await client.GetLoginAsync("ghe.test", "good-token"), "login of a good token");
+        try
+        {
+            await client.GetLoginAsync("ghe.test", "bad-token");
+            throw new Exception("a wrong token was accepted");
+        }
+        catch (GitHubApiException error) { Assert(error.Status == 401 && error.Message.Contains("토큰"), error.Message); }
     });
     await CheckSync("settings: API_SERVER makes the API server the app list and the GitHub relay", () =>
     {
@@ -331,7 +362,8 @@ try
         File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003/\nLAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\n");
         var settings = LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir);
         Equal(LauncherSettings.ModeApi, settings.CatalogMode, "API server first");
-        Equal("http://10.0.0.5:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/owner/DeskCal")!), "github.com via the relay");
+        Equal("http://10.0.0.5:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/owner/DeskCal")!), "my github.com repository may use the relay");
+        Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/someone/Tool")!) is null, "another owner's repository is asked directly");
         Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!) is null, "an Enterprise server is asked directly");
         // GITHUB_HOST 가 GitHub Enterprise 면 그 호스트도 중계로 (서버의 RELAY_GITHUB_API 가 같은 호스트)
         string enterpriseDir = Path.Combine(root, "api-settings-enterprise");
@@ -340,6 +372,7 @@ try
         var enterprise = LauncherSettings.Load(Path.Combine(root, "api-data-enterprise"), enterpriseDir);
         Equal("http://10.0.0.5:2003/api/v3", enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!), "GITHUB_HOST via the relay");
         Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://other.example.com/team/x")!) is null, "other hosts are asked directly");
+        Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/someone/x")!) is null, "other owners on GITHUB_HOST are asked directly");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
@@ -827,6 +860,8 @@ sealed class FakeGitHub : HttpMessageHandler
         const string api = "https://ghe.test/api/v3/";
         if (!url.StartsWith(api)) return Status(HttpStatusCode.NotFound);
         string path = Uri.UnescapeDataString(url[api.Length..].Split('?')[0]);
+        if (path == "user")
+            return request.Headers.Authorization?.Parameter == "good-token" ? Json(new { login = "me" }) : Status(HttpStatusCode.Unauthorized);
         if (path.StartsWith("assets/")) return Assets.TryGetValue(path[7..], out var bytes) ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) } : Status(HttpStatusCode.NotFound);
         string[] parts = path.Split('/', 4);  // repos/owner/name/rest
         if (parts.Length < 3 || parts[0] != "repos") return Status(HttpStatusCode.NotFound);

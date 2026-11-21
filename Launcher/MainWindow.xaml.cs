@@ -12,8 +12,8 @@ namespace ILauncher;
 
 public partial class MainWindow : Window
 {
+    // 30분마다 앱 목록 · 공지만 새로 읽음. 앱 · 런처의 새 버전 확인은 시작할 때와 [새로고침] 때만 (GitHub 에 바로 묻는 횟수를 줄임)
     private static readonly TimeSpan PeriodicRefresh = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan ClickRecheckAfter = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RunningCheck = TimeSpan.FromSeconds(4);
 
     private readonly LauncherSettings _settings;
@@ -197,9 +197,8 @@ public partial class MainWindow : Window
     private async Task PeriodicRefreshAsync()
     {
         if (_cards.Any(card => card.IsBusy)) return;
-        await RefreshAsync(checkReleases: true);
+        await RefreshAsync(checkReleases: false);
         await RefreshNoticesAsync();
-        await CheckLauncherUpdateAsync(automatic: false);
     }
 
     private async Task RefreshAsync(bool checkReleases)
@@ -370,12 +369,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (card.CheckedAt is null || DateTime.Now - card.CheckedAt > ClickRecheckAfter)
-        {
-            card.BeginWork("최신 버전 확인 중…");
-            await CheckReleaseAsync(card, TimeSpan.FromSeconds(8));
-            card.EndWork();
-        }
+        // 새 버전은 시작 · 새로고침 때 확인한 결과로 (누를 때마다 다시 묻지 않음)
         if (card.UpdateAvailable && card.Latest is { } release)
         {
             // 실행 중이면 종료하고 업데이트할지 묻고, 아니라고 하면 지금 버전을 그대로 엶
@@ -429,9 +423,14 @@ public partial class MainWindow : Window
 
     private async Task<bool> InstallWithConfirmationAsync(AppCard card, bool reinstall)
     {
-        card.BeginWork("최신 릴리스 확인 중…");
-        bool checkedOk = await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
-        card.EndWork();
+        // 시작 · 새로고침 때 받은 릴리스로 설치. 아직 못 받은 앱만 지금 물음 (받을 파일을 알아야 하므로)
+        bool checkedOk = card.Latest is not null;
+        if (!checkedOk)
+        {
+            card.BeginWork("최신 릴리스 확인 중…");
+            checkedOk = await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
+            card.EndWork();
+        }
         if (card.Latest is not { } release)
         {
             ShowError(checkedOk
@@ -546,13 +545,7 @@ public partial class MainWindow : Window
         var queued = new List<AppCard>();
         try
         {
-            // 확인한 지 오래된 앱은 카드 클릭과 같은 기준으로 다시 확인
-            var stale = _cards.Where(card => card is { IsInstalled: true, IsBusy: false } && (card.CheckedAt is null || DateTime.Now - card.CheckedAt > ClickRecheckAfter)).ToList();
-            if (stale.Count > 0)
-            {
-                StatusText.Text = "최신 버전 확인 중…";
-                await CheckReleasesAsync(stale);
-            }
+            // 시작 · 새로고침 때 확인한 결과로 (다시 묻지 않음)
             var targets = _cards.Where(card => card is { UpdateAvailable: true, IsBusy: false, Latest: not null })
                 .OrderBy(card => card.App.Order).ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             if (targets.Count == 0)
@@ -1256,7 +1249,13 @@ public partial class MainWindow : Window
         Render();
     }
 
-    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser);
+    // 토큰은 런처의 기본 호스트(github.com 또는 GITHUB_HOST)용. 저장 · 지우면 새 버전을 다시 확인
+    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser, _settings.DefaultHost ?? "github.com",
+        (host, token) => _github.GetLoginAsync(host, token), () =>
+        {
+            _github.ForgetRoutes();
+            _ = RefreshAsync(checkReleases: true);
+        });
 
     // 설정 · 관리자 메뉴의 뒤로 (Esc): 앱 목록 (전체 앱)
     private void PageBack_Click(object sender, RoutedEventArgs e)
