@@ -8,7 +8,7 @@ using ILauncher.Services;
 
 /// <summary>
 /// Launcher.Checks --ui-snapshot &lt;데이터 폴더&gt; &lt;png&gt; [초]: 실제 MainWindow 를 띄워 몇 초 뒤 화면을 PNG 로 저장하고
-/// 카드 상태를 출력. 같은 폴더에 즐겨찾기(-favorites.png), 트레이 창(-tray.png), 설정 화면(-settings.png)도 저장.
+/// 카드 상태를 출력. 같은 폴더에 즐겨찾기(-favorites.png), 설정 화면(-settings.png)도 저장.
 /// 원격 세션이 끊겨 있으면 WPF 가 아무것도 그리지 못해 그림은 비고, 출력한 값으로만 확인할 수 있음.
 /// </summary>
 static class UiSnapshot
@@ -81,15 +81,6 @@ static class UiSnapshot
                     Console.WriteLine("chips: " + string.Join(", ", window.CategoryButtons.Children.OfType<System.Windows.Controls.Button>()
                         .Select(chip => System.Windows.Automation.AutomationProperties.GetName(chip))));
                     Console.WriteLine($"dock: {window.DockFavorites.Items.Count} favorites, {window.DockRunning.Items.Count} running");
-
-                    // 트레이 창 (트레이 아이콘을 한 번 누르면 뜨는 작은 창)
-                    var quick = new TrayPopup(window) { ShowActivated = false, Left = -4000, Top = 0 };
-                    quick.Refresh();
-                    quick.Show();
-                    Pump(TimeSpan.FromSeconds(1));
-                    Save((FrameworkElement)quick.Content, Suffix(output, "-tray"));
-                    Console.WriteLine($"tray: {quick.Items.Items.Count} cells, {quick.Updates.Items.Count} updates");
-                    quick.CloseForGood();
 
                     // 즐겨찾기 화면과 추가 창 (설치된 프로그램 목록은 늦게 채워지므로 잠시 기다림)
                     window.SelectFilter("favorites");

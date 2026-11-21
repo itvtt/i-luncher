@@ -40,7 +40,6 @@ public partial class MainWindow : Window
     private readonly RemovedAppStore _removedStore;
     /// <summary>목록에서 삭제한 기본 목록 · 서버 목록 앱 (다시 추가하기 전까지 숨김, 런처 업데이트와 상관없이)</summary>
     private List<RemovedApp> _removed;
-    private readonly UsageStore _usage;
     private readonly DispatcherTimer _runningTimer;
     private bool _scanningRunning;
     /// <summary>지금 보이는 화면 이름 (전체 앱 · 분류 · 즐겨찾기 · 업데이트 · 검색): 앱 페이지의 뒤로 글자</summary>
@@ -59,7 +58,6 @@ public partial class MainWindow : Window
         _myApps = _myAppStore.Load();
         _removedStore = new RemovedAppStore(Path.Combine(settings.DataDirectory, "removed-apps.json"));
         _removed = _removedStore.Load();
-        _usage = new UsageStore(Path.Combine(settings.DataDirectory, "usage.json"));
         InitializeComponent();
         // 설치됨 아이콘 · 스토어 줄이 3줄은 독 위로 다 보이는 높이 (공지 · 업데이트 띠가 있어도). 화면이 작으면 그 화면에 맞춤
         double workHeight = SystemParameters.WorkArea.Height;
@@ -80,7 +78,7 @@ public partial class MainWindow : Window
         PreviewMouseUp += Window_PreviewMouseUp;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
-        // 실행 중 표시: 창이나 트레이 창이 보일 때만 몇 초마다
+        // 실행 중 표시: 창이 보일 때만 몇 초마다
         _runningTimer = new DispatcherTimer(RunningCheck, DispatcherPriority.Background, async (_, _) => await ScanRunningAsync(), Dispatcher);
         _runningTimer.Stop();
     }
@@ -191,12 +189,12 @@ public partial class MainWindow : Window
     private void Window_Activated(object? sender, EventArgs e) => _ = ScanRunningAsync();
 
     /// <summary>
-    /// 설치된 앱 중 실행 중인 것을 칸 · 독 · 트레이 창에 표시. 창도 트레이 창도 안 보이면 건너뜀.
+    /// 설치된 앱 중 실행 중인 것을 칸 · 독에 표시. 창이 안 보이면 건너뜀.
     /// 실행 중인 앱이 바뀌면 독(즐겨찾기가 아닌 실행 중인 앱)을 다시 그림
     /// </summary>
     internal async Task ScanRunningAsync()
     {
-        if (_scanningRunning || (!IsVisible && _quick?.IsVisible != true)) return;
+        if (_scanningRunning || !IsVisible) return;
         _scanningRunning = true;
         try
         {
@@ -468,7 +466,6 @@ public partial class MainWindow : Window
         var ids = await Task.Run(() => AppInstaller.RunningProcessIds(installed.Directory));
         if (!WindowFront.Activate(ids)) return false;
         StatusText.Text = $"{card.Name} 앞으로 (Ctrl+클릭: 하나 더 실행)";
-        _usage.Add(UsageStore.AppKey(card.App.Id));
         return true;
     }
 
@@ -571,7 +568,6 @@ public partial class MainWindow : Window
         {
             _manager.Installer.Launch(card.App, installed);
             StatusText.Text = $"{card.Name} 실행";
-            _usage.Add(UsageStore.AppKey(card.App.Id));
             return true;
         }
         catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode == 1223)

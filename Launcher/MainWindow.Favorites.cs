@@ -153,7 +153,6 @@ public partial class MainWindow
         {
             StatusText.Text = $"{card.Name} 앞으로 (Ctrl+클릭: 하나 더 실행)";
             HideError();
-            _usage.Add(UsageStore.ProgramKey(program.Id));
             return true;
         }
         try
@@ -167,7 +166,6 @@ public partial class MainWindow
             Process.Start(start);
             StatusText.Text = card.IsWeb ? $"{card.Name} 열기" : $"{card.Name} 실행";
             HideError();
-            _usage.Add(UsageStore.ProgramKey(program.Id));
             return true;
         }
         catch (Win32Exception error) when (error.NativeErrorCode == 1223)

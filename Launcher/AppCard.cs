@@ -172,7 +172,7 @@ public sealed class AppCard : INotifyPropertyChanged
     public double IconOpacity => 1.0;
     public Brush TitleBrush => IsInstalled ? InstalledTitleBrush : NotInstalledTitleBrush;
 
-    // ── 홈 화면의 아이콘 칸 · 독 · 트레이 창 ──
+    // ── 홈 화면의 아이콘 칸 · 독 ──
     private static readonly Brush CellGreyBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93)));
     private static readonly Brush CellBlueBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xFF)));
     private static readonly Brush CellGreenBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x5B, 0xE3, 0xA3)));

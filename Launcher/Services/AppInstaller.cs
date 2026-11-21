@@ -437,7 +437,7 @@ public sealed class AppInstaller
     }
 
     /// <summary>
-    /// 여러 설치 폴더 중 지금 실행 중인 폴더 (홈 화면 · 트레이 창의 "실행 중" 표시용). 프로세스 목록은 한 번만 읽고,
+    /// 여러 설치 폴더 중 지금 실행 중인 폴더 (홈 화면 · 독의 "실행 중" 표시용). 프로세스 목록은 한 번만 읽고,
     /// 이름이 맞는 프로세스만 경로를 확인함. 경로를 못 읽는 프로세스(관리자 권한)는 그 이름의 폴더가 하나일 때만, Windows 서비스(세션 0)는 셈하지 않음
     /// </summary>
     public static HashSet<string> RunningDirectories(IEnumerable<string> directories)
