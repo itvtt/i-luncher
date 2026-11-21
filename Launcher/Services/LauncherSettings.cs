@@ -94,6 +94,8 @@ public sealed class UserSettings
     public bool GeneralView { get; set; }
     /// <summary>호스트 → DPAPI 로 보호한 토큰(base64)</summary>
     public Dictionary<string, string> Tokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>마스터 PC 가 이 PC 의 git 자격 증명에서 자동으로 넣은 토큰의 호스트 (사용자가 설정에 직접 넣으면 빠짐)</summary>
+    public List<string> AutoTokenHosts { get; set; } = [];
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("i-luncher/github-token/v1");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
@@ -105,6 +107,7 @@ public sealed class UserSettings
             if (File.Exists(path) && JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(path), JsonOptions) is { } settings)
             {
                 settings.Tokens = new Dictionary<string, string>(settings.Tokens ?? [], StringComparer.OrdinalIgnoreCase);
+                settings.AutoTokenHosts ??= [];
                 return settings;
             }
         }
@@ -133,9 +136,11 @@ public sealed class UserSettings
         }
     }
 
+    /// <summary>사용자가 설정에서 넣거나 지운 토큰 (자동 토큰 표시도 지움)</summary>
     public void SetToken(string host, string? token)
     {
         string key = GitHubRepository.NormalizeHost(host);
+        AutoTokenHosts.RemoveAll(item => item.Equals(key, StringComparison.OrdinalIgnoreCase));
         if (string.IsNullOrWhiteSpace(token)) { Tokens.Remove(key); return; }
         Tokens[key] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(token.Trim()), Entropy, DataProtectionScope.CurrentUser));
     }
@@ -237,6 +242,26 @@ public sealed class LauncherSettings
     }
 
     public bool HasUserToken(string host) => User.GetToken(host) is { Length: > 0 };
+
+    /// <summary>
+    /// 마스터 PC: 사용자가 설정에 토큰을 넣지 않았으면 이 PC 의 git 자격 증명(저장소를 push 하는 그 계정)을 그 호스트의 토큰으로 씀.
+    /// 설정에 넣어 두므로 설치된 앱의 자체 업데이터도 같은 토큰으로 비공개 저장소를 읽음. 사용자가 직접 넣은 토큰은 건드리지 않음.
+    /// 바뀌었으면 true (저장함)
+    /// </summary>
+    public bool AdoptGitCredential(Func<string, string?>? fill = null)
+    {
+        if (DefaultHost is not { Length: > 0 } host) return false;
+        string key = GitHubRepository.NormalizeHost(host);
+        bool auto = User.AutoTokenHosts.Any(item => item.Equals(key, StringComparison.OrdinalIgnoreCase));
+        string? current = User.GetToken(key);
+        if (current is { Length: > 0 } && !auto) return false;
+        string? token = (fill ?? (name => GitCredential.Fill(name)))(key);
+        if (token is not { Length: > 0 } || token == current) return false;
+        User.SetToken(key, token);
+        User.AutoTokenHosts.Add(key);
+        SaveUser();
+        return true;
+    }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Trim('/');
 }

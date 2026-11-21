@@ -83,6 +83,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 ### 토큰
 
 - **공개 저장소는 토큰이 필요 없습니다.** 일반 사용자가 받는 저장소는 공개로 둡니다.
+- **마스터 PC 는 토큰을 넣지 않습니다**: 런처가 시작할 때 이 PC 의 git 로그인(저장소를 push 하는 그 계정, Git Credential Manager 등)을 창 없이 읽어 토큰으로 쓰고, 설치된 앱의 자체 업데이터도 같은 토큰을 씁니다. 설정에 직접 넣은 토큰이 있으면 그것이 먼저입니다.
 - 비공개 저장소를 읽어야 하면:
   - 사용자마다: 런처 **설정 → GitHub 토큰** (읽기 권한). 이 PC · 이 Windows 계정에만 암호화해 저장되고, **설치된 앱의 자체 업데이터도 같은 토큰을 씁니다** (앱에 토큰이 없을 때).
   - 모두 같은 토큰: 런처 빌드 설정 `LAUNCHER_TOKEN`, 앱 빌드 설정 `UPDATE_TOKEN` (읽기 전용만. 실행 파일 안에 들어감).
@@ -94,7 +95,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 |---|---|
 | i-luncher | 공개 (런처 자체 업데이트) |
 | 기본 목록 앱 | 공개 (일반 사용자가 받음) |
-| 서버 목록 앱 | 마스터만 보므로 비공개여도 됨 (마스터가 런처 설정 → GitHub 토큰). 일반 사용자가 내 앱으로도 받지 못하게 하려면 비공개 |
+| 서버 목록 앱 | 마스터만 보므로 비공개여도 됨 (마스터 PC 는 git 로그인을 자동으로 씀). 일반 사용자가 내 앱으로도 받지 못하게 하려면 비공개 |
 | i-luncher-notices | 공개 (모든 런처가 공지를 읽음) |
 | Receive | 런처로 나눠 주지 않음 (관리자 PC 에서 독 **+** 로 등록) |
 
@@ -143,7 +144,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 
 | 파일 | 내용 |
 |---|---|
-| `settings.json` | 자동 업데이트, GitHub 토큰(암호화), `GeneralView`(마스터의 일반 화면) |
+| `settings.json` | 자동 업데이트, GitHub 토큰(암호화. 마스터 PC 는 git 로그인에서 자동, `AutoTokenHosts`), `GeneralView`(마스터의 일반 화면) |
 | `my-apps.json` | 내 앱 |
 | `removed-apps.json` | 목록에서 삭제한 기본 · 서버 목록 앱 |
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |

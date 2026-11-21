@@ -523,6 +523,22 @@ try
     });
 
     Console.WriteLine("AppKit self-update");
+    await CheckSync("master PC: this PC's git login becomes the token without typing it; a token the user saved stays", () =>
+    {
+        string buildDir = Path.Combine(root, "gitcred-build");
+        Directory.CreateDirectory(buildDir);
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "LAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\n");
+        var settings = LauncherSettings.Load(Path.Combine(root, "gitcred-data"), buildDir);
+        string? asked = null;
+        Assert(settings.AdoptGitCredential(host => { asked = host; return "git-token"; }), "adopted");
+        Equal("github.com", asked, "the launcher's host");
+        Equal("git-token", settings.GetToken("github.com"), "used for GitHub");
+        Equal("git-token", LauncherSettings.Load(Path.Combine(root, "gitcred-data"), buildDir).GetToken("github.com"), "saved for the apps too");
+        Assert(settings.AdoptGitCredential(_ => "git-token-2") && settings.GetToken("github.com") == "git-token-2", "a renewed git login replaces the automatic one");
+        Assert(!settings.AdoptGitCredential(_ => null) && settings.GetToken("github.com") == "git-token-2", "no git login: keeps what it has");
+        settings.User.SetToken("github.com", "typed-token");
+        Assert(!settings.AdoptGitCredential(_ => "git-token-3") && settings.GetToken("github.com") == "typed-token", "a token typed in settings wins");
+    });
     await CheckSync("apps ask GitHub with the token this user saved in the launcher settings (only for that host)", () =>
     {
         string data = Path.Combine(root, "token-data");

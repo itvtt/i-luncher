@@ -173,6 +173,12 @@ public partial class MainWindow : Window
         ShowNotices(_notices.CachedNotices);
         // 서버 PC 의 마스터: 런처에 든 relay.py 가 더 새 버전이면 서버를 바꾸고, 꺼져 있으면 켬 (앱 목록을 읽기 전에)
         if (IsMasterAccount) await ApiManager.ManagerHost.ApplyAsync();
+        // 마스터 PC: 토큰을 따로 넣지 않아도 이 PC 의 git 로그인(저장소 주인 계정)으로 비공개 저장소의 버전 · 업데이트를 읽음 (앱들도 같은 토큰)
+        if (IsMasterAccount)
+        {
+            try { await Task.Run(() => _settings.AdoptGitCredential()); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
         await RefreshAsync(checkReleases: true);
         _periodic.Start();
         _runningTimer.Start();
