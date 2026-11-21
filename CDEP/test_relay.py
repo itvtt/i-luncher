@@ -1125,16 +1125,6 @@ class LauncherApiTest(unittest.TestCase):
             self.assertEqual(self.call("PUT", "/launcher/catalog", {"apps": bad, "revision": saved["revision"]}, admin=True)[0], 400, bad)
         self.assertTrue((self.root / "launcher" / "catalog.json").is_file(), "kept in the data folder")
 
-    def test_catalog_keeps_the_beta_and_new_badges(self):
-        # The master sets them in ApiServer.exe's app list; i-luncher shows them on the cards.
-        apps = [{"id": "swift", "name": "Swift", "repository": "https://github.com/owner1/Swift", "beta": True, "new": True},
-                {"id": "plain", "name": "Plain", "repository": "https://github.com/owner1/Plain"}]
-        status, body, _ = self.call("PUT", "/launcher/catalog", {"apps": apps, "revision": ""}, admin=True)
-        self.assertEqual(status, 200, body)
-        served = json.loads(self.call("GET", "/launcher/catalog")[1])["apps"]
-        self.assertEqual((served[0]["beta"], served[0]["new"]), (True, True))
-        self.assertNotIn("beta", served[1], "off means not written")
-
     def test_app_page_screenshots_and_details(self):
         png = b"\x89PNG\r\n\x1a\n" + b"pixels" * 10
         upload = urllib.request.Request(self.base + "/launcher/media", data=png, method="POST", headers={"Content-Type": "image/png"})

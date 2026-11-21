@@ -493,11 +493,6 @@
                                                     </Border>
                                                     <Image Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Grid>
-                                                <!-- 베타 · NEW: 아이콘 아래 모서리에 걸쳐 가운데 (바탕색 테두리로 아이콘과 떼어 보이게) -->
-                                                <Border Margin="0,0,0,-10" Padding="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" CornerRadius="6"
-                                                        Background="#FF1C1C1E" Visibility="{Binding TagsVisibility}" IsHitTestVisible="False">
-                                                    <ContentControl Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource AppTagsTemplate}" />
-                                                </Border>
                                                 <!-- 버전: 아이콘 밖, 오른쪽 위 모서리 위에 작게 (회색 판에 밝은 글자) -->
                                                 <Border Margin="0,-17,-10,0" Padding="4,0,4,1" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="5"
                                                         Background="#FF34353B" Visibility="{Binding IconVersionVisibility}" IsHitTestVisible="False">
@@ -556,13 +551,7 @@
                                             <Image Source="{Binding Card.Icon}" Stretch="Uniform" Visibility="{Binding Card.IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                         </Grid>
                                         <StackPanel Grid.Column="1" Margin="14,0,12,0" VerticalAlignment="Center">
-                                            <!-- 이름 · 베타 · NEW (태그는 이름이 길어도 보이게 오른쪽 칸) -->
-                                            <Grid>
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Card.Name}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis" />
-                                                <ContentControl Grid.Column="1" Margin="8,1,0,0" VerticalAlignment="Center" HorizontalAlignment="Left" Focusable="False" IsHitTestVisible="False"
-                                                                Content="{Binding Card}" ContentTemplate="{StaticResource AppTagsTemplate}" />
-                                            </Grid>
+                                            <TextBlock FontSize="14.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Card.Name}" ToolTip="{Binding Card.FullName}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Margin="0,3,0,0" FontSize="12.5" Foreground="#FFAEAEB2" Text="{Binding Card.DescriptionText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Card.DescriptionText}" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Height="28" MinWidth="70" VerticalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding Card}" Click="CellAction_Click"
@@ -740,12 +729,6 @@
                                             Visibility="{Binding StoreButtonVisibility}" ToolTip="{Binding RunToolTip}" AutomationProperties.Name="{Binding StoreButtonText}">
                                         <TextBlock Text="{Binding StoreButtonText}" VerticalAlignment="Center" />
                                     </Button>
-                                    <Border Style="{StaticResource TagStyle}" Height="20" Margin="12,0,0,0" VerticalAlignment="Center" Background="#29E6C07A" Visibility="{Binding BetaVisibility}">
-                                        <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FFF0CF8A" Text="베타" />
-                                    </Border>
-                                    <Border Style="{StaticResource TagStyle}" Height="20" Margin="8,0,0,0" VerticalAlignment="Center" Background="#293DD68C" Visibility="{Binding NewVisibility}">
-                                        <TextBlock VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Foreground="#FF7FE2B0" Text="NEW" />
-                                    </Border>
                                 </StackPanel>
                                 <StackPanel Margin="0,12,0,0" MaxWidth="360" HorizontalAlignment="Left" Visibility="{Binding BusyVisibility}">
                                     <TextBlock FontSize="12" Foreground="#FF98989D" Text="{Binding BusyText}" TextTrimming="CharacterEllipsis" />

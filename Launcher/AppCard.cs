@@ -33,18 +33,8 @@ public sealed class AppCard : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public AppDefinition App { get => _app; set { _app = value; NotifyAll(); } }
-    private DateTimeOffset? _firstReleasedAt;
-    /// <summary>처음 낸 릴리스 날짜 (앱마다 한 번 읽어 FirstReleaseStore 에 둠). NEW 태그 · 앱 페이지의 "최초 출시"</summary>
-    public DateTimeOffset? FirstReleasedAt
-    {
-        get => _firstReleasedAt;
-        set
-        {
-            if (_firstReleasedAt == value) return;
-            _firstReleasedAt = value;
-            Notify(); Notify(nameof(IsNew)); Notify(nameof(NewVisibility)); Notify(nameof(TagsVisibility)); Notify(nameof(Eyebrow));
-        }
-    }
+    /// <summary>처음 낸 릴리스 날짜 (앱 페이지를 열 때 한 번 읽음)</summary>
+    public DateTimeOffset? FirstReleasedAt { get; set; }
     public bool FirstReleaseLoaded { get; set; }
     public InstalledApp? Installed { get => _installed; set { _installed = value; NotifyAll(); } }
     public GitHubRelease? Latest { get => _latest; private set { _latest = value; NotifyAll(); } }
@@ -128,15 +118,8 @@ public sealed class AppCard : INotifyPropertyChanged
     public Brush Art => CardArt.Gradient(Palette);
     /// <summary>카드 버튼(흰 바탕)의 글자 · 아이콘 색</summary>
     public Brush Ink => CardArt.Ink(Palette);
-    /// <summary>카드 왼쪽 위 작은 글자: 새 버전 · 새 앱 · 베타, 아니면 분류</summary>
-    public string Eyebrow => UpdateAvailable ? "새 버전" : IsNew ? "새 앱" : App.Beta ? "베타" : Category;
-
-    /// <summary>NEW 로 보는 기간: 처음 출시한 지 이만큼</summary>
-    public static readonly TimeSpan NewPeriod = TimeSpan.FromDays(14);
-    /// <summary>NEW 태그: 처음 출시한 지 14일 안이거나, 마스터가 앱 목록에서 NEW 를 켬</summary>
-    public bool IsNew => App.New || FirstReleasedAt is { } first && DateTimeOffset.Now - first < NewPeriod;
-    /// <summary>베타 · NEW 태그 묶음 (스토어 줄 · 설치됨 칸): 하나라도 있으면 보임</summary>
-    public Visibility TagsVisibility => App.Beta || IsNew ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>카드 왼쪽 위 작은 글자: 새 버전, 아니면 분류</summary>
+    public string Eyebrow => UpdateAvailable ? "새 버전" : Category;
 
     // ── 화면에 보이는 값 ──
     public string Name => App.Name;
@@ -162,8 +145,6 @@ public sealed class AppCard : INotifyPropertyChanged
     public void RefreshAdminMenu() => Notify(nameof(AdminMenuVisibility));
     /// <summary>내 앱(GitHub 프로젝트로 더한 앱)만: 삭제 메뉴</summary>
     public Visibility PersonalMenuVisibility => App.Personal ? Visibility.Visible : Visibility.Collapsed;
-    // 베타 태그: 앱 목록의 beta (기본 목록 basic-apps.json · 관리자 메뉴의 앱 목록)
-    public Visibility BetaVisibility => App.Beta ? Visibility.Visible : Visibility.Collapsed;
     // 즐겨찾기 (이 PC 에만, FavoriteStore)
     private bool _favorite;
     public bool IsFavorite
@@ -183,7 +164,6 @@ public sealed class AppCard : INotifyPropertyChanged
     public Brush FavoriteGlyphBrush => IsFavorite ? FavoriteOnBrush : FavoriteOffBrush;
     public string FavoriteMenuHeader => IsFavorite ? "즐겨찾기에서 빼기" : "즐겨찾기에 추가";
     public Visibility FavoriteVisibility => IsFavorite ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility NewVisibility => IsNew ? Visibility.Visible : Visibility.Collapsed;
     public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility InitialsVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
     public double IconOpacity => 1.0;

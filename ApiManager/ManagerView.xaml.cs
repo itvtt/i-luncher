@@ -374,7 +374,14 @@ public partial class ManagerView : UserControl
         _catalogRevision = Str(catalog["revision"]);
         _apps.Clear();
         foreach (var node in catalog["apps"]!.AsArray())
-            if (node is JsonObject app) _apps.Add(new AppRow((JsonObject)app.DeepClone()));
+            if (node is JsonObject app)
+            {
+                // 예전 베타 · NEW 표시 값은 더 쓰지 않음: 다음에 저장할 때 목록에서 빠짐
+                var data = (JsonObject)app.DeepClone();
+                data.Remove("beta");
+                data.Remove("new");
+                _apps.Add(new AppRow(data));
+            }
         // 런처와 같은 순서 (order, 같으면 원래 순서)
         var ordered = _apps.Select((app, index) => (app, index)).OrderBy(item => (int?)item.app.Data["order"] ?? int.MaxValue).ThenBy(item => item.index).Select(item => item.app).ToList();
         _apps.Clear();
@@ -440,8 +447,6 @@ public partial class ManagerView : UserControl
         AppKindSetup.IsChecked = setup;
         AppKindZip.IsChecked = !setup;
         AppMasterOnlyBox.IsChecked = app is not null && (bool?)app.Data["masterOnly"] == true;
-        AppBetaBox.IsChecked = app is not null && Flag(app.Data, "beta");
-        AppNewBox.IsChecked = app is not null && Flag(app.Data, "new");
         // 이 창에 칸이 없는 값(icon·executable 등)은 보이지 않아도 저장할 때 그대로 남음
         _fillingAppForm = false;
     }
@@ -507,16 +512,6 @@ public partial class ManagerView : UserControl
         SetAppsDirty(true);
     }
 
-    // i-luncher 카드의 '베타'·'NEW' 배지 (앱 목록 JSON 의 beta·new, 꺼지면 값을 빼서 저장)
-    private void AppBadge_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_fillingAppForm || AppsList.SelectedItem is not AppRow app) return;
-        SetFlag(app.Data, "beta", AppBetaBox.IsChecked == true);
-        SetFlag(app.Data, "new", AppNewBox.IsChecked == true);
-        app.Changed();
-        SetAppsDirty(true);
-    }
-
     /// <summary>예전 값(original)이 지금 값과 다르면 목록(key)에 더함. 지금 값은 목록에서 뺌 (되돌린 이름)</summary>
     internal static void KeepFormer(JsonObject data, string key, string original, string current)
     {
@@ -529,15 +524,6 @@ public partial class ManagerView : UserControl
         else data[key] = new JsonArray(names.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray());
     }
 
-    internal static bool Flag(JsonObject data, string key) =>
-        data[key] is JsonValue value && value.TryGetValue<bool>(out bool on) && on;
-
-    private static void SetFlag(JsonObject data, string key, bool on)
-    {
-        if (on) data[key] = true;
-        else data.Remove(key);
-    }
-
     private static void Put(JsonObject data, string key, string value, bool keepEmpty = false)
     {
         if (value.Length == 0 && !keepEmpty) data.Remove(key);
@@ -546,7 +532,6 @@ public partial class ManagerView : UserControl
 
     private void AddAppButton_Click(object sender, RoutedEventArgs e)
     {
-        // NEW 는 켜지 않음: i-luncher 가 처음 출시 14일 동안 저절로 NEW 를 붙임 (켜 두면 그 뒤에도)
         var app = new AppRow(new JsonObject { ["id"] = "", ["name"] = "새 앱", ["repository"] = "https://github.com/" });
         _apps.Add(app);
         RefreshAppsList(select: app);
@@ -993,8 +978,7 @@ internal sealed class AppRow(JsonObject data) : INotifyPropertyChanged
         data["installName"]?.ToString() is { Length: > 0 } install ? install.Trim() : data["name"]?.ToString()?.Trim() ?? "";
     public string Title => Data["name"]?.ToString() is { Length: > 0 } name ? name : "(이름 없음)";
     public string Detail => string.Join(" · ", new[] { Data["id"]?.ToString(), Data["category"]?.ToString(), Data["kind"]?.ToString(),
-            (bool?)Data["masterOnly"] == true ? "마스터만" : null,
-            ManagerView.Flag(Data, "beta") ? "베타" : null, ManagerView.Flag(Data, "new") ? "NEW" : null }
+            (bool?)Data["masterOnly"] == true ? "마스터만" : null }
         .Where(part => !string.IsNullOrWhiteSpace(part))) is { Length: > 0 } text ? text : "id 없음";
     public event PropertyChangedEventHandler? PropertyChanged;
     public override string ToString() => Title;

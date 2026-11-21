@@ -42,7 +42,6 @@
       "screenshots": [ "fastcopy-1.png", "fastcopy-2.png", "fastcopy-3.png" ],
       "installName": "FastCopy",
       "order": 40,
-      "beta": true,
       "formerIds": [ "swiftcopy" ],
       "formerInstallNames": [ "SwiftCopy" ]
     },
@@ -57,7 +56,6 @@
       "screenshots": [ "diskscan-1.png", "diskscan-2.png", "diskscan-3.png" ],
       "installName": "DiskScan",
       "order": 50,
-      "beta": true,
       "formerIds": [ "diskatlas" ],
       "formerInstallNames": [ "DiskAtlas" ]
     },

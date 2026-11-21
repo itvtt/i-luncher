@@ -38,7 +38,6 @@ public partial class MainWindow : Window
     private readonly MyAppStore _myAppStore;
     private List<AppDefinition> _myApps;
     private readonly RemovedAppStore _removedStore;
-    private readonly FirstReleaseStore _firstReleases;
     /// <summary>목록에서 삭제한 기본 목록 · 서버 목록 앱 (다시 추가하기 전까지 숨김, 런처 업데이트와 상관없이)</summary>
     private List<RemovedApp> _removed;
     private readonly DispatcherTimer _runningTimer;
@@ -58,7 +57,6 @@ public partial class MainWindow : Window
         _myAppStore = new MyAppStore(Path.Combine(settings.DataDirectory, "my-apps.json"));
         _myApps = _myAppStore.Load();
         _removedStore = new RemovedAppStore(Path.Combine(settings.DataDirectory, "removed-apps.json"));
-        _firstReleases = new FirstReleaseStore(Path.Combine(settings.DataDirectory, "first-releases.json"));
         _removed = _removedStore.Load();
         InitializeComponent();
         // 설치됨 아이콘 · 스토어 줄이 3줄은 독 위로 다 보이는 높이 (공지 · 업데이트 띠가 있어도). 화면이 작으면 그 화면에 맞춤
@@ -235,13 +233,11 @@ public partial class MainWindow : Window
             if (snapshot.Warning is { } warning) ShowError(warning); else HideError();
             MigrateFavorites(snapshot.Apps);
             MergeCards(WithMyApps(snapshot.Apps));
-            ApplyStoredFirstReleases(_cards);
             await DetectInstallsAsync(_cards.ToList());
             ChooseFirstTab();
             Render();
             if (checkReleases) await CheckReleasesAsync(_cards.ToList());
             _ = LoadRepositoryIconsAsync(_cards.ToList());
-            _ = LoadFirstReleasesAsync(_cards.ToList());
         }
         finally
         {
@@ -387,34 +383,6 @@ public partial class MainWindow : Window
             finally { gate.Release(); }
         }));
         Render();
-    }
-
-    /// <summary>이 PC 에 둔 최초 출시일을 카드에 (NEW 태그가 첫 화면부터 보이게)</summary>
-    private void ApplyStoredFirstReleases(IEnumerable<AppCard> cards)
-    {
-        foreach (var card in cards)
-        {
-            if (card.FirstReleasedAt is not null ||
-                GitHubRepository.Parse(card.App.Repository, _settings.DefaultHost) is not { } repository ||
-                !_firstReleases.TryGet(repository, out var date))
-            {
-                continue;
-            }
-            card.FirstReleasedAt = date;
-            card.FirstReleaseLoaded = true;
-        }
-    }
-
-    /// <summary>아직 모르는 앱의 최초 출시일을 GitHub 에서 (앱마다 한 번, 이 PC 에 둠). 실패해도 조용히 넘어감</summary>
-    private async Task LoadFirstReleasesAsync(IReadOnlyList<AppCard> cards)
-    {
-        using var gate = new SemaphoreSlim(3);
-        await Task.WhenAll(cards.Where(card => !card.FirstReleaseLoaded).Select(async card =>
-        {
-            await gate.WaitAsync();
-            try { await LoadFirstReleaseAsync(card); }
-            finally { gate.Release(); }
-        }));
     }
 
     /// <summary>저장소에서 앱 아이콘을 찾아 (캐시가 오래됐거나 없을 때만) 카드에 반영. 실패해도 조용히 넘어감</summary>
