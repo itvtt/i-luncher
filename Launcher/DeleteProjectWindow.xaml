@@ -16,11 +16,11 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <!-- 내 앱 삭제: 목록에서만 뺄지, 설치된 앱도 제거할지 고름 (설치되지 않았으면 고르기 없이 목록에서 뺌) -->
+    <!-- 목록에서 삭제 (내 앱 · 기본 목록 앱): 목록에서만 뺄지, 설치된 앱도 제거할지 고름 (설치되지 않았으면 고르기 없이 목록에서 뺌) -->
     <Grid Margin="14">
         <Border Style="{StaticResource DialogCardStyle}" MouseLeftButtonDown="Card_MouseLeftButtonDown">
             <StackPanel>
-                <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#FFB4B4BA" Text="내 앱 삭제" />
+                <TextBlock x:Name="TitleText" FontSize="13" FontWeight="SemiBold" Foreground="#FFB4B4BA" Text="내 앱 삭제" />
 
                 <Grid Margin="0,18,0,0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>

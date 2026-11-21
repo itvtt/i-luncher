@@ -4,7 +4,8 @@ using System.Windows.Input;
 namespace ILauncher;
 
 /// <summary>
-/// 내 앱(GitHub 프로젝트로 더한 앱) 삭제 확인. 설치되어 있으면 "목록에서만 빼기"(처음 고름) / "설치된 앱도 제거"를 고름.
+/// 목록에서 삭제 확인 (내 앱 · 기본 목록 앱). 설치되어 있으면 "목록에서만 빼기"(처음 고름) / "설치된 앱도 제거"를 고름.
+/// 기본 목록 앱은 다시 추가하기 전까지 숨김 (독의 + → 삭제한 앱 다시 추가).
 /// [삭제]하면 DialogResult true, Uninstall 은 설치된 앱도 제거할지
 /// </summary>
 public partial class DeleteProjectWindow : Window
@@ -12,6 +13,7 @@ public partial class DeleteProjectWindow : Window
     public DeleteProjectWindow(AppCard card)
     {
         InitializeComponent();
+        TitleText.Text = card.App.Personal ? "내 앱 삭제" : "목록에서 삭제";
         AppNameText.Text = card.Name;
         AppNameText.ToolTip = card.Name;
         RepositoryText.Text = GitHubName(card.App.Repository);
@@ -34,6 +36,7 @@ public partial class DeleteProjectWindow : Window
             Choices.Visibility = Visibility.Visible;
         }
         else QuestionText.Text = "홈 화면에서 뺄까요? 설치되어 있지 않아 지울 파일은 없습니다.";
+        if (!card.App.Personal) QuestionText.Text += "\n다시 보려면 독의 + → 삭제한 앱 다시 추가.";
     }
 
     /// <summary>설치된 앱도 제거</summary>

@@ -8,7 +8,6 @@ using System.Windows.Forms;
 namespace ILuncher.Setup;
 
 // i-luncher-Setup.exe [/S] [/dir=PATH] [/nodesktop] [/nolaunch]   설치 (또는 설치된 버전 바꾸기)
-// i-luncher-Team-Setup.exe 도 같음: 부서용 (스토어에 API 서버 앱 목록도 보임, 런처 설정 폴더의 store-group.txt)
 // uninstall.exe /uninstall [/S]                                     제거 (Windows "앱" 목록이 이것을 부름)
 // 고급 (배포 스크립트·테스트): /noshortcuts /noregistry
 // 조용한 실행(/S)은 %TEMP%\i-luncher-Setup.log 에 기록하고 성공하면 0, 실패하면 1 로 끝남
@@ -99,7 +98,7 @@ internal sealed class SetupForm : Form
         Font = new Font("Malgun Gothic", 10f);
 
         var title = new Label { Text = "i-luncher", Font = new Font("Malgun Gothic", 16f, FontStyle.Bold), ForeColor = Accent, AutoSize = true, Location = new Point(24, 18) };
-        var version = new Label { Text = "v" + Installer.Version + (Installer.TeamSetup ? " · 부서용" : ""), ForeColor = Muted, AutoSize = true, Location = new Point(28, 56) };
+        var version = new Label { Text = "v" + Installer.Version, ForeColor = Muted, AutoSize = true, Location = new Point(28, 56) };
         _status = new Label { Text = Installer.RegisteredInstallDirectory() is not null ? "설치된 버전을 바꾸는 중…" : "설치 중…",
             ForeColor = Muted, Location = new Point(24, 88), Size = new Size(432, 44) };
         _progress = new ProgressBar { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 25, Location = new Point(24, 136), Size = new Size(432, 6) };

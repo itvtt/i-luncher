@@ -24,11 +24,6 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- -p:SetupGroup=team: 부서용 설치 파일 (i-luncher-Team-Setup.exe 로 이름을 바꿔 둠, 릴리스에 올리지 않음) -->
-  <PropertyGroup Condition="'$(SetupGroup)' == 'team'">
-    <DefineConstants>$(DefineConstants);TEAM_SETUP</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />

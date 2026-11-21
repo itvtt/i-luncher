@@ -87,6 +87,8 @@ public sealed class UserSettings
     /// <summary>앱 목록 위치: api(API 서버) · github(GitHub 저장소 파일) · local(이 PC). 비우면 빌드 설정에 따라</summary>
     public string? CatalogMode { get; set; }
     public bool AutoUpdateLauncher { get; set; } = true;
+    /// <summary>마스터 계정이 제목 표시줄의 일반/마스터 전환으로 일반 화면을 고름 (일반 사용자와 똑같이: 기본 목록만, 서버에 묻지 않음)</summary>
+    public bool GeneralView { get; set; }
     /// <summary>호스트 → DPAPI 로 보호한 토큰(base64)</summary>
     public Dictionary<string, string> Tokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -160,14 +162,8 @@ public sealed class LauncherSettings
     public static LauncherSettings Load(string? dataDirectory = null, string? buildDirectory = null)
     {
         string data = dataDirectory ?? DefaultDataDirectory;
-        var settings = new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data);
-        _ = settings.Group;  // 설정 파일을 쓰기 전에 정함 (처음 실행인지 알아봄)
-        return settings;
+        return new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data);
     }
-
-    private string? _group;
-    /// <summary>스토어 그룹 (StoreGroup.Basic = 런처에 든 기본 목록만, StoreGroup.Team = 기본 목록 + API 서버 앱 목록)</summary>
-    public string Group => _group ??= StoreGroup.Resolve(DataDirectory);
 
     public void SaveUser() => User.Save(UserSettingsPath);
 
@@ -200,19 +196,6 @@ public sealed class LauncherSettings
             return RepositoryCatalog is not null ? ModeGitHub : ModeLocal;
         }
     }
-
-    /// <summary>
-    /// 저장소를 API 서버의 GitHub 중계(&lt;API 서버&gt;/api/v3)로 읽을 때 그 주소. 내 저장소(런처 저장소와 같은 호스트 · 소유자,
-    /// 서버 토큰의 계정)만 대상이고, 그중에서도 GitHub 에 바로 읽히지 않는 비공개 저장소만 실제로 중계로 감 (GitHubClient).
-    /// 그래서 사용자 PC 에 토큰이 없어도 내 비공개 저장소의 릴리스를 받음. 다른 저장소는 각 PC 가 GitHub 에 바로 물음
-    /// </summary>
-    public string? ApiBaseFor(GitHubRepository repository) =>
-        ApiServerUrl is { } server && MyRepositories is { } mine
-        && repository.Host.Equals(mine.Host, StringComparison.OrdinalIgnoreCase) && repository.Owner.Equals(mine.Owner, StringComparison.OrdinalIgnoreCase)
-            ? server + "/api/v3" : null;
-
-    /// <summary>내 저장소의 기준: 런처 저장소 (호스트를 빼고 적었으면 기본 호스트)</summary>
-    private GitHubRepository? MyRepositories => GitHubRepository.Parse(Build.LauncherRepository, Build.DefaultHost.Length > 0 ? Build.DefaultHost : null);
 
     /// <summary>앱 목록을 둔 저장소. 따로 정하지 않으면 런처 저장소</summary>
     public GitHubRepository? CatalogRepository => CatalogMode == ModeGitHub ? RepositoryCatalog : null;

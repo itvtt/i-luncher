@@ -6,8 +6,8 @@
 
 i-luncher와 앱들이 쓰는 API를 `relay.py` 하나로 제공합니다 (Python 3.8 이상, 표준 라이브러리만, 설치할 패키지 없음).
 
-- i-luncher: 앱 목록 · 스크린샷 · 공지 (`/launcher/…`), 앱 사용 기록 (`/launcher/usage`)
-- GitHub 중계: 비공개 · internal 저장소의 릴리스를 토큰 없이 받게 함 (`/api/v3/…`) — 런처 · 앱의 설치와 업데이트
+- i-luncher **마스터 계정**: 서버 목록 · 스크린샷 · 공지 (`/launcher/…`), 앱 사용 기록 (`/launcher/usage`). 일반 사용자의 런처 · 앱은 이 서버를 쓰지 않습니다
+- GitHub 중계 (`/api/v3/…`): 예전에 빌드한 앱의 업데이트용으로만 남김. 지금 런처 · 앱은 버전 확인 · 설치 · 업데이트를 GitHub 에 바로 묻습니다
 - Terminal Notes: 문제 보고 · 스킬 스토어 · 공지 (`/api/…`)
 - 관리 화면 API (`/admin/api/…`, 관리자 비밀번호): i-luncher **관리자 메뉴**가 씀
 - **EQ Status 설비 상태 API는 여기서 하지 않습니다.** EQ Status는 다른 서버의 데이터를 읽는 별도 설비 API 서버(`i-Projects\EQStatus\ops\server`)를 씁니다. 이 서버의 `EQUIPMENT_DB_*` 는 비워 둡니다.
@@ -31,7 +31,7 @@ i-luncher와 앱들이 쓰는 API를 `relay.py` 하나로 제공합니다 (Pytho
 | 쓰는 곳 | 설정 |
 |---|---|
 | i-luncher | 빌드 설정(프로필 `i-luncher.env`) `API_SERVER=https://<배포 주소>` |
-| AppKit 앱 (DeskCal, FastCopy …) | 각 앱 설정 `UPDATE_GITHUB_API=https://<배포 주소>/api/v3` |
+| AppKit 앱 (DeskCal, FastCopy …) | 바꾸지 않음 (업데이트는 GitHub: `UPDATE_GITHUB_API=https://<Enterprise 호스트>/api/v3`) |
 | Terminal Notes | 그 앱 `.env` 의 중계 서버 주소 · 키 (`.env.sample` 참고) |
 | i-luncher 관리자 메뉴 | 관리자 PC 의 프로필 `i-luncher.env` 에 `API_ADMIN_PASSWORD=<RELAY_ADMIN_PASSWORD 와 같은 값>` (이 PC 에 relay.py 가 없을 때 이 값을 씀) |
 | EQ Status | 그대로 (설비 API 서버 주소 `EQSTATUS_API_BASE_URL`) |
@@ -47,9 +47,9 @@ python -m unittest test_relay          # 시험 (실제 서버를 임시 포트 
 python relay.py --set RELAY_PORT=5081 --set RELAY_DATA_ROOT=D:\tmp\relay   # 한 번만 다른 설정으로
 ```
 
-## 부서 목록 넣기 (설명 · 사진까지 그대로)
+## 서버 목록 넣기 (설명 · 사진까지 그대로)
 
-부서 목록(관리자 메뉴 → 앱 목록)은 서버 데이터라 보내기로 가지 않습니다. 새 서버(C-DEP)에 처음 넣을 때나 빠진 앱이 있을 때 [`seed/apps.json`](seed/apps.json)(설명 · 상세 설명 · 개발자 · 스크린샷 `seed/media`)을 그대로 넣습니다. **설명이나 사진을 새로 지어내지 않습니다.**
+서버 목록(관리자 메뉴 → 앱 목록, 마스터 계정의 런처에만 보임)은 서버 데이터라 보내기로 가지 않습니다. 새 서버(C-DEP)에 처음 넣을 때나 빠진 앱이 있을 때 [`seed/apps.json`](seed/apps.json)(설명 · 상세 설명 · 개발자 · 스크린샷 `seed/media`)을 그대로 넣습니다. **설명이나 사진을 새로 지어내지 않습니다.**
 
 ```powershell
 $env:API_ADMIN_PASSWORD = '<RELAY_ADMIN_PASSWORD 와 같은 값>'
@@ -59,4 +59,4 @@ python import_app_list.py --server https://<API 서버 주소> --repository-base
 
 - 서버에 없는 앱은 모든 값으로 더하고, 이미 있는 앱은 **비어 있는 칸만** 채웁니다 (서버에 있던 값은 그대로).
 - 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 런처 안의 `i-luncher\basic-apps.json` · `basic-media\` 입니다.
-- 앱을 부서 목록에 새로 더하면 `seed/apps.json` 과 `seed/media/<id>-1~3.png` 에도 같이 넣어 둡니다 (사진은 최소 3장).
+- 앱을 서버 목록에 새로 더하면 `seed/apps.json` 과 `seed/media/<id>-1~3.png` 에도 같이 넣어 둡니다 (사진은 최소 3장).

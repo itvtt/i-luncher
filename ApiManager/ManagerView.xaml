@@ -138,7 +138,7 @@
                 <DockPanel>
                     <Button x:Name="SaveAppsButton" DockPanel.Dock="Right" Content="저장" Style="{StaticResource PrimaryButtonStyle}" Margin="0" IsEnabled="False"
                             Click="SaveAppsButton_Click" VerticalAlignment="Center" />
-                    <TextBlock Text="부서용 i-luncher에 기본 목록과 함께 이 순서대로 보입니다." Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
+                    <TextBlock Text="마스터 계정의 i-luncher에 기본 목록과 함께 이 순서대로 보입니다." Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
                 </DockPanel>
                 <Grid Grid.Row="1" Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>

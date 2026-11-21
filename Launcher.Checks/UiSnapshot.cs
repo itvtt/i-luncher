@@ -114,7 +114,7 @@ static class UiSnapshot
                         siteEditor.Close();
                     }
                     // GitHub 프로젝트 추가 창: 확인한 저장소(이 PC 의 API 서버로 실제 확인) · 열 수 없는 저장소 오류. 내 앱 삭제 창
-                    var github = new GitHubClient(host => settings.GetToken(host), MainWindow.LauncherVersion, apiBaseOverride: repository => settings.ApiBaseFor(repository));
+                    var github = new GitHubClient(host => settings.GetToken(host), MainWindow.LauncherVersion);
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-downloads"), () => settings.DefaultHost);
                     foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-error") })
                     {

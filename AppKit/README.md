@@ -47,13 +47,13 @@ protected override void OnStartup(StartupEventArgs e)
 
 1. 빌드할 때 `.env`의 `UPDATE_*`(없으면 Actions 러너의 `GITHUB_API_URL`·`GITHUB_REPOSITORY`)로 실행 파일 옆 `update.json`을 만듭니다. 저장소가 비어 있으면(개발 빌드) 업데이트를 확인하지 않습니다.
 2. 앱이 `%LOCALAPPDATA%\Programs\<설치이름>`에서 실행 중이고 `HKCU\…\Uninstall\<설치이름>`의 `InstallLocation`이 그 폴더일 때만 동작합니다 (i-luncher나 앱 설치 프로그램이 만든 설치본). `bin\`에서 실행하는 개발 빌드는 건드리지 않습니다.
-3. 시작 5초 뒤 `releases/latest`를 확인하고, 태그 버전이 실행 중인 버전(`InformationalVersion`)보다 높으면 zip을 `%LOCALAPPDATA%\<설치이름>\updates`에 받습니다 (실행 파일이 들어 있는지 확인).
-4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`. 같은 앱 두 개가 함께 업데이트하면 먼저 끝난 쪽이 적용하고, 다시 시작도 앱이 떠 있지 않을 때 한 번만 합니다.
+3. 시작 5초 뒤 그 앱의 GitHub 저장소에 `releases/latest`를 바로 묻고 (API 서버를 거치지 않음. 비공개 저장소는 `update.json` 의 토큰, 없으면 이 PC 사용자가 i-luncher **설정 → GitHub 토큰**에 넣은 그 호스트의 토큰 `LauncherToken`), 태그 버전이 실행 중인 버전(`InformationalVersion`)보다 높으면 zip을 `%LOCALAPPDATA%\<설치이름>\updates`에 받습니다 (실행 파일이 들어 있는지 확인).
+4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`. 같은 앱 두 개가 함께 업데이트하면 먼저 끝난 쪽이 적용하고, 다시 시작도 앱이 떠 있지 않을 때 한 번만 합니다. 기다리는 동안 앱을 제거했으면 설치 폴더를 다시 만들지 않습니다.
 5. 오프라인·권한 없음 등은 조용히 넘어가고 다음 실행 때 다시 확인합니다.
 
 ## 사용량 집계 (`AppUsage.cs`)
 
-앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`, 코드는 `CDEP\relay.py` 의 `Usage`)에 모읍니다. ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 되고(자체 업데이터가 따로 있는 앱), 다른 DLL 을 쓰지 않아 실행 파일만 복사해 도는 서비스 사본(File Shared)에서도 동작합니다.
+앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`, 코드는 `CDEP\relay.py` 의 `Usage`)에 모읍니다. **마스터 계정만** (설치된 i-luncher `launcher.env` 의 `MASTER_USERS`): 일반 사용자는 모으지도 보내지도 않습니다 (나중에 정함). ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 되고(자체 업데이터가 따로 있는 앱), 다른 DLL 을 쓰지 않아 실행 파일만 복사해 도는 서비스 사본(File Shared)에서도 동작합니다.
 
 ```csharp
 ILuncher.AppKit.AppUsage.Start();                                   // 시작 때 한 번 (상주·감시 앱은 UsageKind.Resident)
@@ -70,9 +70,9 @@ using (ILuncher.AppKit.AppUsage.Measure("copy-time")) { /* … */ }   // 작업 
 | 그 밖 | 앱이 `Count`·`Measure` 로 남기는 작업 (영문 소문자·숫자·`.-_`, 40자까지) |
 
 - 5분마다 보내고, 못 보내면 `%LOCALAPPDATA%\<설치이름>\usage-pending.json` 에 두었다가 다시 보냅니다 (90일까지).
-- 서버 주소: 설치된 i-luncher 의 `launcher.env` 의 `API_SERVER`, 없으면 `update.json` 의 `Api` 가 `…/api/v3` 일 때 그 앞부분 (`UPDATE_GITHUB_API` 를 API 서버 중계로 둔 경우).
+- 서버 주소: 설치된 i-luncher 의 `launcher.env` 의 `API_SERVER` (런처가 없으면 보내지 않음).
 - 사용자는 PC 이름·계정의 해시(12자리)로만 구분합니다. `bin\Debug`·`bin\Release` 에서 도는 개발 빌드는 보내지도, `usage-pending.json` 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
-- API 서버도 따로 기록합니다: 앱이 시작할 때 묻는 자기 최신 릴리스(`check`), 릴리스 파일 받기(`download`). 아직 AppUsage 가 없는 앱도 시작·설치 수는 잡힙니다.
+- 업데이트는 GitHub 에 바로 묻으므로 API 서버는 앱의 시작 · 설치 수를 따로 알지 못합니다 (예전 빌드가 중계를 쓸 때만 `check` · `download` 로 잡힘).
 
 ## 설정 (`.env`, 빌드할 때만)
 
@@ -80,9 +80,9 @@ using (ILuncher.AppKit.AppUsage.Measure("copy-time")) { /* … */ }   // 작업 
 
 | 키 | 뜻 |
 |---|---|
-| `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<호스트>/api/v3` (Actions에서는 비워도 됨) |
+| `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<호스트>/api/v3`: GitHub 에 바로 (API 서버 중계 주소는 쓰지 않음, Actions에서는 비워도 됨) |
 | `UPDATE_REPOSITORY` | `소유자/이름` (Actions에서는 비워도 그 저장소) |
-| `UPDATE_TOKEN` | 비공개·internal 저장소면 **읽기 전용** 토큰. 앱에 포함되므로 쓰기 권한 금지 |
+| `UPDATE_TOKEN` | 보통 비움: 앱이 그 PC 사용자의 i-luncher 설정 토큰을 씀. 모든 PC 에 같은 토큰을 넣을 때만 **읽기 전용** 토큰 (앱에 포함되므로 쓰기 권한 금지) |
 | `UPDATE_INSTALL_NAME` | 설치 폴더·"앱" 목록 이름 (기본: 실행 파일 이름). i-luncher 카탈로그의 `installName`과 같아야 함 |
 | `UPDATE_ASSET` | 릴리스 파일 이름 (기본: `<설치이름>-win-x64.zip`) |
 

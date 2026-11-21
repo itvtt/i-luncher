@@ -23,7 +23,7 @@ public partial class MainWindow
     private CancellationTokenSource? _detailLoad;
 
     private ScreenshotService Screenshots =>
-        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"), () => _settings.ApiServerUrl);
+        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"), () => IsMaster ? _settings.ApiServerUrl : null);  // 일반은 서버에 묻지 않음 (기본 목록 사진은 런처 안에)
 
     private bool OnDetail => _detail is not null && !OnPage;
 

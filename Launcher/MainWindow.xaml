@@ -49,6 +49,28 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <!-- 일반/마스터 전환의 한 칸 (고른 칸의 배경 · 글자색은 코드에서) -->
+            <Style x:Key="SegmentButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="24" />
+                <Setter Property="Padding" Value="11,0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="#FF9DA7B8" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Segment" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="12">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Segment" Property="Opacity" Value="0.85" /></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <!-- 제목 표시줄의 아이콘 버튼 (새로고침 · 설정) -->
             <Style x:Key="TitleIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ChromeButtonStyle}">
                 <Setter Property="Width" Value="38" />
@@ -285,7 +307,7 @@
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
-        <!-- 제목 표시줄: 로고(홈) · 버전, 오른쪽에 공지 · 관리자 메뉴 · 새로고침 · 설정, 창 버튼 -->
+        <!-- 제목 표시줄: 로고(홈) · 버전, 오른쪽에 일반/마스터 전환(마스터 계정만) · 공지 · 관리자 메뉴 · 새로고침 · 설정, 창 버튼 -->
         <Border Grid.Row="0" Background="#FF19191B" BorderBrush="#FF2E3036" BorderThickness="0,0,0,1">
             <Grid Margin="18,0,8,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -299,6 +321,16 @@
                     <TextBlock x:Name="TitleVersionText" Margin="8,1,0,0" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="0,0,12,0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 일반/마스터 전환: 마스터 계정만. 일반 = 일반 사용자와 똑같은 화면 (기본 목록만, 서버에 묻지 않음) -->
+                    <Border x:Name="ViewModeSwitch" Height="30" Margin="8,0,0,0" Padding="3" CornerRadius="15" Background="#FF2C2D32" Visibility="Collapsed"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="GeneralViewButton" Content="일반" Click="GeneralViewButton_Click" Style="{StaticResource SegmentButtonStyle}"
+                                    shell:WindowChrome.IsHitTestVisibleInChrome="True" AutomationProperties.Name="일반 화면" ToolTip="일반 사용자 화면" />
+                            <Button x:Name="MasterViewButton" Content="마스터" Click="MasterViewButton_Click" Style="{StaticResource SegmentButtonStyle}"
+                                    shell:WindowChrome.IsHitTestVisibleInChrome="True" AutomationProperties.Name="마스터 화면" ToolTip="마스터 화면" />
+                        </StackPanel>
+                    </Border>
                     <Button x:Name="NoticeButton" Click="NoticeButton_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource RoundedToolbarButtonStyle}" AutomationProperties.Name="공지" ToolTip="공지">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="공지" VerticalAlignment="Center" />
@@ -444,10 +476,10 @@
                                             <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
                                             <MenuItem Header="편집…" Icon="&#xE70F;" Tag="{Binding}" Click="EditMyApp_Click" Visibility="{Binding PersonalMenuVisibility}" />
-                                            <Separator Visibility="{Binding InstalledMenuVisibility}" />
+                                            <Separator />
                                             <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
                                                       Style="{StaticResource DangerMenuItemStyle}" />
-                                            <MenuItem Header="내 앱에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteMyApp_Click" Visibility="{Binding PersonalMenuVisibility}"
+                                            <MenuItem Header="목록에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteFromList_Click"
                                                       Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
@@ -501,8 +533,10 @@
                                         <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
                                         <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                         <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
-                                        <Separator Visibility="{Binding InstalledMenuVisibility}" />
+                                        <Separator />
                                         <MenuItem Header="제거" Icon="&#xE74D;" Tag="{Binding}" Click="UninstallMenu_Click" Visibility="{Binding InstalledMenuVisibility}"
+                                                  Style="{StaticResource DangerMenuItemStyle}" />
+                                        <MenuItem Header="목록에서 삭제…" Icon="&#xE711;" Tag="{Binding}" Click="DeleteFromList_Click"
                                                   Style="{StaticResource DangerMenuItemStyle}" />
                                         </ContextMenu>
                                     </Border.ContextMenu>

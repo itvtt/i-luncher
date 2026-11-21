@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""부서 목록(API 서버의 앱 목록)에 seed\\apps.json 의 앱을 넣습니다. 설명 · 상세 설명 · 스크린샷까지 그대로 (지어내지 않게).
+"""서버 목록(API 서버의 앱 목록, 마스터 계정의 런처에만 보임)에 seed\\apps.json 의 앱을 넣습니다. 설명 · 상세 설명 · 스크린샷까지 그대로 (지어내지 않게).
 
     python import_app_list.py --server https://<API 서버 주소> --repository-base https://<Enterprise 호스트>/<소유자>
     python import_app_list.py ... --apply      실제로 저장 (없으면 무엇을 바꿀지 보여 주기만)
@@ -73,7 +73,7 @@ def plan(catalog: list, seed_apps: list, repository_base: str) -> list:
 
 
 def main(argv: list | None = None) -> int:
-    parser = argparse.ArgumentParser(description="부서 목록에 seed\\apps.json 의 앱 넣기")
+    parser = argparse.ArgumentParser(description="서버 목록에 seed\\apps.json 의 앱 넣기")
     parser.add_argument("--server", required=True, help="API 서버 주소, 예: https://<배포 주소>")
     parser.add_argument("--repository-base", required=True, help="저장소 주소 앞부분, 예: https://<Enterprise 호스트>/<소유자>")
     parser.add_argument("--seed", default=str(HERE / "seed" / "apps.json"))
@@ -88,7 +88,7 @@ def main(argv: list | None = None) -> int:
     catalog = catalog_doc.get("apps", [])
     steps = plan(catalog, seed_apps, args.repository_base)
     if not steps:
-        print("바꿀 것 없음: 부서 목록에 이미 다 들어 있습니다.")
+        print("바꿀 것 없음: 서버 목록에 이미 다 들어 있습니다.")
         return 0
     for action, app, fields in steps:
         print(("더함  " if action == "add" else "채움  ") + f"{app['id']}: {', '.join(fields)}")
@@ -115,7 +115,7 @@ def main(argv: list | None = None) -> int:
                     app[key] = seed[key]
     body = json.dumps({"apps": catalog, "revision": catalog_doc.get("revision", "")}, ensure_ascii=False).encode("utf-8")
     saved = server.call("PUT", "/launcher/catalog", body, "application/json")
-    print(f"저장했습니다: 부서 목록 {len(saved.get('apps', []))}개")
+    print(f"저장했습니다: 서버 목록 {len(saved.get('apps', []))}개")
     return 0
 
 

@@ -13,7 +13,8 @@
 //   running = 가동 시간(초, Resident 만): 앱이 떠 있고 사용자가 PC 앞에 있음 (잠금 아님, 입력 5분 안)
 //   launch  = 실행 횟수
 // 모은 값은 날짜별로 5분마다 <API 서버>/launcher/usage 로 보내고, 못 보내면 %LOCALAPPDATA%\<앱>\usage-pending.json 에 두었다가 다시 보냄.
-// API 서버 주소: 설치된 i-luncher 의 launcher.env (API_SERVER), 없으면 앱 옆 update.json 의 Api 가 .../api/v3 일 때 그 앞부분.
+// API 서버 주소: 설치된 i-luncher 의 launcher.env (API_SERVER).
+// 마스터 계정(그 launcher.env 의 MASTER_USERS 에 이 PC 의 Windows 계정)만 모읍니다. 일반 사용자는 모으지도 보내지도 않습니다 (나중에 정함).
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
 // usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 // 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
@@ -53,6 +54,7 @@ namespace ILuncher.AppKit
         private static Stopwatch? _clock;
         private static TimeSpan _lastTick, _lastSend;
         private static int _sending;
+        private static bool _excluded;  // 일반 사용자: Start 가 아무것도 하지 않았고 Count 도 버림
         private static UsageKind _kind;
         private static string _app = "", _pendingPath = "";
 
@@ -70,6 +72,8 @@ namespace ILuncher.AppKit
             lock (Gate)
             {
                 if (_timer != null) return;
+                // 일반 사용자는 모으지 않음 (마스터 계정만. 개발 빌드 · ServerOverride 는 예전처럼 모으되 개발 빌드는 보내지 않음)
+                if (string.IsNullOrWhiteSpace(ServerOverride) && !IsDevelopmentBuild() && !IsLauncherMaster()) { _excluded = true; return; }
                 _kind = kind;
                 _app = Clean(app) ?? Clean(ReadUpdateJson("InstallName")) ?? Clean(Assembly.GetEntryAssembly()?.GetName().Name) ?? "App";
                 _pendingPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), _app, "usage-pending.json");
@@ -86,7 +90,7 @@ namespace ILuncher.AppKit
         /// <summary>작업 한 건 (amount = 그 작업의 양: 바이트·파일 수 등, 없으면 0)</summary>
         public static void Count(string metric, double amount = 0)
         {
-            if (!MetricName.IsMatch(metric ?? "") || double.IsNaN(amount) || double.IsInfinity(amount)) return;
+            if (_excluded || !MetricName.IsMatch(metric ?? "") || double.IsNaN(amount) || double.IsInfinity(amount)) return;
             lock (Gate) AddLocked(metric!, 1, Math.Max(0, amount));
         }
 
@@ -308,12 +312,12 @@ namespace ILuncher.AppKit
 
         // ── 서버 주소 · 사용자 · 버전 ──────────────────────────────────────────────────────────
 
-        /// <summary>보낼 API 서버 (끝의 / 없음). 없으면 null (파일에만 모아 둠)</summary>
+        /// <summary>보낼 API 서버 (끝의 / 없음). 없으면 null (파일에만 모아 둠). 일반 사용자는 null</summary>
         public static string? Server()
         {
             if (!string.IsNullOrWhiteSpace(ServerOverride)) return ServerOverride!.Trim().TrimEnd('/');
-            if (IsDevelopmentBuild()) return null;
-            return LauncherServer() ?? UpdateServer();
+            if (IsDevelopmentBuild() || !IsLauncherMaster()) return null;
+            return LauncherServer();
         }
 
         /// <summary>bin\Debug · bin\Release 에서 도는 개발 빌드 (ServerOverride 를 정하면 아님): 보내지도 파일에 두지도 않음</summary>
@@ -327,6 +331,22 @@ namespace ILuncher.AppKit
 
         /// <summary>설치된 i-luncher 의 launcher.env 의 API_SERVER</summary>
         internal static string? LauncherServer()
+        {
+            string value = (LauncherEnv("API_SERVER") ?? "").Trim('"').TrimEnd('/');
+            return Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https") ? value : null;
+        }
+
+        /// <summary>이 PC 의 Windows 계정이 설치된 i-luncher 의 마스터(launcher.env 의 MASTER_USERS, 쉼표 · 세미콜론 · 빈칸)인지</summary>
+        internal static bool IsLauncherMaster()
+        {
+            string name = Environment.UserName;
+            name = name.Substring(name.LastIndexOf('\\') + 1);
+            return (LauncherEnv("MASTER_USERS") ?? "").Trim('"').Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(user => string.Equals(user.Trim(), name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>설치된 i-luncher 의 launcher.env 의 값 하나 (없으면 null)</summary>
+        private static string? LauncherEnv(string name)
         {
             var folders = new List<string>();
             try
@@ -344,25 +364,13 @@ namespace ILuncher.AppKit
                     if (!File.Exists(path)) continue;
                     foreach (string line in File.ReadAllLines(path))
                     {
-                        string text = line.Trim().TrimStart('﻿');
-                        if (!text.StartsWith("API_SERVER=", StringComparison.Ordinal)) continue;
-                        string value = text.Substring("API_SERVER=".Length).Trim().Trim('"').TrimEnd('/');
-                        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https")) return value;
+                        string text = line.Trim().TrimStart('\uFEFF');
+                        if (text.StartsWith(name + "=", StringComparison.Ordinal)) return text.Substring(name.Length + 1).Trim();
                     }
                 }
                 catch { }
             }
             return null;
-        }
-
-        /// <summary>update.json 의 Api 가 API 서버 중계(.../api/v3, github 주소 아님)일 때 그 서버</summary>
-        internal static string? UpdateServer()
-        {
-            string api = (ReadUpdateJson("Api") ?? "").TrimEnd('/');
-            if (!api.EndsWith("/api/v3", StringComparison.OrdinalIgnoreCase)) return null;
-            string server = api.Substring(0, api.Length - "/api/v3".Length);
-            if (!Uri.TryCreate(server, UriKind.Absolute, out var uri) || uri.Host.IndexOf("github", StringComparison.OrdinalIgnoreCase) >= 0) return null;
-            return server;
         }
 
         /// <summary>앱 옆 update.json 의 문자열 값 하나 (AppKit.targets 가 만드는 한 줄짜리 파일)</summary>
@@ -435,6 +443,7 @@ namespace ILuncher.AppKit
             {
                 _timer?.Dispose();
                 _timer = null;
+                _excluded = false;
                 _days = new Dictionary<string, Dictionary<string, double[]>>();
                 _app = app;
                 _kind = kind;

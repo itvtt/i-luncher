@@ -196,21 +196,6 @@ try
         ApiManager.ManagerView.KeepFormer(data, "formerIds", "fastcopy", "swiftcopy");
         Equal("[\"fastcopy\"]", data["formerIds"]!.ToJsonString(), "renamed back: the current id leaves the list, the other one stays");
     });
-    await CheckSync("store group: setup marker wins, a launcher used before counts as team, a new one as basic", () =>
-    {
-        string fresh = Path.Combine(root, "group-new");
-        Equal(StoreGroup.Basic, StoreGroup.Resolve(fresh), "first run without a marker");
-        Equal("basic", File.ReadAllText(Path.Combine(fresh, StoreGroup.FileName)).Trim(), "remembered");
-        File.WriteAllText(Path.Combine(fresh, "settings.json"), "{}");
-        Equal(StoreGroup.Basic, StoreGroup.Resolve(fresh), "stays basic once settings exist");
-        File.WriteAllText(Path.Combine(fresh, StoreGroup.FileName), "TEAM\r\n");
-        Equal(StoreGroup.Team, StoreGroup.Resolve(fresh), "team setup marker");
-        string old = Path.Combine(root, "group-old");
-        Directory.CreateDirectory(old);
-        File.WriteAllText(Path.Combine(old, "favorites.json"), "[]");
-        Equal(StoreGroup.Team, StoreGroup.Resolve(old), "used before this version: keeps seeing every app");
-        Equal(StoreGroup.Team, LauncherSettings.Load(old).Group, "settings read the same marker");
-    });
     await CheckSync("running app: a click brings its window to the front (a minimized one is restored), no window means launch instead", () =>
     {
         Assert(!WindowFront.Activate([]), "no process: nothing to bring forward");
@@ -228,14 +213,14 @@ try
         });
         Assert(!WindowFront.ActivateProgram(Path.Combine(root, "missing.exe")), "missing program: launch instead");
     });
-    await CheckSync("basic list is built in, takes host and owner from the launcher repository, and team adds the API list without doubles", () =>
+    await CheckSync("basic list is built in, takes host and owner from the launcher repository, and a master adds the API list without doubles", () =>
     {
         var launcher = GitHubRepository.Parse("https://ghe.example.com/team/i-luncher")!;
-        Equal("https://ghe.example.com/team/DeskCal", StoreGroup.ResolveRepository("DeskCal", launcher), "name only");
-        Equal("https://ghe.example.com/team/Tool", StoreGroup.ResolveRepository("Tool.git", launcher), ".git dropped");
-        Equal("other/Tool", StoreGroup.ResolveRepository("other/Tool", launcher), "owner/name kept");
-        Equal("Tool", StoreGroup.ResolveRepository("Tool", null), "no launcher repository: unchanged");
-        var basic = StoreGroup.LoadBasicApps(launcher);
+        Equal("https://ghe.example.com/team/DeskCal", BasicApps.ResolveRepository("DeskCal", launcher), "name only");
+        Equal("https://ghe.example.com/team/Tool", BasicApps.ResolveRepository("Tool.git", launcher), ".git dropped");
+        Equal("other/Tool", BasicApps.ResolveRepository("other/Tool", launcher), "owner/name kept");
+        Equal("Tool", BasicApps.ResolveRepository("Tool", null), "no launcher repository: unchanged");
+        var basic = BasicApps.Load(launcher);
         string ids = string.Join(",", basic.Select(app => app.Id));
         Equal("deskcal,compare,fastcopy,diskscan,capture,memopad", ids, "built-in basic-apps.json");
         Assert(basic.All(app => app.Repository.StartsWith("https://ghe.example.com/team/") && app.Description.Length > 0 && app.Category.Length > 0
@@ -249,11 +234,27 @@ try
             new() { Id = "folder-compare", Name = "File Compare", Repository = "team/Compare" },
             new() { Id = "terminal-notes", Name = "Terminal Notes", Repository = "team/TerminalNotes" }
         };
-        var team = StoreGroup.Combine(basic, api);
-        Assert(team.Any(app => app.Id == "terminal-notes"), "API apps are added");
-        Equal(1, team.Count(app => app.HasId("compare") || app.HasId("folder-compare")), "same app under its old id is not doubled");
-        Assert(team.Any(app => app.Name == "File Compare"), "the API entry wins");
-        Equal(basic.Count + 1, team.Count, "count");
+        var master = BasicApps.Combine(basic, api);
+        Assert(master.Any(app => app.Id == "terminal-notes"), "API apps are added");
+        Equal(1, master.Count(app => app.HasId("compare") || app.HasId("folder-compare")), "same app under its old id is not doubled");
+        Assert(master.Any(app => app.Name == "File Compare"), "the API entry wins");
+        Equal(basic.Count + 1, master.Count, "count");
+    });
+    await CheckSync("a basic app removed from the list stays hidden (file outside the install folder) until added again, by id, old id or repository", () =>
+    {
+        string path = Path.Combine(root, "removed", "removed-apps.json");
+        var store = new RemovedAppStore(path);
+        Equal(0, store.Load().Count, "nothing removed yet");
+        store.Save([new RemovedApp("compare", "Compare", "https://github.com/team/Compare")]);
+        var removed = store.Load().Single();
+        Equal("Compare", removed.Name, "name kept for the add-again menu");
+        var basic = BasicApps.Load(GitHubRepository.Parse("https://github.com/team/i-luncher")!);
+        var shown = basic.Where(app => !RemovedAppStore.Matches(removed, app, null)).Select(app => app.Id).ToList();
+        Assert(!shown.Contains("compare") && shown.Contains("deskcal") && shown.Count == basic.Count - 1, "only the removed app is hidden: " + string.Join(",", shown));
+        Assert(RemovedAppStore.Matches(removed, new AppDefinition { Id = "compare-next", Name = "x", Repository = "team/Compare" }, "github.com"), "same repository under a new id");
+        Assert(RemovedAppStore.Matches(removed, new AppDefinition { Id = "renamed", Name = "x", Repository = "https://github.com/team/Other", FormerIds = ["compare"] }, null), "old id");
+        store.Save([]);
+        Equal(0, store.Load().Count, "added again: shown again");
     });
     await CheckSync("app list keeps fields the launcher no longer shows (제작자 · 상세 설명 · 스크린샷), so saving does not lose them", () =>
     {
@@ -313,37 +314,6 @@ try
         var offline = await store.LoadAsync();
         Assert(offline.FromCache && offline.Apps.Count == 2, "cache when the server is down");
     });
-    await Check("GitHub relay: a private repository of mine goes through the API server (without the token) once GitHub does not answer it", async () =>
-    {
-        github.AddRelease("team/Relayed", "v2.0.1", ("Relayed-win-x64.zip", [1, 2]));
-        // github.com 은 이 가짜 GitHub 에 없음 = 바로 물으면 404 (비공개)
-        using var relayed = new GitHubClient(host => host == "github.com" ? "gh-personal-token" : null, "checks", github,
-            repository => repository.Host == "github.com" ? "https://ghe.test/api/v3" : null);
-        var repository = GitHubRepository.Parse("https://github.com/team/Relayed")!;
-        int before = github.Requests.Count;
-        var release = await relayed.GetLatestReleaseAsync(repository, false);
-        Equal("2.0.1", release?.Version?.ToString(), "release through the relay");
-        var sent = github.Requests.Skip(before).ToList();
-        Assert(sent.Any(r => r.Contains("https://api.github.com/repos/team/Relayed")), "GitHub asked first: " + string.Join(" | ", sent));
-        Assert(sent.Where(r => r.Contains("https://ghe.test/")).All(r => !r.Contains("gh-personal-token")), "no token to the relay: " + string.Join(" | ", sent));
-        before = github.Requests.Count;
-        await relayed.GetLatestReleaseAsync(repository, false);
-        sent = github.Requests.Skip(before).ToList();
-        Assert(sent.Count == 1 && sent[0].Contains("https://ghe.test/api/v3/repos/team/Relayed/releases/latest"), "remembered for this run: " + string.Join(" | ", sent));
-    });
-    await Check("GitHub relay: a public repository of mine and other owners' repositories are asked directly", async () =>
-    {
-        github.AddRelease("team/Open", "v1.2.0", ("Open-win-x64.zip", [3]));
-        // 중계 주소(relay.test)는 이 가짜 GitHub 가 답하지 않음: 중계로 가면 실패
-        using var client = new GitHubClient(_ => null, "checks", github,
-            repository => repository.Owner == "team" ? "https://relay.test/api/v3" : null);
-        int before = github.Requests.Count;
-        Equal("1.2.0", (await client.GetLatestReleaseAsync(GitHubRepository.Parse("https://ghe.test/team/Open")!, false))?.Version?.ToString(), "public: GitHub");
-        github.AddRelease("someone/Tool", "v0.3.0", ("Tool-win-x64.zip", [4]));
-        Equal("0.3.0", (await client.GetLatestReleaseAsync(GitHubRepository.Parse("https://ghe.test/someone/Tool")!, false))?.Version?.ToString(), "other owner: GitHub");
-        var sent = github.Requests.Skip(before).ToList();
-        Assert(sent.All(r => !r.Contains("relay.test")), "never the relay: " + string.Join(" | ", sent));
-    });
     await Check("GitHub token in settings: checked against GitHub before it is saved", async () =>
     {
         using var client = new GitHubClient(_ => null, "checks", github);
@@ -355,24 +325,14 @@ try
         }
         catch (GitHubApiException error) { Assert(error.Status == 401 && error.Message.Contains("토큰"), error.Message); }
     });
-    await CheckSync("settings: API_SERVER makes the API server the app list and the GitHub relay", () =>
+    await CheckSync("settings: API_SERVER makes the API server the app list (masters only); releases are always asked from GitHub", () =>
     {
         string buildDir = Path.Combine(root, "api-settings");
         Directory.CreateDirectory(buildDir);
-        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003/\nLAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\n");
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003/\nLAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\nMASTER_USERS=boss\n");
         var settings = LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir);
         Equal(LauncherSettings.ModeApi, settings.CatalogMode, "API server first");
-        Equal("http://10.0.0.5:2003/api/v3", settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/owner/DeskCal")!), "my github.com repository may use the relay");
-        Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://github.com/someone/Tool")!) is null, "another owner's repository is asked directly");
-        Assert(settings.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!) is null, "an Enterprise server is asked directly");
-        // GITHUB_HOST 가 GitHub Enterprise 면 그 호스트도 중계로 (서버의 RELAY_GITHUB_API 가 같은 호스트)
-        string enterpriseDir = Path.Combine(root, "api-settings-enterprise");
-        Directory.CreateDirectory(enterpriseDir);
-        File.WriteAllText(Path.Combine(enterpriseDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003\nGITHUB_HOST=https://GHE.example.com/\nLAUNCHER_REPOSITORY=https://ghe.example.com/team/i-luncher\n");
-        var enterprise = LauncherSettings.Load(Path.Combine(root, "api-data-enterprise"), enterpriseDir);
-        Equal("http://10.0.0.5:2003/api/v3", enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/team/x")!), "GITHUB_HOST via the relay");
-        Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://other.example.com/team/x")!) is null, "other hosts are asked directly");
-        Assert(enterprise.ApiBaseFor(GitHubRepository.Parse("https://ghe.example.com/someone/x")!) is null, "other owners on GITHUB_HOST are asked directly");
+        Assert(settings.Build.IsListedMaster(@"CORP\Boss") && !settings.Build.IsListedMaster("someone"), "master by this PC's Windows account");
         Assert(settings.CatalogRepository is null, "no repository catalog in API mode");
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
@@ -558,6 +518,28 @@ try
     });
 
     Console.WriteLine("AppKit self-update");
+    await CheckSync("apps ask GitHub with the token this user saved in the launcher settings (only for that host)", () =>
+    {
+        string data = Path.Combine(root, "token-data");
+        var user = new UserSettings();
+        user.SetToken("github.com", "gh-user-token");
+        user.SetToken("https://GHE.test/", "ghe-user-token");
+        user.Save(Path.Combine(data, "settings.json"));
+        string? before = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR");
+        Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", data);
+        try
+        {
+            Equal("gh-user-token", LauncherToken.For("https://api.github.com"), "github.com");
+            Equal("ghe-user-token", LauncherToken.For("https://ghe.test/api/v3"), "GitHub Enterprise");
+            Assert(LauncherToken.For("http://10.0.0.5:2003/api/v3") is null, "never to another server");
+            string json = Path.Combine(data, "update.json");
+            File.WriteAllText(json, "{\"Api\":\"\",\"Repository\":\"o/App\",\"InstallName\":\"App\"}");
+            Equal("gh-user-token", UpdateSettings.Load(json)?.Token, "update.json without a token: the launcher user's");
+            File.WriteAllText(json, "{\"Api\":\"https://api.github.com\",\"Repository\":\"o/App\",\"Token\":\"built\",\"InstallName\":\"App\"}");
+            Equal("built", UpdateSettings.Load(json)?.Token, "a built token stays first");
+        }
+        finally { Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", before); }
+    });
     await CheckSync("version text comparison matches the launcher", () =>
     {
         Assert(VersionText.TryParse("v1.2.10", out var a) && VersionText.TryParse("1.2.9.0", out var b) && VersionText.Compare(a, b) > 0, "1.2.10 > 1.2.9");
@@ -604,6 +586,18 @@ try
         await again.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(90)).Token);
         string secondLog = File.ReadAllText(log).Substring(logText.Length);
         Assert(secondLog.Contains("package already applied") && !secondLog.Contains("failed"), "second updater stops quietly; log: " + secondLog);
+
+        // 업데이트를 받아 둔 채 앱을 제거: 설치 폴더를 다시 만들지 않음
+        string removed = Path.Combine(root, "SelfUpdateRemoved");
+        string removedZip = Path.Combine(root, "self-removed.zip");
+        ZipFile.CreateFromDirectory(pkg, removedZip);
+        string third = AppUpdater.BuildUpdaterScript(removedZip, removed, "Tool.exe", sleeper.Id, log, "1.4.0", key, restart: true);
+        using var afterRemove = Process.Start(new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(third)))
+            { CreateNoWindow = true, UseShellExecute = false })!;
+        await afterRemove.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(90)).Token);
+        string thirdLog = File.ReadAllText(log).Substring(logText.Length + secondLog.Length);
+        Assert(!Directory.Exists(removed) && !File.Exists(removedZip) && thirdLog.Contains("app removed"), "removed app stays removed; log: " + thirdLog);
     });
 
     Console.WriteLine("Notices");

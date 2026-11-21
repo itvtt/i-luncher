@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     private List<FavoriteProgram> _favorites;
     private readonly MyAppStore _myAppStore;
     private List<AppDefinition> _myApps;
+    private readonly RemovedAppStore _removedStore;
+    /// <summary>목록에서 삭제한 기본 목록 · 서버 목록 앱 (다시 추가하기 전까지 숨김, 런처 업데이트와 상관없이)</summary>
+    private List<RemovedApp> _removed;
     private readonly UsageStore _usage;
     private readonly DispatcherTimer _runningTimer;
     private bool _scanningRunning;
@@ -54,6 +57,8 @@ public partial class MainWindow : Window
         _favorites = _favoriteStore.Load();
         _myAppStore = new MyAppStore(Path.Combine(settings.DataDirectory, "my-apps.json"));
         _myApps = _myAppStore.Load();
+        _removedStore = new RemovedAppStore(Path.Combine(settings.DataDirectory, "removed-apps.json"));
+        _removed = _removedStore.Load();
         _usage = new UsageStore(Path.Combine(settings.DataDirectory, "usage.json"));
         InitializeComponent();
         // 설치됨 아이콘 · 스토어 줄이 3줄은 독 위로 다 보이는 높이 (공지 · 업데이트 띠가 있어도). 화면이 작으면 그 화면에 맞춤
@@ -62,8 +67,7 @@ public partial class MainWindow : Window
         Height = Math.Min(Height, workHeight);
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
-        ApiManagerButton.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
-        AppCard.AdminMenus = IsApiManager;
+        ApplyViewMode();
         // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서, 새로 넣은 앱의 릴리스도 확인)
         ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: true));
         PreviewMouseUp += Window_PreviewMouseUp;
@@ -80,7 +84,7 @@ public partial class MainWindow : Window
     public static string LauncherVersion => AppUpdater.CurrentVersion;
 
     /// <summary>관리자 메뉴 (앱 목록 · 릴리스 · 러너 · 공지 · 서버): MASTER_USERS 에 이름이 있는 계정만, 비밀번호 없이</summary>
-    private bool IsApiManager => _settings.Build.IsListedMaster(Environment.UserName);
+    private bool IsApiManager => IsMaster;
 
     private void ApiManagerButton_Click(object sender, RoutedEventArgs e) => OpenAdminMenu();
 
@@ -112,8 +116,8 @@ public partial class MainWindow : Window
     private void CreateServices()
     {
         _github?.Dispose();
-        // API 서버가 있으면 github.com 저장소는 그 서버의 GitHub 중계로 읽음 (토큰 없이 비공개 릴리스)
-        _github = new GitHubClient(host => _settings.GetToken(host), LauncherVersion, apiBaseOverride: repository => _settings.ApiBaseFor(repository));
+        // 릴리스(버전 · 설치 · 업데이트)는 언제나 그 앱의 GitHub 에 바로 물음. 비공개 저장소면 설정의 토큰(또는 빌드 토큰)
+        _github = new GitHubClient(host => _settings.GetToken(host), LauncherVersion);
         _manager = new AppManager(_github, new AppInstaller(), Path.Combine(_settings.DataDirectory, "downloads"), () => _settings.DefaultHost);
         (_store as IDisposable)?.Dispose();
         _store = _settings.CatalogMode switch
@@ -126,7 +130,7 @@ public partial class MainWindow : Window
         };
         _notices = new NoticeService(FetchNoticesAsync, _settings.DataDirectory);
         _icons = new AppIconService(_github, IconCacheDirectory, () => _settings.DefaultHost);
-        CatalogSourceText.Text = "앱 목록: 기본" + (SeesTeamApps ? " + " + _store.Location : "");
+        ShowRole();
     }
 
     private async Task<string?> FetchNoticesAsync(CancellationToken cancellationToken)
@@ -157,7 +161,7 @@ public partial class MainWindow : Window
         if (AppUpdater.IsInstalledCopy("i-luncher")) AppUpdater.SyncInstalledVersion("i-luncher");
         ShowNotices(_notices.CachedNotices);
         // 서버 PC 의 마스터: 런처에 든 relay.py 가 더 새 버전이면 서버를 바꾸고, 꺼져 있으면 켬 (앱 목록을 읽기 전에)
-        if (IsApiManager) await ApiManager.ManagerHost.ApplyAsync();
+        if (IsMasterAccount) await ApiManager.ManagerHost.ApplyAsync();
         await RefreshAsync(checkReleases: true);
         _periodic.Start();
         _runningTimer.Start();
@@ -227,25 +231,84 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>부서 사람(부서용 설치 파일) · 마스터 계정은 API 서버 앱 목록도 봄</summary>
-    private bool SeesTeamApps => _settings.Group == StoreGroup.Team || _settings.Build.IsListedMaster(Environment.UserName);
+    /// <summary>이 PC 의 Windows 계정이 빌드 설정 MASTER_USERS 에 있음: 제목 표시줄에 일반/마스터 전환이 보임</summary>
+    private bool IsMasterAccount => _settings.Build.IsListedMaster(Environment.UserName);
 
     /// <summary>
-    /// 앱 목록: 런처에 든 기본 목록(basic-apps.json). 부서 사람은 여기에 API 서버의 앱 목록을 더함 (같은 앱이면 API 쪽 값).
-    /// 일반 사용자는 서버에 목록을 묻지 않음 (런처 버전에 따라 고정)
+    /// 마스터 화면: 마스터 계정이고 일반 화면으로 바꾸지 않았음. 기본 목록 + 서버 목록 · 공지 · 관리자 메뉴.
+    /// 그 밖(일반)은 로컬 앱: API 서버에 아무것도 묻지 않고 기본 목록만 (릴리스는 GitHub 에 바로)
     /// </summary>
-    private async Task<CatalogSnapshot> LoadCatalogAsync()
+    private bool IsMaster => IsMasterAccount && !_settings.User.GeneralView;
+
+    /// <summary>일반/마스터 화면에 맞춤: 전환 단추, 관리자 메뉴 단추, 카드의 관리자 메뉴 항목, 공지 단추 · 목록 출처</summary>
+    private void ApplyViewMode()
     {
-        var basic = StoreGroup.LoadBasicApps(_settings.LauncherRepository);
-        if (!SeesTeamApps) return new CatalogSnapshot(basic, false, null);
-        var snapshot = await _store.LoadAsync();
-        return snapshot with { Apps = StoreGroup.Combine(basic, snapshot.Apps) };
+        ViewModeSwitch.Visibility = IsMasterAccount ? Visibility.Visible : Visibility.Collapsed;
+        SetSegment(GeneralViewButton, !IsMaster);
+        SetSegment(MasterViewButton, IsMaster);
+        ApiManagerButton.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
+        AppCard.AdminMenus = IsApiManager;
+        foreach (var card in _cards) card.RefreshAdminMenu();
+        ShowRole();
     }
 
-    /// <summary>앱 목록 + 내 앱 (앱 목록에 같은 저장소 · id 가 있으면 앱 목록 것만). 내 앱은 앱 목록 뒤에</summary>
+    private static readonly Brush SegmentOnBackground = Frozen(Color.FromRgb(0x4A, 0x4B, 0x52));
+    private static readonly Brush SegmentOnForeground = Frozen(Color.FromRgb(0xF5, 0xF5, 0xF7));
+    private static readonly Brush SegmentOffForeground = Frozen(Color.FromRgb(0x9D, 0xA7, 0xB8));
+
+    private static Brush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static void SetSegment(System.Windows.Controls.Button button, bool on)
+    {
+        button.Background = on ? SegmentOnBackground : Brushes.Transparent;
+        button.Foreground = on ? SegmentOnForeground : SegmentOffForeground;
+    }
+
+    private async void GeneralViewButton_Click(object sender, RoutedEventArgs e) => await SetGeneralViewAsync(true);
+
+    private async void MasterViewButton_Click(object sender, RoutedEventArgs e) => await SetGeneralViewAsync(false);
+
+    /// <summary>일반/마스터 전환 (마스터 계정만). 이 PC 에 기억하고, 목록 · 공지를 그 화면에 맞게 다시 읽음</summary>
+    private async Task SetGeneralViewAsync(bool general)
+    {
+        if (!IsMasterAccount || _settings.User.GeneralView == general) return;
+        _settings.User.GeneralView = general;
+        try { _settings.SaveUser(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("화면 전환을 저장하지 못했습니다: " + error.Message); }
+        ApplyViewMode();
+        ShowNotices(_notices.CachedNotices);
+        StatusText.Text = general ? "일반 화면" : "마스터 화면";
+        await RefreshAsync(checkReleases: true);
+        if (IsMaster) await RefreshNoticesAsync();
+    }
+
+    /// <summary>앱 목록: 런처에 든 기본 목록(basic-apps.json). 마스터는 여기에 서버 목록을 더함 (같은 앱이면 서버 쪽 값)</summary>
+    private async Task<CatalogSnapshot> LoadCatalogAsync()
+    {
+        var basic = BasicApps.Load(_settings.LauncherRepository);
+        if (!IsMaster) return new CatalogSnapshot(basic, false, null);
+        var snapshot = await _store.LoadAsync();
+        return snapshot with { Apps = BasicApps.Combine(basic, snapshot.Apps) };
+    }
+
+    /// <summary>공지 단추는 마스터만, 설정의 목록 출처</summary>
+    private void ShowRole()
+    {
+        NoticeButton.Visibility = IsMaster ? Visibility.Visible : Visibility.Collapsed;
+        CatalogSourceText.Text = "앱 목록: 기본" + (IsMaster ? " + " + _store.Location : "");
+    }
+
+    /// <summary>
+    /// 앱 목록(목록에서 삭제한 앱은 뺌) + 내 앱 (앱 목록에 같은 저장소 · id 가 있으면 앱 목록 것만). 내 앱은 앱 목록 뒤에
+    /// </summary>
     private List<AppDefinition> WithMyApps(IReadOnlyList<AppDefinition> apps)
     {
-        var all = apps.ToList();
+        var all = apps.Where(app => !_removed.Any(removed => RemovedAppStore.Matches(removed, app, _settings.DefaultHost))).ToList();
         int order = 100000;
         foreach (var mine in _myApps)
         {
@@ -648,6 +711,13 @@ public partial class MainWindow : Window
             repository => _cards.FirstOrDefault(card => MyAppStore.SameRepository(card.App.Repository, repository.WebUrl, _settings.DefaultHost))?.Name)
         { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } app) return;
+        // 목록에서 삭제했던 기본 목록 앱의 저장소면 내 앱으로 따로 만들지 않고 그 앱을 다시 보이게 함
+        if (_removed.FirstOrDefault(removed => removed.Repository.Length > 0
+                && MyAppStore.SameRepository(removed.Repository, app.Repository, _settings.DefaultHost)) is { } hidden)
+        {
+            await RestoreRemovedAsync(hidden);
+            return;
+        }
         string id = app.Id;
         for (int n = 2; _cards.Any(card => card.App.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
                         || _myApps.Any(mine => mine.Id.Equals(id, StringComparison.OrdinalIgnoreCase)); n++) id = $"{app.Id}-{n}";
@@ -714,10 +784,13 @@ public partial class MainWindow : Window
         HideError();
     }
 
-    /// <summary>내 앱 삭제: 목록에서만 뺄지, 설치된 앱도 제거할지 물어봄</summary>
-    private async void DeleteMyApp_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 목록에서 삭제 (내 앱 · 기본 목록 앱 모두): 목록에서만 뺄지, 설치된 앱도 제거할지 물어봄.
+    /// 내 앱은 my-apps.json 에서 지우고, 기본 목록 · 서버 목록 앱은 removed-apps.json 에 남겨 다시 추가하기 전까지 숨김
+    /// </summary>
+    private async void DeleteFromList_Click(object sender, RoutedEventArgs e)
     {
-        if (CardOf(sender) is not { App.Personal: true, IsBusy: false } card) return;
+        if (CardOf(sender) is not { IsBusy: false } card) return;
         var dialog = new DeleteProjectWindow(card) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         bool uninstalled = false;
@@ -738,17 +811,38 @@ public partial class MainWindow : Window
             }
             card.EndWork();
         }
-        _myApps.RemoveAll(app => app.Id.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase));
-        try
+        if (card.App.Personal)
         {
-            _myAppStore.Save(_myApps);
-            // 이 앱에 넣었던 스크린샷 · 아이콘 그림 (이 PC 에 복사해 둔 것)
-            foreach (string shot in card.App.Screenshots ?? []) MyAppStore.DeleteMedia(shot);
-            CustomIcons.DeleteImported(card.App.Icon);
+            _myApps.RemoveAll(app => app.Id.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase));
+            try
+            {
+                _myAppStore.Save(_myApps);
+                // 이 앱에 넣었던 스크린샷 · 아이콘 그림 (이 PC 에 복사해 둔 것)
+                foreach (string shot in card.App.Screenshots ?? []) MyAppStore.DeleteMedia(shot);
+                CustomIcons.DeleteImported(card.App.Icon);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                ShowError("내 앱을 저장하지 못했습니다: " + error.Message);
+            }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        else
         {
-            ShowError("내 앱을 저장하지 못했습니다: " + error.Message);
+            var removed = new RemovedApp(card.App.Id, card.Name, card.App.Repository);
+            var before = _removed.ToList();
+            _removed.RemoveAll(item => RemovedAppStore.Matches(item, card.App, _settings.DefaultHost));
+            _removed.Add(removed);
+            try
+            {
+                _removedStore.Save(_removed);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                _removed = before;
+                ShowError("목록에서 빼지 못했습니다: " + error.Message);
+                Render();
+                return;
+            }
         }
         // 즐겨찾기에서도
         if (_favorites.RemoveAll(item => item.IsApp && item.AppId.Equals(card.App.Id, StringComparison.OrdinalIgnoreCase)) > 0)
@@ -772,7 +866,48 @@ public partial class MainWindow : Window
         menu.Items.Add(program);
         menu.Items.Add(site);
         menu.Items.Add(project);
+        // 목록에서 삭제한 기본 앱이 있으면: 다시 추가 (이름마다)
+        if (_removed.Count > 0)
+        {
+            var restore = new MenuItem { Header = "삭제한 앱 다시 추가", Icon = "\uE777" };
+            foreach (var removed in _removed.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                var item = new MenuItem { Header = removed.Name };
+                item.Click += async (_, _) => await RestoreRemovedAsync(removed);
+                restore.Items.Add(item);
+            }
+            menu.Items.Add(new Separator());
+            menu.Items.Add(restore);
+        }
         menu.IsOpen = true;
+    }
+
+    /// <summary>목록에서 삭제했던 앱을 다시 보이게 함 (기본 목록 · 서버 목록에 아직 있으면 그 앱이 다시 나옴)</summary>
+    private async Task RestoreRemovedAsync(RemovedApp removed)
+    {
+        var before = _removed.ToList();
+        _removed.Remove(removed);
+        try
+        {
+            _removedStore.Save(_removed);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _removed = before;
+            ShowError("다시 추가하지 못했습니다: " + error.Message);
+            return;
+        }
+        await RefreshAsync(checkReleases: false);
+        var card = _cards.FirstOrDefault(item => item.App.HasId(removed.Id)
+            || removed.Repository.Length > 0 && MyAppStore.SameRepository(item.App.Repository, removed.Repository, _settings.DefaultHost));
+        if (card is null)
+        {
+            StatusText.Text = $"{removed.Name}: 지금 앱 목록에 없습니다";
+            return;
+        }
+        StatusText.Text = $"{card.Name} 다시 추가함";
+        await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
+        UpdateCounts();
     }
 
     /// <summary>카드 메뉴의 "관리자 메뉴에서 편집" (마스터만): 관리자 메뉴 → 앱 목록에서 그 앱을 엶</summary>
@@ -796,10 +931,8 @@ public partial class MainWindow : Window
     private UpdateSettings? LauncherUpdateSettings()
     {
         if (_settings.LauncherRepository is not { } repository) return null;
-        // API 서버가 있으면 그 서버의 GitHub 중계로 (토큰 없이)
-        return _settings.ApiBaseFor(repository) is { } relay
-            ? new UpdateSettings(relay, repository.FullName, null, "i-luncher-win-x64.zip", "i-luncher")
-            : new UpdateSettings(repository.ApiBase, repository.FullName, _settings.GetToken(repository.TokenHost), "i-luncher-win-x64.zip", "i-luncher");
+        // 런처 저장소의 GitHub 릴리스에 바로 (비공개면 설정의 토큰 또는 빌드 토큰)
+        return new UpdateSettings(repository.ApiBase, repository.FullName, _settings.GetToken(repository.TokenHost), "i-luncher-win-x64.zip", "i-luncher");
     }
 
     private async Task CheckLauncherUpdateAsync(bool automatic)
@@ -1251,11 +1384,7 @@ public partial class MainWindow : Window
 
     // 토큰은 런처의 기본 호스트(github.com 또는 GITHUB_HOST)용. 저장 · 지우면 새 버전을 다시 확인
     private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser, _settings.DefaultHost ?? "github.com",
-        (host, token) => _github.GetLoginAsync(host, token), () =>
-        {
-            _github.ForgetRoutes();
-            _ = RefreshAsync(checkReleases: true);
-        });
+        (host, token) => _github.GetLoginAsync(host, token), () => _ = RefreshAsync(checkReleases: true));
 
     // 설정 · 관리자 메뉴의 뒤로 (Esc): 앱 목록 (전체 앱)
     private void PageBack_Click(object sender, RoutedEventArgs e)
@@ -1266,6 +1395,7 @@ public partial class MainWindow : Window
 
     private void CatalogSourceText_Click(object sender, MouseButtonEventArgs e)
     {
+        if (!IsMaster) return;
         if (_store.WebUrl is { } url) OpenUrl(url);
         else if (_store is LocalCatalogStore) Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_settings.DataDirectory}\"") { UseShellExecute = true })?.Dispose();
     }
@@ -1288,8 +1418,10 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 공지 ─────────────────────────
 
+    /// <summary>공지는 마스터만 (일반 사용자는 서버에 묻지도 않고 공지 단추 · 띠도 없음)</summary>
     private async Task RefreshNoticesAsync()
     {
+        if (!IsMaster) return;
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -1306,7 +1438,7 @@ public partial class MainWindow : Window
 
     private void ShowNotices(IReadOnlyList<Notice> notices)
     {
-        var unread = notices.Where(notice => !_notices.IsRead(notice)).ToList();
+        var unread = IsMaster ? notices.Where(notice => !_notices.IsRead(notice)).ToList() : [];
         NoticeUnreadDot.Visibility = unread.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         NoticeBanner.Visibility = unread.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         NoticeBannerTitle.Text = unread.Count switch { 0 => "", 1 => unread[0].Title, _ => $"{unread[0].Title} 외 {unread.Count - 1}건" };

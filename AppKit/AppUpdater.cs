@@ -4,7 +4,8 @@
 // 동작:
 //   1. 앱 옆의 update.json (빌드할 때 .env 의 UPDATE_* 또는 Actions 저장소에서 만들어짐)에서 릴리스 저장소를 읽음
 //   2. "설치된 사본"(Windows "앱" 목록 HKCU\...\Uninstall\<InstallName> 의 InstallLocation 이 이 폴더)일 때만,
-//      시작 몇 초 뒤 GitHub(GitHub Enterprise 포함) 최신 릴리스를 확인
+//      시작 몇 초 뒤 GitHub(GitHub Enterprise 포함) 최신 릴리스를 확인. 비공개 저장소는 update.json 의 Token,
+//      없으면 이 PC 사용자가 i-luncher 설정에 넣은 그 호스트의 GitHub 토큰으로 (LauncherToken)
 //   3. 지금보다 높은 버전이면 <InstallName>-win-x64.zip 을 받아 두고, 앱이 끝날 때 파일을 바꿈 (다음 실행부터 새 버전).
 //      onReady 를 넘기면 "지금 다시 시작"을 고를 수 있음
 // i-luncher 로 설치한 앱도, 앱의 설치 프로그램으로 설치한 앱도 같은 규칙이라 둘 다 이 업데이터가 알아봄.
@@ -18,6 +19,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -47,12 +49,88 @@ namespace ILuncher.AppKit
                 string asset = Read("Asset");
                 if (asset.Length == 0) asset = installName + "-win-x64.zip";
                 string token = Read("Token");
-                return new UpdateSettings(api.Length == 0 ? "https://api.github.com" : api.TrimEnd('/'), repository,
-                    token.Length == 0 ? null : token, asset, installName);
+                api = api.Length == 0 ? "https://api.github.com" : api.TrimEnd('/');
+                return new UpdateSettings(api, repository, token.Length == 0 ? LauncherToken.For(api) : token, asset, installName);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
             {
                 return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 이 PC 사용자가 i-luncher 설정에 넣은 GitHub 토큰 (%LOCALAPPDATA%\i-luncher\settings.json 의 Tokens: 호스트 → DPAPI(현재 사용자)로 보호한 값).
+    /// update.json 에 토큰이 없을 때 비공개 저장소의 릴리스를 GitHub 에 바로 묻는 데 씀. 런처와 같은 사용자 · 같은 PC 에서만 풀림.
+    /// 그 호스트의 토큰이 없으면 null (공개 저장소는 토큰 없이 읽힘)
+    /// </summary>
+    public static class LauncherToken
+    {
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("i-luncher/github-token/v1");
+
+        /// <summary>API 주소의 호스트에 맞는 토큰: https://api.github.com → github.com, https://ghe.example.com/api/v3 → ghe.example.com</summary>
+        public static string? For(string api)
+        {
+            string host = HostOf(api);
+            if (host.Length == 0) return null;
+            try
+            {
+                string data = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } folder
+                    ? folder : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher");
+                string path = Path.Combine(data, "settings.json");
+                if (!File.Exists(path)) return null;
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty("Tokens", out var tokens) || tokens.ValueKind != JsonValueKind.Object) return null;
+                foreach (var item in tokens.EnumerateObject())
+                    if (string.Equals(item.Name, host, StringComparison.OrdinalIgnoreCase) && item.Value.ValueKind == JsonValueKind.String)
+                        return Unprotect(Convert.FromBase64String(item.Value.GetString() ?? ""));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or FormatException) { }
+            return null;
+        }
+
+        public static string HostOf(string api)
+        {
+            if (!Uri.TryCreate(api, UriKind.Absolute, out var uri)) return "";
+            string host = (uri.IsDefaultPort ? uri.Host : uri.Host + ":" + uri.Port).ToLowerInvariant();
+            return host == "api.github.com" || host == "www.github.com" ? "github.com" : host;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DataBlob { public int Size; public IntPtr Data; }
+
+        [DllImport("crypt32.dll", SetLastError = true)]
+        private static extern bool CryptUnprotectData(ref DataBlob input, IntPtr description, ref DataBlob entropy, IntPtr reserved, IntPtr prompt, int flags, ref DataBlob output);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LocalFree(IntPtr memory);
+
+        /// <summary>런처의 ProtectedData.Protect(…, Entropy, CurrentUser) 를 되돌림 (.NET Framework 에서도 쓰도록 crypt32 를 바로 부름)</summary>
+        private static string? Unprotect(byte[] data)
+        {
+            if (data.Length == 0) return null;
+            GCHandle dataHandle = GCHandle.Alloc(data, GCHandleType.Pinned), entropyHandle = GCHandle.Alloc(Entropy, GCHandleType.Pinned);
+            try
+            {
+                var input = new DataBlob { Size = data.Length, Data = dataHandle.AddrOfPinnedObject() };
+                var entropy = new DataBlob { Size = Entropy.Length, Data = entropyHandle.AddrOfPinnedObject() };
+                var output = new DataBlob();
+                // 1 = CRYPTPROTECT_UI_FORBIDDEN
+                if (!CryptUnprotectData(ref input, IntPtr.Zero, ref entropy, IntPtr.Zero, IntPtr.Zero, 1, ref output)) return null;
+                try
+                {
+                    var bytes = new byte[output.Size];
+                    Marshal.Copy(output.Data, bytes, 0, output.Size);
+                    string token = Encoding.UTF8.GetString(bytes).Trim();
+                    return token.Length == 0 ? null : token;
+                }
+                finally { LocalFree(output.Data); }
+            }
+            finally
+            {
+                dataHandle.Free();
+                entropyHandle.Free();
             }
         }
     }
@@ -272,6 +350,8 @@ namespace ILuncher.AppKit
                 $"  Wait-Process -Id {processId} -Timeout 600 -ErrorAction SilentlyContinue",
                 // 같은 패키지를 다른 사본의 업데이터가 이미 적용하고 지웠으면 그쪽이 앱을 다시 켬
                 "  if (-not (Test-Path -LiteralPath $zip)) { Log 'package already applied'; return }",
+                // 기다리는 동안 앱을 제거했으면 (런처의 제거 등) 설치 폴더를 다시 만들지 않음
+                "  if (-not (Test-Path -LiteralPath (Join-Path $target $exe))) { Log 'app removed, update skipped'; Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue; return }",
                 "  Add-Type -AssemblyName System.IO.Compression.FileSystem",
                 "  $staging = Join-Path $env:TEMP ('AppUpdate_' + [guid]::NewGuid().ToString('N'))",
                 "  [IO.Compression.ZipFile]::ExtractToDirectory($zip, $staging)",

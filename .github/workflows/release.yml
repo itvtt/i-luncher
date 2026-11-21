@@ -2,8 +2,7 @@
 # 다음 버전을 골라 GitHub Release 에 두 파일을 올립니다.
 #   i-luncher-Setup.exe     처음 설치 (사용자별, 관리자 권한 없음, .NET 10 이 없는 PC 에는 실행 환경을 함께 설치)
 #   i-luncher-win-x64.zip   설치된 런처가 시작할 때 확인해 스스로 업데이트하는 패키지
-# 부서용 설치 파일 i-luncher-Team-Setup.exe 는 릴리스에 올리지 않고 러너 PC 의 폴더에 둡니다:
-#   러너 환경 변수 ILUNCHER_TEAM_SETUP_DIR (러너 .env), 없으면 %ProgramData%\i-luncher\team-setup
+# 설치 파일은 하나입니다: 서버 목록 · 공지는 이 PC 의 Windows 계정이 빌드 설정 MASTER_USERS 에 있는 마스터만 봅니다.
 #
 # 앱 목록(catalog/apps.json)과 공지(공지.txt)는 런처가 GitHub API 로 바로 읽고 고치므로 릴리스를 만들지 않습니다 (paths-ignore).
 # github.com 과 GitHub Enterprise 모두 그대로 동작합니다 (API 주소·저장소 이름은 러너 환경에서 읽음).
@@ -67,16 +66,6 @@ jobs:
         id: build
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File build\Publish-Release.ps1 -Version ${{ steps.version.outputs.version }}
-
-      - name: Keep team setup on this PC
-        shell: powershell
-        env:
-          TEAM_SETUP: ${{ steps.build.outputs.team_setup }}
-        run: |
-          $folder = if ($env:ILUNCHER_TEAM_SETUP_DIR) { $env:ILUNCHER_TEAM_SETUP_DIR } else { Join-Path $env:ProgramData 'i-luncher\team-setup' }
-          New-Item -ItemType Directory -Force -Path $folder | Out-Null
-          Copy-Item -LiteralPath $env:TEAM_SETUP -Destination (Join-Path $folder 'i-luncher-Team-Setup.exe') -Force
-          Write-Host "Team setup: $folder\i-luncher-Team-Setup.exe (not uploaded)"
 
       - name: Create release
         shell: powershell

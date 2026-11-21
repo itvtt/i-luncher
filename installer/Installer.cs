@@ -30,34 +30,17 @@ internal static class Installer
     private static readonly bool TestRun = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_UNINSTALL_KEY") is { Length: > 0 };
     private static readonly bool IgnoreInstalledDotNet = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_IGNORE_INSTALLED_DOTNET") == "1";
 
-    /// <summary>부서용 설치 파일 (Publish-Release.ps1 이 -p:SetupGroup=team 으로 한 번 더 빌드한 i-luncher-Team-Setup.exe)</summary>
-#if TEAM_SETUP
-    internal static readonly bool TeamSetup = true;
-#else
-    internal static readonly bool TeamSetup = false;
-#endif
-
     /// <summary>런처 설정 폴더 (런처 업데이트 · 제거에도 남음). ILUNCHER_DATA_DIR 은 시험용</summary>
     internal static string DataDirectory => Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data
         ? data : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
 
     /// <summary>
-    /// 스토어 그룹 표시 (런처 Services\StoreGroup.cs 와 같은 파일): 부서용은 team 을 쓰고,
-    /// 일반용은 표시가 없을 때만 basic 을 씀 (부서 사람이 일반용으로 다시 설치해도 부서로 남음)
+    /// 예전 일반 · 부서용 설치 파일이 남긴 표시(store-group.txt)를 지움: 이제 설치 파일은 하나이고 런처가 Windows 계정으로 마스터를 가림
     /// </summary>
-    internal static void WriteStoreGroup(Action<string> progress)
+    internal static void RemoveOldStoreGroup()
     {
-        string path = Path.Combine(DataDirectory, "store-group.txt");
-        if (!TeamSetup && File.Exists(path)) return;
-        try
-        {
-            Directory.CreateDirectory(DataDirectory);
-            File.WriteAllText(path, (TeamSetup ? "team" : "basic") + Environment.NewLine, new System.Text.UTF8Encoding(false));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            progress("스토어 그룹을 적지 못했습니다: " + error.Message);
-        }
+        try { File.Delete(Path.Combine(DataDirectory, "store-group.txt")); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     internal static string DefaultInstallDirectory =>
@@ -133,7 +116,7 @@ internal static class Installer
             progress("Windows 앱 목록에 등록 중…");
             Register(target);
         }
-        WriteStoreGroup(progress);
+        RemoveOldStoreGroup();
         progress("설치 완료");
         if (options.Launch) Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = target });
     }

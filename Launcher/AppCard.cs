@@ -141,6 +141,8 @@ public sealed class AppCard : INotifyPropertyChanged
     /// <summary>카드 메뉴의 "관리자 메뉴에서 편집": 관리자 메뉴를 쓰는 마스터 계정만 (런처가 시작할 때 정함)</summary>
     public static bool AdminMenus { get; set; }
     public Visibility AdminMenuVisibility => AdminMenus && !App.Personal ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>일반/마스터 화면을 바꾼 뒤 (AdminMenus 가 바뀜)</summary>
+    public void RefreshAdminMenu() => Notify(nameof(AdminMenuVisibility));
     /// <summary>내 앱(GitHub 프로젝트로 더한 앱)만: 삭제 메뉴</summary>
     public Visibility PersonalMenuVisibility => App.Personal ? Visibility.Visible : Visibility.Collapsed;
     // 마스터가 API 서버 관리 프로그램의 앱 목록에서 켬
