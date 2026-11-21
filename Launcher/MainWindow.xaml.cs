@@ -124,7 +124,7 @@ public partial class MainWindow : Window
     {
         _github?.Dispose();
         // 릴리스(버전 · 설치 · 업데이트)는 언제나 그 앱의 GitHub 에 바로 물음. 비공개 저장소면 설정의 토큰(또는 빌드 토큰)
-        _github = new GitHubClient(host => _settings.GetToken(host), LauncherVersion);
+        _github = new GitHubClient(repository => _settings.GetToken(repository), LauncherVersion);
         _manager = new AppManager(_github, new AppInstaller(), Path.Combine(_settings.DataDirectory, "downloads"), () => _settings.DefaultHost);
         (_store as IDisposable)?.Dispose();
         _store = _settings.CatalogMode switch
@@ -725,6 +725,13 @@ public partial class MainWindow : Window
             repository => _cards.FirstOrDefault(card => MyAppStore.SameRepository(card.App.Repository, repository.WebUrl, _settings.DefaultHost))?.Name)
         { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } app) return;
+        // 비공개라 그 자리에서 넣은 이 프로젝트의 토큰
+        if (dialog.ResultToken is { Length: > 0 } token && GitHubRepository.Parse(app.Repository, _settings.DefaultHost) is { } tokenRepository)
+        {
+            _settings.User.SetRepositoryToken(tokenRepository, token);
+            try { _settings.SaveUser(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("토큰을 저장하지 못했습니다: " + error.Message); }
+        }
         // 목록에서 삭제했던 기본 목록 앱의 저장소면 내 앱으로 따로 만들지 않고 그 앱을 다시 보이게 함
         if (_removed.FirstOrDefault(removed => removed.Repository.Length > 0
                 && MyAppStore.SameRepository(removed.Repository, app.Repository, _settings.DefaultHost)) is { } hidden)
@@ -1397,8 +1404,33 @@ public partial class MainWindow : Window
     }
 
     // 토큰은 런처의 기본 호스트(github.com 또는 GITHUB_HOST)용. 저장 · 지우면 새 버전을 다시 확인
-    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser, _settings.DefaultHost ?? "github.com",
-        (host, token) => _github.GetLoginAsync(host, token), () => _ = RefreshAsync(checkReleases: true));
+    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser);
+
+    /// <summary>
+    /// 이 프로젝트(저장소)의 GitHub 토큰: 비공개 저장소면 프로젝트마다 따로 넣음. 런처와 그 앱의 자체 업데이터가 씀.
+    /// 저장하기 전에 그 저장소를 그 토큰으로 읽어 봄
+    /// </summary>
+    private async void TokenMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not { } card || GitHubRepository.Parse(card.App.Repository, _settings.DefaultHost) is not { } repository) return;
+        var dialog = new TokenWindow(card, repository, _settings.User.GetRepositoryToken(repository) is { Length: > 0 }, async token =>
+        {
+            using var client = _github.WithToken(token);
+            await client.GetRepositoryAsync(repository);
+        }) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        _settings.User.SetRepositoryToken(repository, dialog.Token);
+        try { _settings.SaveUser(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ShowError("토큰을 저장하지 못했습니다: " + error.Message);
+            return;
+        }
+        StatusText.Text = dialog.Token is null ? $"{card.Name} 토큰 지움" : $"{card.Name} 토큰 저장함";
+        await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
+        _ = LoadRepositoryIconsAsync([card]);
+        UpdateCounts();
+    }
 
     // 설정 · 관리자 메뉴의 뒤로 (Esc): 앱 목록 (전체 앱)
     private void PageBack_Click(object sender, RoutedEventArgs e)

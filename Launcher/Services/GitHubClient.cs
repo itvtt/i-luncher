@@ -38,16 +38,20 @@ public sealed class GitHubApiException(int status, string message) : Exception(m
 
 /// <summary>
 /// github.com 과 GitHub Enterprise 에 같은 방식으로 접근 (REST API v3).
-/// 토큰은 호스트별로 tokenProvider 가 줌. 공개 저장소는 토큰 없이도 동작.
+/// 토큰은 저장소마다 tokenProvider 가 줌 (프로젝트 토큰 → 호스트 토큰). 공개 저장소는 토큰 없이도 동작.
 /// </summary>
 public sealed class GitHubClient : IDisposable
 {
     private readonly HttpClient _http;
-    private readonly Func<string, string?> _tokenProvider;
-    private readonly string _userAgent;
-    public GitHubClient(Func<string, string?> tokenProvider, string userAgentVersion, HttpMessageHandler? handler = null)
+    private readonly Func<GitHubRepository, string?> _tokenProvider;
+    private readonly string _userAgent, _userAgentVersion;
+    private readonly HttpMessageHandler? _handler;
+
+    public GitHubClient(Func<GitHubRepository, string?> tokenProvider, string userAgentVersion, HttpMessageHandler? handler = null)
     {
         _tokenProvider = tokenProvider;
+        _userAgentVersion = userAgentVersion;
+        _handler = handler;
         _userAgent = "i-luncher/" + userAgentVersion;
         // 리디렉션(릴리스 파일 → 저장소 서버)은 HttpClient 가 따라가며 Authorization 헤더는 넘기지 않음
         _http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
@@ -55,6 +59,9 @@ public sealed class GitHubClient : IDisposable
     }
 
     public void Dispose() => _http.Dispose();
+
+    /// <summary>모든 저장소를 이 토큰으로 읽는 클라이언트 (저장하기 전에 프로젝트 토큰을 확인할 때). 쓴 뒤 Dispose</summary>
+    public GitHubClient WithToken(string token) => new(_ => token, _userAgentVersion, _handler);
 
     private static string Target(GitHubRepository repository) => repository.Host;
 
@@ -66,7 +73,7 @@ public sealed class GitHubClient : IDisposable
         request.Headers.UserAgent.ParseAdd(_userAgent);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
         request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", "2022-11-28");
-        if (_tokenProvider(repository.TokenHost) is { Length: > 0 } token)
+        if (_tokenProvider(repository) is { Length: > 0 } token)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return request;
     }
@@ -110,18 +117,20 @@ public sealed class GitHubClient : IDisposable
             else if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("message", out var message)) detail = message.GetString() ?? "";
         }
         catch (JsonException) { }
-        bool hasToken = !string.IsNullOrEmpty(_tokenProvider(repository.TokenHost));
+        bool hasToken = !string.IsNullOrEmpty(_tokenProvider(repository));
         bool rateLimited = status is 403 or 429 &&
             (response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) && remaining.FirstOrDefault() == "0"
              || detail.Contains("rate limit", StringComparison.OrdinalIgnoreCase));
         string text = status switch
         {
-            401 => $"{repository.Host} 토큰이 올바르지 않거나 만료되었습니다. 설정에서 토큰을 확인하세요.",
+            401 => $"{repository.FullName} 토큰이 올바르지 않거나 만료되었습니다 (앱 우클릭 → 토큰…).",
             _ when rateLimited => hasToken
                 ? $"{repository.Host} API 사용 한도를 넘었습니다. 잠시 후 다시 시도하세요."
-                : $"{repository.Host} API 사용 한도(토큰 없이 시간당 60번)를 넘었습니다. 설정에 GitHub 토큰을 넣으면 한도가 늘어납니다.",
-            403 => hasToken ? $"{repository.FullName}에 대한 권한이 없습니다. 토큰 권한을 확인하세요." : $"{repository.FullName}에 접근하려면 설정에 GitHub 토큰이 필요합니다.",
-            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 토큰으로 읽을 수 없습니다." : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개 저장소라면 설정에 GitHub 토큰을 넣으세요.",
+                : $"{repository.Host} API 사용 한도(토큰 없이 시간당 60번)를 넘었습니다. 잠시 후 다시 시도하세요.",
+            403 => hasToken ? $"{repository.FullName}에 대한 권한이 없습니다. 이 프로젝트의 토큰 권한을 확인하세요 (앱 우클릭 → 토큰…)."
+                : $"{repository.FullName}에 접근하려면 이 프로젝트의 토큰이 필요합니다 (앱 우클릭 → 토큰…).",
+            404 => hasToken ? $"{repository.FullName}을(를) 찾을 수 없거나 이 토큰으로 읽을 수 없습니다 (앱 우클릭 → 토큰…)."
+                : $"{repository.FullName}을(를) 찾을 수 없습니다. 비공개 저장소면 이 프로젝트의 토큰을 넣으세요 (앱 우클릭 → 토큰…).",
             409 or 422 => "다른 사람이 먼저 목록을 바꿨습니다. 새로 고친 뒤 다시 시도하세요.",
             _ => $"{repository.Host} 응답 {status}" + (detail.Length > 0 ? $": {detail}" : "")
         };
@@ -192,7 +201,7 @@ public sealed class GitHubClient : IDisposable
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd(_userAgent);
-        if (string.Equals(url.Authority, repository.Host, StringComparison.OrdinalIgnoreCase) && _tokenProvider(repository.TokenHost) is { Length: > 0 } token)
+        if (string.Equals(url.Authority, repository.Host, StringComparison.OrdinalIgnoreCase) && _tokenProvider(repository) is { Length: > 0 } token)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await SendBytesAsync(request, repository, maxBytes, cancellationToken).ConfigureAwait(false);
     }

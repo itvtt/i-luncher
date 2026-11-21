@@ -5,7 +5,7 @@
 //   1. 앱 옆의 update.json (빌드할 때 .env 의 UPDATE_* 또는 Actions 저장소에서 만들어짐)에서 릴리스 저장소를 읽음
 //   2. "설치된 사본"(Windows "앱" 목록 HKCU\...\Uninstall\<InstallName> 의 InstallLocation 이 이 폴더)일 때만,
 //      시작 몇 초 뒤 GitHub(GitHub Enterprise 포함) 최신 릴리스를 확인. 비공개 저장소는 update.json 의 Token,
-//      없으면 이 PC 사용자가 i-luncher 설정에 넣은 그 호스트의 GitHub 토큰으로 (LauncherToken)
+//      없으면 이 PC 사용자가 i-luncher 에서 이 프로젝트에 넣은 토큰(앱 우클릭 → 토큰…), 그다음 그 호스트의 토큰으로 (LauncherToken)
 //   3. 지금보다 높은 버전이면 <InstallName>-win-x64.zip 을 받아 두고, 앱이 끝날 때 파일을 바꿈 (다음 실행부터 새 버전).
 //      onReady 를 넘기면 "지금 다시 시작"을 고를 수 있음
 // i-luncher 로 설치한 앱도, 앱의 설치 프로그램으로 설치한 앱도 같은 규칙이라 둘 다 이 업데이터가 알아봄.
@@ -50,7 +50,7 @@ namespace ILuncher.AppKit
                 if (asset.Length == 0) asset = installName + "-win-x64.zip";
                 string token = Read("Token");
                 api = api.Length == 0 ? "https://api.github.com" : api.TrimEnd('/');
-                return new UpdateSettings(api, repository, token.Length == 0 ? LauncherToken.For(api) : token, asset, installName);
+                return new UpdateSettings(api, repository, token.Length == 0 ? LauncherToken.For(api, repository) : token, asset, installName);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
             {
@@ -60,16 +60,17 @@ namespace ILuncher.AppKit
     }
 
     /// <summary>
-    /// 이 PC 사용자가 i-luncher 설정에 넣은 GitHub 토큰 (%LOCALAPPDATA%\i-luncher\settings.json 의 Tokens: 호스트 → DPAPI(현재 사용자)로 보호한 값).
+    /// 이 PC 사용자가 i-luncher 에 넣은 GitHub 토큰 (%LOCALAPPDATA%\i-luncher\settings.json, DPAPI(현재 사용자)로 보호한 값):
+    /// RepositoryTokens("호스트/소유자/이름", 앱 우클릭 → 토큰…) 먼저, 없으면 Tokens(호스트, 마스터 PC 의 git 로그인).
     /// update.json 에 토큰이 없을 때 비공개 저장소의 릴리스를 GitHub 에 바로 묻는 데 씀. 런처와 같은 사용자 · 같은 PC 에서만 풀림.
-    /// 그 호스트의 토큰이 없으면 null (공개 저장소는 토큰 없이 읽힘)
+    /// 없으면 null (공개 저장소는 토큰 없이 읽힘)
     /// </summary>
     public static class LauncherToken
     {
         private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("i-luncher/github-token/v1");
 
-        /// <summary>API 주소의 호스트에 맞는 토큰: https://api.github.com → github.com, https://ghe.example.com/api/v3 → ghe.example.com</summary>
-        public static string? For(string api)
+        /// <summary>API 주소의 호스트(https://api.github.com → github.com, https://ghe.example.com/api/v3 → ghe.example.com)와 저장소(소유자/이름)에 맞는 토큰</summary>
+        public static string? For(string api, string? repository = null)
         {
             string host = HostOf(api);
             if (host.Length == 0) return null;
@@ -80,11 +81,16 @@ namespace ILuncher.AppKit
                 string path = Path.Combine(data, "settings.json");
                 if (!File.Exists(path)) return null;
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
-                if (document.RootElement.ValueKind != JsonValueKind.Object ||
-                    !document.RootElement.TryGetProperty("Tokens", out var tokens) || tokens.ValueKind != JsonValueKind.Object) return null;
-                foreach (var item in tokens.EnumerateObject())
-                    if (string.Equals(item.Name, host, StringComparison.OrdinalIgnoreCase) && item.Value.ValueKind == JsonValueKind.String)
-                        return Unprotect(Convert.FromBase64String(item.Value.GetString() ?? ""));
+                if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+                string project = repository is { Length: > 0 } ? (host + "/" + repository.Trim('/')).ToLowerInvariant() : "";
+                foreach (var (property, key) in new[] { ("RepositoryTokens", project), ("Tokens", host) })
+                {
+                    if (key.Length == 0 || !document.RootElement.TryGetProperty(property, out var tokens) || tokens.ValueKind != JsonValueKind.Object) continue;
+                    foreach (var item in tokens.EnumerateObject())
+                        if (string.Equals(item.Name, key, StringComparison.OrdinalIgnoreCase) && item.Value.ValueKind == JsonValueKind.String
+                            && Unprotect(Convert.FromBase64String(item.Value.GetString() ?? "")) is { } token)
+                            return token;
+                }
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or FormatException) { }
             return null;

@@ -96,6 +96,8 @@ public sealed class UserSettings
     public Dictionary<string, string> Tokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>마스터 PC 가 이 PC 의 git 자격 증명에서 자동으로 넣은 토큰의 호스트 (사용자가 설정에 직접 넣으면 빠짐)</summary>
     public List<string> AutoTokenHosts { get; set; } = [];
+    /// <summary>프로젝트(저장소)마다의 토큰: "호스트/소유자/이름" → DPAPI 로 보호한 토큰(base64). 앱 우클릭 → 토큰… 으로 넣음</summary>
+    public Dictionary<string, string> RepositoryTokens { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("i-luncher/github-token/v1");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
@@ -108,6 +110,7 @@ public sealed class UserSettings
             {
                 settings.Tokens = new Dictionary<string, string>(settings.Tokens ?? [], StringComparer.OrdinalIgnoreCase);
                 settings.AutoTokenHosts ??= [];
+                settings.RepositoryTokens = new Dictionary<string, string>(settings.RepositoryTokens ?? [], StringComparer.OrdinalIgnoreCase);
                 return settings;
             }
         }
@@ -136,7 +139,29 @@ public sealed class UserSettings
         }
     }
 
-    /// <summary>사용자가 설정에서 넣거나 지운 토큰 (자동 토큰 표시도 지움)</summary>
+    /// <summary>저장소 토큰의 열쇠 (AppKit LauncherToken 과 같음): "호스트/소유자/이름" 소문자</summary>
+    public static string RepositoryKey(GitHubRepository repository) => $"{repository.TokenHost}/{repository.Owner}/{repository.Name}".ToLowerInvariant();
+
+    /// <summary>이 프로젝트에 넣은 토큰 (없으면 null)</summary>
+    public string? GetRepositoryToken(GitHubRepository repository) =>
+        RepositoryTokens.TryGetValue(RepositoryKey(repository), out string? protectedToken) ? Unprotect(protectedToken) : null;
+
+    /// <summary>이 프로젝트의 토큰을 넣거나 (null 이면) 지움</summary>
+    public void SetRepositoryToken(GitHubRepository repository, string? token)
+    {
+        string key = RepositoryKey(repository);
+        if (string.IsNullOrWhiteSpace(token)) { RepositoryTokens.Remove(key); return; }
+        RepositoryTokens[key] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(token.Trim()), Entropy, DataProtectionScope.CurrentUser));
+    }
+
+    private static string? Unprotect(string protectedToken)
+    {
+        if (protectedToken.Length == 0) return null;
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protectedToken), Entropy, DataProtectionScope.CurrentUser)); }
+        catch (Exception error) when (error is CryptographicException or FormatException) { return null; }
+    }
+
+    /// <summary>호스트 전체에 쓰는 토큰 (마스터 PC 의 git 로그인 자동 토큰) (자동 토큰 표시도 지움)</summary>
     public void SetToken(string host, string? token)
     {
         string key = GitHubRepository.NormalizeHost(host);
@@ -242,6 +267,11 @@ public sealed class LauncherSettings
     }
 
     public bool HasUserToken(string host) => User.GetToken(host) is { Length: > 0 };
+
+    /// <summary>
+    /// 이 저장소를 읽을 토큰: 그 프로젝트에 넣은 토큰 → 호스트 토큰(마스터 PC 의 git 로그인) → 빌드 설정 LAUNCHER_TOKEN (같은 호스트만)
+    /// </summary>
+    public string? GetToken(GitHubRepository repository) => User.GetRepositoryToken(repository) ?? GetToken(repository.TokenHost);
 
     /// <summary>
     /// 마스터 PC: 사용자가 설정에 토큰을 넣지 않았으면 이 PC 의 git 자격 증명(저장소를 push 하는 그 계정)을 그 호스트의 토큰으로 씀.

@@ -114,7 +114,7 @@ static class UiSnapshot
                         siteEditor.Close();
                     }
                     // GitHub 프로젝트 추가 창: 확인한 저장소(이 PC 의 API 서버로 실제 확인) · 열 수 없는 저장소 오류. 내 앱 삭제 창
-                    var github = new GitHubClient(host => settings.GetToken(host), MainWindow.LauncherVersion);
+                    var github = new GitHubClient(repository => settings.GetToken(repository), MainWindow.LauncherVersion);
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-downloads"), () => settings.DefaultHost);
                     foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-error") })
                     {
@@ -130,6 +130,19 @@ static class UiSnapshot
                         Console.WriteLine($"github {repository}: details {projectWindow.Details.Visibility} · add {projectWindow.AddButton.IsEnabled} · " +
                                           (projectWindow.ErrorText.Visibility == Visibility.Visible ? "error: " + projectWindow.ErrorText.Text : projectWindow.PreviewVersion.Text + " " + projectWindow.PreviewFile.Text));
                         projectWindow.Close();
+                    }
+                    // 비공개라 읽지 못했을 때의 모습: 이 프로젝트의 토큰 칸
+                    {
+                        var tokenProject = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구"], _ => null)
+                        { ShowActivated = false, Left = -4000, Top = 0, MaxHeight = 4000 };
+                        tokenProject.Show();
+                        tokenProject.RepoBox.Text = "owner/private-tool";
+                        tokenProject.ErrorText.Text = "owner/private-tool 을(를) 읽지 못했습니다. 비공개 저장소면 이 프로젝트의 토큰을 넣고 다시 확인하세요.";
+                        tokenProject.ErrorText.Visibility = Visibility.Visible;
+                        tokenProject.TokenRow.Visibility = Visibility.Visible;
+                        Pump(TimeSpan.FromMilliseconds(400));
+                        Save((FrameworkElement)tokenProject.Content, Suffix(output, "-github-token"));
+                        tokenProject.Close();
                     }
                     window.SelectFilter("all");
                     Pump(TimeSpan.FromMilliseconds(300));
@@ -157,6 +170,15 @@ static class UiSnapshot
                         Pump(TimeSpan.FromMilliseconds(500));
                         Save((FrameworkElement)deleteWindow.Content, Suffix(output, "-delete"));
                         deleteWindow.Close();
+                        // 프로젝트 토큰 (앱 우클릭 → 토큰…)
+                        if (GitHubRepository.Parse(installedCard.App.Repository) is { } tokenRepository)
+                        {
+                            var tokenWindow = new TokenWindow(installedCard, tokenRepository, hasToken: true, _ => Task.CompletedTask) { ShowActivated = false, Left = -4000, Top = 0 };
+                            tokenWindow.Show();
+                            Pump(TimeSpan.FromMilliseconds(500));
+                            Save((FrameworkElement)tokenWindow.Content, Suffix(output, "-token"));
+                            tokenWindow.Close();
+                        }
                     }
                     // 설정 (오른쪽 화면)
                     window.SettingsButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));

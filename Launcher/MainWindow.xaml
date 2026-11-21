@@ -472,6 +472,7 @@
                                             <MenuItem Header="설치 / 다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
                                             <Separator />
                                             <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
+                                            <MenuItem Header="토큰…" Icon="&#xE72E;" Tag="{Binding}" Click="TokenMenu_Click" />
                                             <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
                                             <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                             <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />
@@ -530,6 +531,7 @@
                                         <MenuItem Header="설치 / 다시 설치" Icon="&#xE72C;" Tag="{Binding}" Click="ReinstallMenu_Click" />
                                         <Separator />
                                         <MenuItem Header="저장소 열기" Icon="&#xE8A7;" Tag="{Binding}" Click="OpenRepositoryMenu_Click" />
+                                        <MenuItem Header="토큰…" Icon="&#xE72E;" Tag="{Binding}" Click="TokenMenu_Click" />
                                         <MenuItem Header="릴리스 노트 보기" Icon="&#xE8A5;" Tag="{Binding}" Click="OpenReleaseMenu_Click" Visibility="{Binding ReleaseMenuVisibility}" />
                                         <MenuItem Header="설치 폴더 열기" Icon="&#xE838;" Tag="{Binding}" Click="OpenFolderMenu_Click" Visibility="{Binding InstalledMenuVisibility}" />
                                         <MenuItem Header="관리자 메뉴에서 편집" Icon="&#xE70F;" Tag="{Binding}" Click="EditMenu_Click" Visibility="{Binding AdminMenuVisibility}" />

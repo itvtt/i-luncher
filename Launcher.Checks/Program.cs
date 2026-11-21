@@ -266,7 +266,7 @@ try
     });
 
     var github = new FakeGitHub();
-    using var client = new GitHubClient(host => host == "ghe.test" ? "secret-token" : null, "checks", github);
+    using var client = new GitHubClient(repository => repository.TokenHost == "ghe.test" ? "secret-token" : null, "checks", github);
     var repo = GitHubRepository.Parse("https://ghe.test/team/i-luncher")!;
 
     await Check("repository catalog: read, write with sha, retry after a concurrent change, offline cache", async () =>
@@ -539,19 +539,29 @@ try
         settings.User.SetToken("github.com", "typed-token");
         Assert(!settings.AdoptGitCredential(_ => "git-token-3") && settings.GetToken("github.com") == "typed-token", "a token typed in settings wins");
     });
-    await CheckSync("apps ask GitHub with the token this user saved in the launcher settings (only for that host)", () =>
+    await CheckSync("tokens are per project: the launcher and that app's own updater use the project's token first, then the host's", () =>
     {
         string data = Path.Combine(root, "token-data");
         var user = new UserSettings();
         user.SetToken("github.com", "gh-user-token");
         user.SetToken("https://GHE.test/", "ghe-user-token");
+        var secret = GitHubRepository.Parse("https://github.com/Team/Secret")!;
+        user.SetRepositoryToken(secret, "secret-project-token");
+        user.SetRepositoryToken(GitHubRepository.Parse("https://ghe.test/team/Tool")!, "tool-project-token");
         user.Save(Path.Combine(data, "settings.json"));
+        var launcher = LauncherSettings.Load(data, Path.Combine(root, "token-build"));
+        Equal("secret-project-token", launcher.GetToken(secret), "launcher: the project's token");
+        Equal("gh-user-token", launcher.GetToken(GitHubRepository.Parse("https://github.com/team/Other")!), "launcher: another project falls back to the host's");
+        Equal("github.com/team/secret", UserSettings.RepositoryKey(secret), "key: host/owner/name, lower case");
         string? before = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR");
         Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", data);
         try
         {
             Equal("gh-user-token", LauncherToken.For("https://api.github.com"), "github.com");
             Equal("ghe-user-token", LauncherToken.For("https://ghe.test/api/v3"), "GitHub Enterprise");
+            Equal("secret-project-token", LauncherToken.For("https://api.github.com", "team/secret"), "app: the project's token first");
+            Equal("tool-project-token", LauncherToken.For("https://ghe.test/api/v3", "Team/Tool"), "app: GitHub Enterprise project");
+            Equal("gh-user-token", LauncherToken.For("https://api.github.com", "team/other"), "app: no project token, the host's");
             Assert(LauncherToken.For("http://10.0.0.5:2003/api/v3") is null, "never to another server");
             string json = Path.Combine(data, "update.json");
             File.WriteAllText(json, "{\"Api\":\"\",\"Repository\":\"o/App\",\"InstallName\":\"App\"}");

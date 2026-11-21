@@ -85,9 +85,10 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - **공개 저장소는 토큰이 필요 없습니다.** 일반 사용자가 받는 저장소는 공개로 둡니다.
 - **마스터 PC 는 토큰을 넣지 않습니다**: 런처가 시작할 때 이 PC 의 git 로그인(저장소를 push 하는 그 계정, Git Credential Manager 등)을 창 없이 읽어 토큰으로 쓰고, 설치된 앱의 자체 업데이터도 같은 토큰을 씁니다. 설정에 직접 넣은 토큰이 있으면 그것이 먼저입니다.
 - 비공개 저장소를 읽어야 하면:
-  - 사용자마다: 런처 **설정 → GitHub 토큰** (읽기 권한). 이 PC · 이 Windows 계정에만 암호화해 저장되고, **설치된 앱의 자체 업데이터도 같은 토큰을 씁니다** (앱에 토큰이 없을 때).
+  - **프로젝트마다**: 비공개 저장소는 **프로젝트마다** 토큰을 받습니다: 앱을 우클릭 → **토큰…** (GitHub 프로젝트 추가 때는 읽지 못하면 그 자리에서 물음). 저장하기 전에 그 저장소를 그 토큰으로 읽어 보고, 이 PC 의 이 Windows 계정에만 암호화해 둡니다 (`settings.json` 의 `RepositoryTokens`). 런처와 **그 앱의 자체 업데이터**가 그 프로젝트의 토큰을 씁니다. 설정 화면에 토큰 하나를 넣는 칸은 없습니다.
   - 모두 같은 토큰: 런처 빌드 설정 `LAUNCHER_TOKEN`, 앱 빌드 설정 `UPDATE_TOKEN` (읽기 전용만. 실행 파일 안에 들어감).
-- github.com 은 토큰 없이 쓰면 **인터넷 주소 하나당 시간당 60번**까지입니다 (같은 공유기 뒤의 PC 가 함께 씀). 자주 넘으면 설정에 토큰을 넣습니다 (시간당 5,000번). GitHub Enterprise 는 보통 이 한도를 켜 두지 않습니다.
+  - 찾는 순서: 프로젝트 토큰 → 호스트 토큰(마스터 PC 의 git 로그인) → 빌드 토큰.
+- github.com 은 토큰 없이 쓰면 **인터넷 주소 하나당 시간당 60번**까지입니다 (같은 공유기 뒤의 PC 가 함께 씀). 토큰을 쓰는 프로젝트는 시간당 5,000번. GitHub Enterprise 는 보통 이 한도를 켜 두지 않습니다.
 
 ## 4. 저장소 공개 기준
 
@@ -137,14 +138,14 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 |---|---|
 | `UPDATE_GITHUB_API` | `https://<Enterprise 호스트>/api/v3` (github.com 이면 `https://api.github.com`). **API 서버 주소를 넣지 않습니다** |
 | `UPDATE_REPOSITORY` | `<소유자>/<앱>` |
-| `UPDATE_TOKEN` | 보통 비움 (공개 저장소, 또는 사용자 설정 토큰) |
+| `UPDATE_TOKEN` | 보통 비움 (공개 저장소, 또는 그 PC 사용자가 이 프로젝트에 넣은 토큰) |
 | `UPDATE_INSTALL_NAME` | 설치 폴더 · "앱" 목록 이름 (`basic-apps.json` 의 `installName` 과 같게) |
 
 **사용자 PC** (`%LOCALAPPDATA%\i-luncher`, 런처 업데이트 · 제거에도 남음)
 
 | 파일 | 내용 |
 |---|---|
-| `settings.json` | 자동 업데이트, GitHub 토큰(암호화. 마스터 PC 는 git 로그인에서 자동, `AutoTokenHosts`), `GeneralView`(마스터의 일반 화면) |
+| `settings.json` | 자동 업데이트, 프로젝트마다의 토큰 `RepositoryTokens`(암호화), 마스터 PC 의 git 로그인 토큰 `Tokens` · `AutoTokenHosts`, `GeneralView`(마스터의 일반 화면) |
 | `my-apps.json` | 내 앱 |
 | `removed-apps.json` | 목록에서 삭제한 기본 · 서버 목록 앱 |
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |

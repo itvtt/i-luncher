@@ -56,6 +56,13 @@
                             <Button x:Name="CheckButton" Grid.Column="1" Margin="8,0,0,0" MinWidth="76" Style="{StaticResource DialogButtonStyle}" Click="Check_Click" Content="확인" />
                         </Grid>
                         <TextBlock x:Name="ErrorText" Margin="2,10,0,0" FontSize="12.5" Foreground="#FFFF9F8A" TextWrapping="Wrap" Visibility="Collapsed" />
+                        <!-- 비공개라 읽지 못했을 때만: 이 프로젝트의 토큰 (넣고 다시 확인) -->
+                        <Grid x:Name="TokenRow" Margin="0,10,0,0" Visibility="Collapsed">
+                            <PasswordBox x:Name="TokenBox" Style="{StaticResource DialogPasswordStyle}" AutomationProperties.Name="이 프로젝트의 토큰"
+                                         PasswordChanged="TokenBox_PasswordChanged" KeyDown="RepoBox_KeyDown" />
+                            <TextBlock x:Name="TokenPlaceholder" Margin="14,0" VerticalAlignment="Center" IsHitTestVisible="False" FontSize="13" Foreground="#FF6E6E76"
+                                       Text="이 프로젝트의 토큰 붙여넣기 (읽기 권한)" />
+                        </Grid>
 
                         <!-- 확인한 프로젝트 -->
                         <StackPanel x:Name="Details" Visibility="Collapsed">

@@ -11,7 +11,7 @@ namespace ILauncher;
 /// <summary>
 /// GitHub 프로젝트 추가 · 내 앱 편집.
 /// 추가: 저장소 주소를 넣고 [확인] (또는 Enter) 하면 GitHub 에 바로 최신 릴리스와 설치 파일(zip · 설치 프로그램)을 확인
-/// (비공개는 설정의 GitHub 토큰으로, 내 비공개 저장소는 API 서버의 GitHub 중계로).
+/// (비공개라 읽지 못하면 그 자리에서 이 프로젝트의 토큰을 받아 다시 확인. 토큰은 ResultToken 으로 돌려줘 저장소마다 저장).
 /// 이름 · 분류 · 설명 · 아이콘을 정해 [추가]하면 Result 가 이 PC 의 내 앱 (Personal, 설치됨 탭).
 /// 이미 있는 저장소 · 릴리스 없음 · 열 수 없는 저장소는 알려 줌.
 /// 편집(editing): 저장소는 그대로, 나머지를 바꿔 [저장]. 아이콘 그림은 CustomIcons.Folder 에 복사해 둠.
@@ -66,6 +66,22 @@ public partial class GitHubProjectWindow : Window
 
     /// <summary>[추가] · [저장]한 앱 (내 앱)</summary>
     public AppDefinition? Result { get; private set; }
+
+    /// <summary>비공개라 확인할 때 넣은 이 프로젝트의 토큰 (없으면 null)</summary>
+    public string? ResultToken { get; private set; }
+
+    private string? TypedToken => TokenRow.Visibility == Visibility.Visible && TokenBox.Password.Trim() is { Length: > 0 } token ? token : null;
+
+    private void TokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        TokenPlaceholder.Visibility = TokenBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (_editing is null && _checked is not null)
+        {
+            _checked = null;
+            Details.Visibility = Visibility.Collapsed;
+            AddButton.IsEnabled = false;
+        }
+    }
 
     /// <summary>편집: 저장소 아이콘 (자동일 때 미리 보기, 없으면 null)</summary>
     public ImageSource? RepositoryIcon
@@ -131,9 +147,13 @@ public partial class GitHubProjectWindow : Window
         CheckButton.IsEnabled = false;
         CheckButton.Content = "확인 중…";
         ErrorText.Visibility = Visibility.Collapsed;
+        string? token = TypedToken;
+        // 토큰을 넣었으면 이 프로젝트는 그 토큰으로 확인 (저장은 [추가]할 때)
+        using var withToken = token is null ? null : _manager.GitHub.WithToken(token);
+        var github = withToken ?? _manager.GitHub;
         try
         {
-            var release = await _manager.GitHub.GetLatestReleaseAsync(repository, includePrerelease: false, cancel);
+            var release = await github.GetLatestReleaseAsync(repository, includePrerelease: false, cancel);
             if (release is null)
             {
                 Say($"{repository.FullName} 에 릴리스가 없습니다. 설치할 수 있게 릴리스(zip 또는 설치 프로그램)를 먼저 올려 주세요.");
@@ -150,11 +170,12 @@ public partial class GitHubProjectWindow : Window
             string description = "";
             if (fillFields)
             {
-                try { description = (await _manager.GitHub.GetRepositoryAsync(repository, cancel)).Description; }
+                try { description = (await github.GetRepositoryAsync(repository, cancel)).Description; }
                 catch (Exception error) when (error is not OperationCanceledException) { }  // 설명은 없어도 됨
             }
 
             _checked = repository;
+            ResultToken = token;
             PreviewName.Text = repository.FullName;
             PreviewVersion.Text = version;
             PreviewFile.Text = $"{asset.Name} · {SizeText(asset.Size)}" + (release.PublishedAt is { } at ? $" · {at.LocalDateTime:yyyy-MM-dd}" : "");
@@ -180,8 +201,16 @@ public partial class GitHubProjectWindow : Window
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            // GitHubApiException 은 이유를 알려 줌 (비공개면 설정의 GitHub 토큰, 한도 초과 등)
-            Say(error is GitHubApiException ? error.Message : $"{repository.FullName} 을(를) 확인하지 못했습니다: {error.Message}");
+            // 비공개라 못 읽음: 이 프로젝트의 토큰을 받아 다시 확인. 그 밖(한도 초과 등)은 이유를 알려 줌
+            if (_editing is null && error is GitHubApiException { Status: 401 or 403 or 404 } access && !access.Message.Contains("한도", StringComparison.Ordinal))
+            {
+                TokenRow.Visibility = Visibility.Visible;
+                Say(token is null
+                    ? $"{repository.FullName} 을(를) 읽지 못했습니다. 비공개 저장소면 이 프로젝트의 토큰을 넣고 다시 확인하세요."
+                    : "이 토큰으로 읽지 못했습니다. 토큰과 읽기 권한을 확인하세요.");
+                TokenBox.Focus();
+            }
+            else Say(error is GitHubApiException ? error.Message : $"{repository.FullName} 을(를) 확인하지 못했습니다: {error.Message}");
         }
         finally
         {

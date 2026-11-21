@@ -47,7 +47,7 @@ protected override void OnStartup(StartupEventArgs e)
 
 1. 빌드할 때 `.env`의 `UPDATE_*`(없으면 Actions 러너의 `GITHUB_API_URL`·`GITHUB_REPOSITORY`)로 실행 파일 옆 `update.json`을 만듭니다. 저장소가 비어 있으면(개발 빌드) 업데이트를 확인하지 않습니다.
 2. 앱이 `%LOCALAPPDATA%\Programs\<설치이름>`에서 실행 중이고 `HKCU\…\Uninstall\<설치이름>`의 `InstallLocation`이 그 폴더일 때만 동작합니다 (i-luncher나 앱 설치 프로그램이 만든 설치본). `bin\`에서 실행하는 개발 빌드는 건드리지 않습니다.
-3. 시작 5초 뒤 그 앱의 GitHub 저장소에 `releases/latest`를 바로 묻고 (API 서버를 거치지 않음. 비공개 저장소는 `update.json` 의 토큰, 없으면 이 PC 사용자가 i-luncher **설정 → GitHub 토큰**에 넣은 그 호스트의 토큰 `LauncherToken`), 태그 버전이 실행 중인 버전(`InformationalVersion`)보다 높으면 zip을 `%LOCALAPPDATA%\<설치이름>\updates`에 받습니다 (실행 파일이 들어 있는지 확인).
+3. 시작 5초 뒤 그 앱의 GitHub 저장소에 `releases/latest`를 바로 묻고 (API 서버를 거치지 않음. 비공개 저장소는 `update.json` 의 토큰, 없으면 이 PC 사용자가 i-luncher 에서 **이 프로젝트에 넣은 토큰**(앱 우클릭 → 토큰…), 그다음 그 호스트의 토큰(마스터 PC 의 git 로그인), `LauncherToken`), 태그 버전이 실행 중인 버전(`InformationalVersion`)보다 높으면 zip을 `%LOCALAPPDATA%\<설치이름>\updates`에 받습니다 (실행 파일이 들어 있는지 확인).
 4. 앱이 끝나면 숨은 PowerShell이 프로세스 종료를 기다렸다가 zip을 설치 폴더에 덮어쓰고(robocopy), "앱" 목록 버전을 갱신합니다. 설치 폴더 밖의 데이터와 `dotnet\`은 건드리지 않습니다. 기록은 `updates\update.log`. 같은 앱 두 개가 함께 업데이트하면 먼저 끝난 쪽이 적용하고, 다시 시작도 앱이 떠 있지 않을 때 한 번만 합니다. 기다리는 동안 앱을 제거했으면 설치 폴더를 다시 만들지 않습니다.
 5. 오프라인·권한 없음 등은 조용히 넘어가고 다음 실행 때 다시 확인합니다.
 
@@ -82,7 +82,7 @@ using (ILuncher.AppKit.AppUsage.Measure("copy-time")) { /* … */ }   // 작업 
 |---|---|
 | `UPDATE_GITHUB_API` | `https://api.github.com` 또는 `https://<호스트>/api/v3`: GitHub 에 바로 (API 서버 중계 주소는 쓰지 않음, Actions에서는 비워도 됨) |
 | `UPDATE_REPOSITORY` | `소유자/이름` (Actions에서는 비워도 그 저장소) |
-| `UPDATE_TOKEN` | 보통 비움: 앱이 그 PC 사용자의 i-luncher 설정 토큰을 씀. 모든 PC 에 같은 토큰을 넣을 때만 **읽기 전용** 토큰 (앱에 포함되므로 쓰기 권한 금지) |
+| `UPDATE_TOKEN` | 보통 비움: 앱이 그 PC 사용자가 i-luncher 에서 이 프로젝트에 넣은 토큰을 씀. 모든 PC 에 같은 토큰을 넣을 때만 **읽기 전용** 토큰 (앱에 포함되므로 쓰기 권한 금지) |
 | `UPDATE_INSTALL_NAME` | 설치 폴더·"앱" 목록 이름 (기본: 실행 파일 이름). i-luncher 카탈로그의 `installName`과 같아야 함 |
 | `UPDATE_ASSET` | 릴리스 파일 이름 (기본: `<설치이름>-win-x64.zip`) |
 
