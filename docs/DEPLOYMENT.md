@@ -1,15 +1,15 @@
 # i-luncher 배포 · 운영 정리
 
 런처와 앱을 어떻게 나눠 주고, 누가 무엇을 보고, 버전과 업데이트를 어디서 받는지 한곳에 모은 문서입니다.
-GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문서와 다른 문서가 다르면 이 문서가 기준입니다 (2026-11-21).
+GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문서와 다른 문서가 다르면 이 문서가 기준입니다 (2026-11-22).
 
 ## 한눈에
 
 - **설치 파일은 하나**(`i-luncher-Setup.exe`, GitHub 릴리스)이고, 누구에게나 같은 런처가 갑니다.
 - 역할은 **일반**과 **마스터** 두 가지입니다. 부서 역할은 아직 없습니다 (나중에 정함).
-- **일반은 로컬 앱**입니다: API 서버에 아무것도 묻지 않고, 런처에 든 **기본 목록**만 봅니다.
+- **일반은 로컬 앱**입니다: API 서버에 아무것도 묻지 않고, **기본 목록**(GitHub 공지 저장소의 `basic-apps.json`)만 봅니다.
 - **마스터**는 기본 목록에 **서버 목록**(API 서버)을 더해 보고, 관리자 메뉴를 씁니다.
-- **공지는 모두에게**: GitHub 공지 저장소(`i-luncher-notices`)의 `공지.txt` 를 런처가 바로 읽습니다.
+- **공지 · 기본 목록은 모두에게**: GitHub 공지 저장소(`i-luncher-notices`)의 `공지.txt` 와 `basic-apps.json` 을 런처가 바로 읽습니다. GitHub 에서 고치면 런처 릴리스 없이 반영됩니다.
 - **버전 확인 · 설치 · 업데이트는 모두 그 앱의 GitHub 저장소에서 바로** 받습니다 (Actions 러너가 올린 릴리스). API 서버를 거치지 않습니다.
 - 일반 사용자가 받는 저장소(런처 · 기본 목록 앱)는 **공개**로 둡니다. 그러면 토큰이 필요 없습니다.
 
@@ -19,7 +19,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
                 └───────▲──────────────────────▲─────────────────────┘
                         │ 버전 · 설치 · 업데이트  │ 앱 자체 업데이트
    일반 PC ─ i-luncher ─┘                       └─ 설치된 앱
-   모든 PC ─ i-luncher ─── 공지: GitHub 공지 저장소의 공지.txt
+   모든 PC ─ i-luncher ─── 공지 · 기본 목록: GitHub 공지 저장소의 공지.txt · basic-apps.json
    마스터 PC ─ i-luncher ─┬─ (위와 같음)
                           └─ API 서버(CDEP\relay.py): 서버 목록 · 관리자 메뉴 · 사용 기록
 ```
@@ -29,7 +29,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | | 일반 | 마스터 |
 |---|---|---|
 | 누구 | 마스터가 아닌 모든 사람 | 이 PC 의 Windows 계정이 런처 빌드 설정 `MASTER_USERS` 에 있음 |
-| 스토어 | 기본 목록만 (런처 버전에 고정) + 내 앱 | 기본 목록 + 서버 목록 + 내 앱 |
+| 스토어 | 기본 목록만 (GitHub 공지 저장소) + 내 앱 | 기본 목록 + 서버 목록 + 내 앱 |
 | 공지 (GitHub `공지.txt`) | 있음 | 있음 |
 | 관리자 메뉴 | 없음 | 있음 |
 | API 서버 | **쓰지 않음** | 서버 목록 · 관리자 메뉴 · 사용 기록 |
@@ -50,7 +50,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 
 | 목록 | 누가 보나 | 원본 · 고치는 곳 | 반영 |
 |---|---|---|---|
-| **기본 목록** | 모두 | `i-luncher\basic-apps.json` + 스크린샷 `i-luncher\basic-media\<id>-1~3.png` | 런처를 릴리스하면 다음 버전부터 |
+| **기본 목록** | 모두 | GitHub 공지 저장소 `i-luncher-notices` 의 `basic-apps.json` + 스크린샷 `basic-media/<id>-1~3.png` (GitHub 에서 편집) | 런처가 다음에 시작 · 새로고침할 때 (런처 릴리스 필요 없음) |
 | **서버 목록** | 마스터 | 관리자 메뉴 → 앱 목록 (처음 넣을 때: `CDEP\seed\apps.json` → `CDEP\import_app_list.py`) | 저장하면 바로 |
 | **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`%LOCALAPPDATA%\i-luncher\my-apps.json`) | 바로 |
 
@@ -59,12 +59,17 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - `basic-apps.json` 의 `repository` 는 **저장소 이름만** 씁니다. 호스트 · 소유자는 런처 빌드 설정 `LAUNCHER_REPOSITORY` 와 같게 붙습니다.
 - 스토어 내용(한 줄 설명 · 상세 설명 · 개발자 · 스크린샷 3장 이상)은 원본 파일의 값을 그대로 씁니다. 지어내지 않습니다.
 
-### 기본 목록에 앱 더하기
+### 기본 목록에 앱 더하기 (GitHub 에서, 런처 릴리스 없음)
 
 1. 앱 저장소에 릴리스 workflow 가 있고 릴리스(`<설치이름>-win-x64.zip`)가 올라가는지 확인합니다.
 2. 저장소가 **공개**인지 확인합니다 (일반 사용자는 토큰이 없음).
-3. `basic-apps.json` 에 항목(`id`, `name`, `repository` = 저장소 이름, `category`, `description`, `installName`, `details`, `author`, `screenshots`)을 넣고 `basic-media\` 에 스크린샷 3장을 넣습니다.
-4. `Launcher.Checks` 를 통과시킨 뒤 push 하면 런처가 릴리스됩니다.
+3. 공지 저장소의 `basic-media/` 에 스크린샷 3장을 올립니다 (**Add file → Upload files**).
+4. 공지 저장소의 `basic-apps.json` 을 GitHub 에서 편집해 항목(`id`, `name`, `repository` = 저장소 이름, `category`, `description`, `installName`, `details`, `author`, `screenshots`, `order`)을 넣고 `main` 에 저장합니다.
+5. 끝. 각 런처가 다음에 시작하거나 새로고침할 때 보입니다.
+
+- 런처는 읽은 목록을 이 PC 에 보관(`basic-apps-cache.json`)해 GitHub 에 닿지 못하면 그것을 씁니다. 형식이 틀리면 마지막 목록을 쓰고 마스터 화면에 오류를 띄웁니다.
+- 스크린샷은 파일 내용(git sha)이 바뀌면 다시 받습니다. 런처에 든 같은 그림이면 받지 않습니다.
+- 공지 저장소에 `basic-apps.json` 이 없거나 처음 실행이 오프라인이면 런처에 든 예비 목록(`i-luncher\basic-apps.json` · `basic-media\`)을 씁니다. 새 환경에서는 그 두 개를 공지 저장소에 복사해 시작합니다.
 
 ### 사용자가 지운 기본 앱
 
@@ -97,7 +102,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | i-luncher | 공개 (런처 자체 업데이트) |
 | 기본 목록 앱 | 공개 (일반 사용자가 받음) |
 | 서버 목록 앱 | 마스터만 보므로 비공개여도 됨 (마스터 PC 는 git 로그인을 자동으로 씀). 일반 사용자가 내 앱으로도 받지 못하게 하려면 비공개 |
-| i-luncher-notices | 공개 (모든 런처가 공지를 읽음) |
+| i-luncher-notices | 공개 (모든 런처가 공지 · 기본 목록을 읽음) |
 | Receive | 런처로 나눠 주지 않음 (관리자 PC 에서 독 **+** 로 등록) |
 
 공개하기 전에 확인합니다:
@@ -130,6 +135,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | `LAUNCHER_REPOSITORY` | 런처 저장소 `https://<호스트>/<소유자>/i-luncher` (기본 목록의 호스트 · 소유자도 여기서) |
 | `GITHUB_HOST` | GitHub Enterprise 호스트 (짧게 쓴 `소유자/저장소` 에 붙음) |
 | `NOTICES_REPOSITORY` · `NOTICES_PATH` | 공지 저장소(비우면 `i-luncher-notices`) · 파일(비우면 `공지.txt`) |
+| `BASIC_APPS_PATH` | 공지 저장소 안의 기본 목록 파일 (비우면 `basic-apps.json`, 스크린샷은 그 옆 `basic-media/`) |
 | `LAUNCHER_TOKEN` | (선택) 모두가 쓸 읽기 전용 토큰. 공개 저장소면 비움 |
 
 **앱 빌드 설정** (`<앱>.env`, 같은 프로필 폴더 또는 러너 환경 변수 `RELEASE_ENV_PATH`)
@@ -148,11 +154,12 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | `settings.json` | 자동 업데이트, 프로젝트마다의 토큰 `RepositoryTokens`(암호화), 마스터 PC 의 git 로그인 토큰 `Tokens` · `AutoTokenHosts`, `GeneralView`(마스터의 일반 화면) |
 | `my-apps.json` | 내 앱 |
 | `removed-apps.json` | 목록에서 삭제한 기본 · 서버 목록 앱 |
+| `basic-apps-cache.json` · `screenshots\basic\` | 마지막으로 GitHub 에서 읽은 기본 목록 · 그 스크린샷 |
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |
 
 ## 7. 처음 구성할 때 · 옮길 때
 
-1. 런처와 기본 목록 앱 저장소가 **공개**인지 확인합니다 (4장 확인 항목 포함). 공지 저장소 `i-luncher-notices`(공개, `공지.txt`)를 만듭니다.
+1. 런처와 기본 목록 앱 저장소가 **공개**인지 확인합니다 (4장 확인 항목 포함). 공지 저장소 `i-luncher-notices`(공개)를 만들고 `공지.txt`, 그리고 `i-luncher\basic-apps.json` · `basic-media\` 의 복사본을 넣습니다.
 2. 저장소마다 self-hosted 러너를 등록하고, 앱 빌드 설정 `UPDATE_GITHUB_API` 를 GitHub(Enterprise) API 로 둡니다.
 3. 런처 빌드 설정에 `API_SERVER` · `GITHUB_HOST` · `LAUNCHER_REPOSITORY` · `MASTER_USERS` 를 넣습니다.
 4. API 서버를 배포하고 서버 목록을 넣습니다 (`CDEP\README.md`, `import_app_list.py`).
@@ -168,6 +175,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - 런처 · 앱의 업데이트가 API 서버의 GitHub 중계를 거치지 않습니다. 예전 빌드의 앱은 중계로 새 버전을 한 번 받은 뒤부터 GitHub 에 바로 묻습니다.
 - "부서 목록"은 **서버 목록**으로 부릅니다 (마스터만 봄).
 - 런처 공지는 API 서버(관리자 메뉴에서 저장)가 아니라 GitHub 공지 저장소의 `공지.txt` 입니다. 모두에게 보입니다.
+- 기본 목록은 런처 안(고치면 런처 릴리스)이 아니라 GitHub 공지 저장소의 `basic-apps.json` 입니다 (런처 안의 것은 예비).
 - 앱 사용 기록은 마스터 계정만 보냅니다.
 
 ## 9. 하지 말 것
@@ -177,3 +185,4 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - 공개 저장소의 workflow 에 `pull_request` 트리거를 넣지 않습니다.
 - 기본 목록 앱의 저장소를 비공개로 두지 않습니다.
 - 사용자가 지운 기본 앱을 런처 업데이트로 다시 보이게 하지 않습니다.
+- 기본 목록을 런처 안(고칠 때마다 런처 릴리스)으로 되돌리지 않습니다. 원본은 공지 저장소의 `basic-apps.json` 입니다.

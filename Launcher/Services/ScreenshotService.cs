@@ -7,11 +7,13 @@ using System.Windows.Media.Imaging;
 namespace ILauncher.Services;
 
 /// <summary>
-/// 앱 페이지의 스크린샷. 기본 목록의 그림은 런처에 들어 있음(저장소 basic-media\, 이름 그대로).
+/// 앱 페이지의 스크린샷. 런처에 든 기본 목록의 그림은 런처 안(저장소 basic-media\, 이름 그대로).
+/// GitHub 기본 목록의 그림("basic:경로#sha")은 런처에 같은 그림(같은 sha)이 있으면 그것, 아니면 GitHub 공지 저장소에서 받아 sha 별로 보관.
 /// 그 밖은 받아 데이터 폴더(screenshots\)에 보관: API 서버에 올린 이미지는 이름이 내용(SHA-256)이라
 /// 한 번 받으면 다시 받지 않음. http(s) 주소는 주소로 만든 이름으로 보관.
 /// </summary>
-public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiServer) : IDisposable
+public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiServer,
+    Func<string, long, CancellationToken, Task<byte[]>>? basicMedia = null) : IDisposable
 {
     private const long MaxBytes = 8 * 1024 * 1024;
     private readonly HttpClient _http = CreateClient();
@@ -44,6 +46,8 @@ public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiSe
     {
         try
         {
+            if (BasicApps.TryParseMedia(shot, out string mediaPath, out string mediaName, out string mediaSha))
+                return await LoadBasicAsync(mediaPath, mediaName, mediaSha, decodeHeight, cancellationToken);
             if (BuiltIn(shot) is { } builtIn) return await Task.Run(() => Decode(builtIn, decodeHeight), cancellationToken);
             string path = CachePath(shot);
             if (!File.Exists(path))
@@ -60,11 +64,30 @@ public sealed class ScreenshotService(string cacheDirectory, Func<string?> apiSe
             }
             return await Task.Run(() => Decode(path, decodeHeight), cancellationToken);
         }
-        catch (Exception error) when (error is HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException
+        catch (Exception error) when (error is GitHubApiException or HttpRequestException or IOException or UnauthorizedAccessException or TaskCanceledException
                                           or NotSupportedException or UriFormatException or ArgumentException or System.Runtime.InteropServices.COMException)
         {
             return null;
         }
+    }
+
+    /// <summary>GitHub 기본 목록의 그림: 런처에 든 같은 그림 → 보관한 그림(sha 별) → GitHub 에서 받기</summary>
+    private async Task<BitmapSource?> LoadBasicAsync(string path, string name, string sha, int decodeHeight, CancellationToken cancellationToken)
+    {
+        if (BuiltIn(name) is { } builtIn && (sha.Length == 0 || BasicApps.GitBlobSha(builtIn) == sha))
+            return await Task.Run(() => Decode(builtIn, decodeHeight), cancellationToken);
+        string cached = Path.Combine(cacheDirectory, "basic", string.Concat(((sha.Length > 0 ? sha[..Math.Min(12, sha.Length)] + "-" : "") + name).Split(Path.GetInvalidFileNameChars())));
+        if (!File.Exists(cached))
+        {
+            if (basicMedia is null) return null;
+            byte[] data = await basicMedia(path, MaxBytes, cancellationToken);
+            if (data.Length == 0) return null;
+            Directory.CreateDirectory(Path.GetDirectoryName(cached)!);
+            string temporary = cached + ".tmp";
+            await File.WriteAllBytesAsync(temporary, data, cancellationToken);
+            File.Move(temporary, cached, overwrite: true);
+        }
+        return await Task.Run(() => Decode(cached, decodeHeight), cancellationToken);
     }
 
     /// <summary>런처에 든 기본 목록의 그림 (저장소 basic-media\)</summary>

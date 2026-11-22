@@ -1,6 +1,6 @@
 // 서버 목록(API 서버 앱 목록, 마스터에게만 보임)에 넣을 앱. 설명 · 상세 설명 · 스크린샷(media\)까지 들어 있으니 지어내지 말고 이 값을 그대로 씁니다.
 // 넣는 방법: python import_app_list.py (CDEP\README.md "서버 목록 넣기"). repository 는 저장소 이름만 (주소는 스크립트가 붙임).
-// 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 i-luncher\basic-apps.json 입니다.
+// 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 GitHub 공지 저장소(i-luncher-notices)의 basic-apps.json 입니다.
 {
   "schemaVersion": 1,
   "apps": [

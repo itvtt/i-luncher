@@ -400,6 +400,24 @@ public sealed class GitHubClient : IDisposable
         }
     }
 
+    /// <summary>저장소 폴더 안의 파일: 이름 → git blob sha (내용이 바뀌면 sha 도 바뀜). 폴더가 없으면 빈 목록</summary>
+    public async Task<IReadOnlyDictionary<string, string>> GetFolderFilesAsync(GitHubRepository repository, string path, string? branch,
+        CancellationToken cancellationToken = default)
+    {
+        var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string url = ContentsUrl(repository, path) + (string.IsNullOrWhiteSpace(branch) ? "" : "?ref=" + Uri.EscapeDataString(branch!));
+        try
+        {
+            using var document = await SendJsonAsync(Request(HttpMethod.Get, repository, url), repository, cancellationToken).ConfigureAwait(false);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return files;
+            foreach (var item in document.RootElement.EnumerateArray())
+                if (String(item, "type") is "file" && String(item, "name") is { Length: > 0 } name && String(item, "sha") is { Length: > 0 } sha)
+                    files[name] = sha;
+            return files;
+        }
+        catch (GitHubApiException error) when (error.Status == 404) { return files; }
+    }
+
     /// <summary>저장소 파일을 만들거나 바꿈 (커밋 1개). sha 는 읽을 때 받은 값: 그 사이 바뀌었으면 409/422</summary>
     public async Task<string> PutFileAsync(GitHubRepository repository, string path, string content, string? sha, string message,
         string? branch, CancellationToken cancellationToken = default)

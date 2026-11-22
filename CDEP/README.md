@@ -58,5 +58,5 @@ python import_app_list.py --server https://<API 서버 주소> --repository-base
 ```
 
 - 서버에 없는 앱은 모든 값으로 더하고, 이미 있는 앱은 **비어 있는 칸만** 채웁니다 (서버에 있던 값은 그대로).
-- 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 런처 안의 `i-luncher\basic-apps.json` · `basic-media\` 입니다.
+- 기본 목록(모든 런처에 보이는 앱)은 여기가 아니라 GitHub 공지 저장소(`i-luncher-notices`)의 `basic-apps.json` · `basic-media/` 입니다 (예비 목록은 `i-luncher\basic-apps.json`).
 - 앱을 서버 목록에 새로 더하면 `seed/apps.json` 과 `seed/media/<id>-1~3.png` 에도 같이 넣어 둡니다 (사진은 최소 3장).

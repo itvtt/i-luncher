@@ -292,6 +292,49 @@ try
         Assert(offline.FromCache && offline.Apps.Count == 3 && offline.Warning is not null, "cache used when the server is unreachable");
     });
 
+    await Check("basic list from GitHub (notices repository): no launcher release needed, screenshots by sha, offline cache, built-in when the file is missing", async () =>
+    {
+        github.Repositories.Add("team/i-luncher-notices");
+        var notices = GitHubRepository.Parse("https://ghe.test/team/i-luncher-notices")!;
+        byte[] builtIn = ScreenshotService.BuiltIn("deskcal-1.png")!;
+        string builtInSha = BasicApps.GitBlobSha(builtIn);
+        Equal("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", BasicApps.GitBlobSha([]), "git blob sha of an empty file");
+        Equal("ce013625030ba8dba906f756967f9e9ca394464a", BasicApps.GitBlobSha(Encoding.ASCII.GetBytes("hello\n")), "git blob sha of hello");
+        github.Files["basic-apps.json"] = ("""
+            { "apps": [
+              { "id": "deskcal", "name": "DeskCal", "repository": "DeskCal", "screenshots": [ "deskcal-1.png", "deskcal-9.png", "https://x.test/a.png" ] },
+              { "id": "newapp", "name": "NewApp", "repository": "NewApp" } ] }
+            """, "s1");
+        github.Files["basic-media/deskcal-1.png"] = ("", builtInSha);
+        github.Files["basic-media/deskcal-9.png"] = ("", "0123456789abcdef0123");
+        var apps = (await BasicApps.FetchAsync(client, notices, "basic-apps.json", repo, CancellationToken.None))!;
+        Equal("deskcal,newapp", string.Join(",", apps.Select(app => app.Id)), "apps from GitHub");
+        Equal("https://ghe.test/team/NewApp", apps[1].Repository, "name only: the launcher's host and owner");
+        var shots = apps[0].Screenshots!;
+        Equal("basic:basic-media/deskcal-1.png#" + builtInSha, shots[0], "screenshot in the repository's basic-media with its sha");
+        Equal("basic:basic-media/deskcal-9.png#0123456789abcdef0123", shots[1], "new screenshot");
+        Equal("https://x.test/a.png", shots[2], "addresses kept");
+        Equal("lists/basic-media", BasicApps.MediaFolderFor("lists/basic-apps.json"), "media beside the list file");
+
+        string cache = Path.Combine(root, "basic", BasicApps.CacheFileName);
+        BasicApps.SaveCache(cache, apps);
+        Equal(string.Join("|", shots), string.Join("|", BasicApps.LoadCache(cache)![0].Screenshots!), "kept on this PC for offline starts");
+
+        int downloads = 0;
+        using var screenshots = new ScreenshotService(Path.Combine(root, "basic-shots"), () => null,
+            (path, _, _) => { downloads++; Assert(path == "basic-media/deskcal-9.png", "downloads the repository path: " + path); return Task.FromResult(builtIn); });
+        Assert(await screenshots.LoadAsync(shots[0], 64, CancellationToken.None) is not null && downloads == 0, "same picture as the built-in one: not downloaded");
+        Assert(await screenshots.LoadAsync(shots[1], 64, CancellationToken.None) is not null && downloads == 1, "new picture: downloaded once");
+        Assert(await screenshots.LoadAsync(shots[1], 64, CancellationToken.None) is not null && downloads == 1, "then from this PC");
+
+        github.Files["basic-apps.json"] = ("{ \"apps\": [", "s2");
+        try { await BasicApps.FetchAsync(client, notices, "basic-apps.json", repo, CancellationToken.None); throw new Exception("a broken list was accepted"); }
+        catch (JsonException) { }
+        github.Files.Remove("basic-apps.json");
+        Assert(await BasicApps.FetchAsync(client, notices, "basic-apps.json", repo, CancellationToken.None) is null, "no list file on GitHub: the launcher's own list");
+        foreach (string key in github.Files.Keys.Where(key => key.StartsWith("basic-media/")).ToList()) github.Files.Remove(key);
+    });
+
     Console.WriteLine("API server");
     await Check("API server catalog: open reads, admin-password saves, retry after a concurrent change, offline cache", async () =>
     {
@@ -339,6 +382,11 @@ try
         Equal("https://ghe.example.com/team/board", LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir).NoticesRepository?.WebUrl, "a name only: same host and owner");
         File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "NOTICES_PATH=notes/공지.txt\n");
         Assert(LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir).NoticesRepository is null, "no launcher repository: this PC's file");
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "LAUNCHER_REPOSITORY=https://github.com/owner/i-luncher\nBASIC_APPS_PATH=lists/basic-apps.json\n");
+        var basicSettings = LauncherSettings.Load(Path.Combine(root, "api-data"), buildDir);
+        Equal("https://github.com/owner/i-luncher-notices", basicSettings.BasicAppsRepository?.WebUrl, "basic list in the notices repository");
+        Equal("lists/basic-apps.json", basicSettings.BasicAppsPath, "BASIC_APPS_PATH");
+        Equal("basic-apps.json", settings.BasicAppsPath, "default basic list file");
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
     });
@@ -886,9 +934,14 @@ sealed class FakeGitHub : HttpMessageHandler
         {
             string file = rest[9..];
             if (request.Method == HttpMethod.Get)
-                return Files.TryGetValue(file, out var entry)
-                    ? Json(new { type = "file", sha = entry.Sha, content = Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Content)), encoding = "base64" })
+            {
+                if (Files.TryGetValue(file, out var entry))
+                    return Json(new { type = "file", sha = entry.Sha, content = Convert.ToBase64String(Encoding.UTF8.GetBytes(entry.Content)), encoding = "base64" });
+                var folder = Files.Where(item => item.Key.StartsWith(file + "/") && !item.Key[(file.Length + 1)..].Contains('/')).ToList();
+                return folder.Count > 0
+                    ? Json(folder.Select(item => new { type = "file", name = item.Key[(file.Length + 1)..], sha = item.Value.Sha }))
                     : Status(HttpStatusCode.NotFound);
+            }
             if (request.Method == HttpMethod.Put)
             {
                 LastPut = await request.Content!.ReadAsStringAsync(cancellationToken);

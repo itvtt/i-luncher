@@ -228,7 +228,7 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = false;
         try
         {
-            CatalogSnapshot snapshot = await LoadCatalogAsync();
+            CatalogSnapshot snapshot = await LoadCatalogAsync(fetchBasic: checkReleases);
             if (generation != _refreshGeneration) return;
             if (snapshot.Warning is { } warning) ShowError(warning); else HideError();
             MigrateFavorites(snapshot.Apps);
@@ -300,13 +300,54 @@ public partial class MainWindow : Window
         await RefreshAsync(checkReleases: true);
     }
 
-    /// <summary>앱 목록: 런처에 든 기본 목록(basic-apps.json). 마스터는 여기에 서버 목록을 더함 (같은 앱이면 서버 쪽 값)</summary>
-    private async Task<CatalogSnapshot> LoadCatalogAsync()
+    /// <summary>
+    /// 앱 목록: 기본 목록(GitHub 공지 저장소의 basic-apps.json). 마스터는 여기에 서버 목록을 더함 (같은 앱이면 서버 쪽 값).
+    /// fetchBasic: 기본 목록을 GitHub 에서 다시 읽음 (시작 · 새로고침). 아니면 마지막에 읽은 목록
+    /// </summary>
+    private async Task<CatalogSnapshot> LoadCatalogAsync(bool fetchBasic)
     {
-        var basic = BasicApps.Load(_settings.LauncherRepository);
-        if (!IsMaster) return new CatalogSnapshot(basic, false, null);
+        var (basic, basicWarning) = await LoadBasicAppsAsync(fetchBasic);
+        if (!IsMaster) return new CatalogSnapshot(basic, false, null);  // 일반: 목록 문제는 알리지 않고 보관한 목록으로
         var snapshot = await _store.LoadAsync();
-        return snapshot with { Apps = BasicApps.Combine(basic, snapshot.Apps) };
+        string? warning = string.Join(" · ", new[] { basicWarning, snapshot.Warning }.Where(text => !string.IsNullOrEmpty(text)));
+        return snapshot with { Apps = BasicApps.Combine(basic, snapshot.Apps), Warning = warning.Length > 0 ? warning : null };
+    }
+
+    private List<AppDefinition>? _basicApps;
+
+    /// <summary>
+    /// 기본 목록: GitHub 공지 저장소의 basic-apps.json → (닿지 못하면) 이 PC 에 보관한 목록 → (그것도 없으면) 런처에 든 목록.
+    /// GitHub 에 그 파일이 없으면 런처에 든 목록. 형식이 틀렸으면 보관한 목록을 쓰고 이유를 돌려줌 (마스터에게만 보임)
+    /// </summary>
+    private async Task<(List<AppDefinition> Apps, string? Warning)> LoadBasicAppsAsync(bool fetch)
+    {
+        string cache = Path.Combine(_settings.DataDirectory, BasicApps.CacheFileName);
+        string? warning = null;
+        if (fetch && _settings.BasicAppsRepository is { } repository)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                var fetched = await BasicApps.FetchAsync(_github, repository, _settings.BasicAppsPath, _settings.LauncherRepository, timeout.Token);
+                if (fetched is null)
+                {
+                    try { File.Delete(cache); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+                    return (_basicApps = BasicApps.Load(_settings.LauncherRepository), null);
+                }
+                try { BasicApps.SaveCache(cache, fetched); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Debug.WriteLine("Basic list cache: " + error.Message); }
+                return (_basicApps = fetched, null);
+            }
+            catch (System.Text.Json.JsonException error)
+            {
+                warning = $"기본 목록({_settings.BasicAppsPath}) 형식 오류: {error.Message}";
+            }
+            catch (Exception error) when (error is GitHubApiException or System.Net.Http.HttpRequestException or OperationCanceledException or IOException or FormatException)
+            {
+                Debug.WriteLine("Basic list from GitHub failed: " + error.Message);
+            }
+        }
+        return (_basicApps ??= BasicApps.LoadCache(cache) ?? BasicApps.Load(_settings.LauncherRepository), warning);
     }
 
     /// <summary>설정의 목록 출처 (공지는 모두: GitHub 공지 저장소)</summary>

@@ -23,7 +23,11 @@ public partial class MainWindow
     private CancellationTokenSource? _detailLoad;
 
     private ScreenshotService Screenshots =>
-        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"), () => IsMaster ? _settings.ApiServerUrl : null);  // 일반은 서버에 묻지 않음 (기본 목록 사진은 런처 안에)
+        _screenshots ??= new ScreenshotService(Path.Combine(_settings.DataDirectory, "screenshots"),
+            () => IsMaster ? _settings.ApiServerUrl : null,  // 일반은 API 서버에 묻지 않음
+            (path, maxBytes, cancellationToken) => _settings.BasicAppsRepository is { } repository  // 기본 목록 사진은 GitHub 공지 저장소에서
+                ? _github.GetRawFileAsync(repository, path, null, maxBytes, cancellationToken)
+                : Task.FromResult(Array.Empty<byte>()));
 
     private bool OnDetail => _detail is not null && !OnPage;
 

@@ -22,6 +22,8 @@ public sealed class BuildSettings
     public string NoticesPath { get; init; } = "";
     /// <summary>공지 저장소 (NOTICES_REPOSITORY): 이름만이면 런처 저장소와 같은 호스트 · 소유자. 비우면 i-luncher-notices</summary>
     public string NoticesRepository { get; init; } = "";
+    /// <summary>기본 목록 파일 (BASIC_APPS_PATH): 공지 저장소 안의 경로. 비우면 basic-apps.json (스크린샷은 그 옆 basic-media\)</summary>
+    public string BasicAppsPath { get; init; } = "";
     public string DefaultHost { get; init; } = "";
     public string Token { get; init; } = "";
     /// <summary>마스터 계정 (MASTER_USERS, 쉼표로 Windows 계정 이름): 앱 목록의 "마스터만" 앱은 이 계정에만 보임. 비우면 제한 없음</summary>
@@ -70,6 +72,7 @@ public sealed class BuildSettings
             CatalogBranch = Read("CATALOG_BRANCH"),
             NoticesPath = Read("NOTICES_PATH"),
             NoticesRepository = Read("NOTICES_REPOSITORY"),
+            BasicAppsPath = Read("BASIC_APPS_PATH"),
             DefaultHost = Read("GITHUB_HOST"),
             Token = Read("LAUNCHER_TOKEN"),
             MasterUsers = Read("MASTER_USERS").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -255,6 +258,14 @@ public sealed class LauncherSettings
     /// </summary>
     public GitHubRepository? NoticesRepository =>
         GitHubRepository.Parse(BasicApps.ResolveRepository(Clean(Build.NoticesRepository) ?? DefaultNoticesRepository, LauncherRepository), DefaultHost);
+
+    /// <summary>
+    /// 기본 목록(모든 런처의 스토어)을 읽는 GitHub 저장소: 공지 저장소와 같음. GitHub 에서 파일만 고치면 런처 릴리스 없이 반영.
+    /// null 이면(런처 저장소가 없는 개발 빌드) 런처에 든 목록만
+    /// </summary>
+    public GitHubRepository? BasicAppsRepository => NoticesRepository;
+
+    public string BasicAppsPath => Clean(Build.BasicAppsPath) ?? BasicApps.DefaultPath;
 
     /// <summary>사용자가 등록한 토큰이 먼저, 없으면 빌드에 들어간 읽기 전용 토큰 (런처 저장소와 같은 호스트일 때만)</summary>
     public string? GetToken(string host)
