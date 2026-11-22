@@ -149,6 +149,7 @@ SETTINGS = {
     "EQUIPMENT_STATUS_TABLE": "",      #        설비 상태 표(열: line, prc, eqpid, status, Hr, Down_time, view, comment, sdwt)
     "EQUIPMENT_API_KEY": "",           # (선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다
     "EQUIPMENT_REFRESH_SECONDS": 10,   # 설비 상태 DB를 다시 읽는 간격(초)
+    "EQUIPMENT_PORT": 2004,            # 설비 상태를 내려 주는 포트(여기 · 사내 모두 2004, 이 포트는 설비 상태만). RELAY_PORT 에서도 계속 받음. 0 = 끔
     "RUNNERS_ROOT": "",                # (선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-luncher 관리자 메뉴의 러너 화면에서
                                        #        추가·편집·시작·중지·삭제하고, 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다
     "RUNNERS_ENV_DIR": "",             #        새 러너가 빌드에 쓰는 설정 파일(<저장소>.env) 폴더. 비우면 환경 변수 APPS_ENV_DIR, 없으면 RUNNERS_ROOT\\env
@@ -156,7 +157,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.21.0"
+VERSION = "2.22.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -429,6 +430,8 @@ class Config:
         self.equipment_table = text("EQUIPMENT_STATUS_TABLE")
         self.equipment_api_key = text("EQUIPMENT_API_KEY")
         self.equipment_refresh_seconds = max(1, number("EQUIPMENT_REFRESH_SECONDS", 10))
+        # EQ Status's own port (2004 here and at the company): only the equipment table, beside RELAY_PORT.
+        self.equipment_port = number("EQUIPMENT_PORT", 2004)
         # GitHub Actions runners of this PC: one folder each under RUNNERS_ROOT, managed from the i-luncher admin menu's 러너 page.
         self.runners_root = Path(text("RUNNERS_ROOT")).expanduser() if text("RUNNERS_ROOT") else None
         env_dir = text("RUNNERS_ENV_DIR") or os.environ.get("APPS_ENV_DIR", "").strip()
@@ -446,6 +449,10 @@ class Config:
                 "relay.py 맨 위 SETTINGS의 RELAY_HOST를 이 PC의 IP로 고치고 앱 .env도 같게 해 다시 게시하세요. 이 PC의 모든 IP에서 받으려면 "
                 "RELAY_BIND를 0.0.0.0으로 씁니다."
                 if self.bind_source == "RELAY_HOST" else "이 PC의 IP나 0.0.0.0(모든 IP)을 쓰세요."))
+
+    def uses_equipment_port(self) -> bool:
+        """Whether EQUIPMENT_PORT is opened: the equipment table is on (EQUIPMENT_DB_HOST) and the port is its own."""
+        return bool(self.equipment_db_host) and 0 < self.equipment_port != self.port
 
     def data_beside_code(self) -> bool:
         """Whether the store sits in relay.py's own folder (or below it), where a new copy of that folder replaces it."""
@@ -489,7 +496,8 @@ class Config:
                                             else "없음(공개 저장소만)") + f" · 저장소 {', '.join(self.github_proxy_repos) or '앱 목록과 토큰 계정의 저장소'}",
             "EQ Status 설비 상태(/api/v1/equipment-status): " + (
                 f"{self.equipment_db_host}:{self.equipment_db_port}/{self.equipment_db_name} · 표 {self.equipment_table or '(없음)'} · "
-                f"{self.equipment_refresh_seconds}초마다 읽음 · 앱 키 {'확인' if self.equipment_api_key else '없음'}"
+                f"{self.equipment_refresh_seconds}초마다 읽음 · 앱 키 {'확인' if self.equipment_api_key else '없음'} · "
+                f"포트 {self.equipment_port if self.uses_equipment_port() else '(없음)'} (와 {self.port})"
                 if self.equipment_db_host else "꺼짐(SETTINGS의 EQUIPMENT_DB_HOST가 비어 있음)"),
             "GitHub 러너: " + (f"{self.runners_root} · 설정 파일 {self.runners_env_dir} · 로그온 작업 {RUNNERS_TASK}" if self.runners_root
                                else "꺼짐(SETTINGS의 RUNNERS_ROOT가 비어 있음)"),
@@ -3567,6 +3575,21 @@ class RelayServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         super().__init__((config.bind, config.port), handler)
 
 
+class EquipmentServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    """EQUIPMENT_PORT: only /health and the equipment table, sharing the relay's table, limits and client list."""
+    daemon_threads = True
+    allow_reuse_address = os.name != "nt"
+
+    def __init__(self, relay_server: RelayServer):
+        self.relay = relay_server
+        super().__init__((relay_server.config.bind, relay_server.config.equipment_port), EquipmentHandler)
+
+    def __getattr__(self, name: str):
+        if name == "relay":
+            raise AttributeError(name)
+        return getattr(self.relay, name)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server: RelayServer
     server_version = "TerminalNotesRelay/" + VERSION
@@ -4825,14 +4848,44 @@ def restore_backup(config: Config, source: Path | None = None) -> list:
     return lines
 
 
+class EquipmentHandler(Handler):
+    """EQUIPMENT_PORT answers only the health check and the equipment table (the rest of the relay stays on RELAY_PORT)."""
+
+    def _route(self, method: str, parts: list) -> None:
+        if parts == ["health"] and method == "GET":
+            return self._text(200, "ok")
+        if parts == ["api", "v1", "equipment-status"]:
+            return self._equipment(method)
+        raise RelayError(404, "이 포트는 설비 상태(/api/v1/equipment-status)만 내려 줍니다.")
+
+
 def make_server(config: Config) -> RelayServer:
     adopt_old_data(config)
     server = RelayServer(config, Handler)
+    use_tls(server, config)
+    return server
+
+
+def use_tls(server, config: Config) -> None:
     if config.tls_cert:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(config.tls_cert, config.tls_key)
         server.socket = context.wrap_socket(server.socket, server_side=True)
-    return server
+
+
+def start_equipment_port(server: RelayServer) -> EquipmentServer | None:
+    """Opens EQUIPMENT_PORT beside the relay when the equipment table is on. A busy port is logged, the relay still runs."""
+    config = server.config
+    if not config.uses_equipment_port():
+        return None
+    try:
+        equipment = EquipmentServer(server)
+        use_tls(equipment, config)
+    except (OSError, ssl.SSLError) as error:
+        log.warning("설비 상태 포트 %s을(를) 열지 못했습니다(%s). 설비 상태는 %s 포트에서만 내려 줍니다.", config.equipment_port, error, config.port)
+        return None
+    threading.Thread(target=equipment.serve_forever, kwargs={"poll_interval": 0.5}, name="equipment-port", daemon=True).start()
+    return equipment
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
@@ -4892,7 +4945,10 @@ def main(argv: list | None = None) -> int:
         # Before the address check: right after logon the network may not be up yet, and runners need none of it.
         return start_runners_at_logon(config)
     if args.allow_firewall:
-        return 0 if allow_firewall(config.port) else 1
+        opened = allow_firewall(config.port)
+        if config.uses_equipment_port():
+            opened = allow_firewall(config.equipment_port) and opened
+        return 0 if opened else 1
     if args.backup:
         made = backup_store(config)
         print(f"백업했습니다: {made}" if made else "바뀐 것이 없거나 스토어가 비어 있어 새 백업을 만들지 않았습니다.")
@@ -4921,6 +4977,8 @@ def main(argv: list | None = None) -> int:
         # The startup runner is pythonw.exe, which no earlier "allow python" answer covers.
         if not is_loopback(config.bind):
             allow_firewall(config.port)
+            if config.uses_equipment_port():
+                allow_firewall(config.equipment_port)
         return 0
     if args.check:
         print("\n".join(config.summary() + [firewall_text(config)]))
@@ -4937,10 +4995,14 @@ def main(argv: list | None = None) -> int:
     stop = threading.Event()
     threading.Thread(target=housekeeping, args=(server, stop), name="housekeeping", daemon=True).start()
     threading.Thread(target=github_sync, args=(server, stop), name="github-sync", daemon=True).start()
+    equipment = start_equipment_port(server)
     for line in config.summary():
         log.info(line)
     if not is_loopback(config.bind) and firewall_allowed(config.port) is False:
         log.warning(firewall_text(config))
+    if equipment and not is_loopback(config.bind) and firewall_allowed(config.equipment_port) is False:
+        log.warning("방화벽: 설비 상태 TCP %s 허용 규칙 없음 — 다른 PC의 EQ Status가 접속하지 못할 수 있습니다(python relay.py --allow-firewall)",
+                    config.equipment_port)
     log.info("Terminal Notes 중계 서버 %s 시작", VERSION)
     try:
         server.serve_forever(poll_interval=0.5)
@@ -4948,6 +5010,9 @@ def main(argv: list | None = None) -> int:
         pass
     finally:
         stop.set()
+        if equipment:
+            equipment.shutdown()
+            equipment.server_close()
         server.server_close()
         server.usage.flush()
         log.info("중계 서버 종료")

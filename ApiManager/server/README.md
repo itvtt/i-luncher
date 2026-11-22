@@ -38,6 +38,7 @@ python relay\relay.py --uninstall-startup
 | 항목 | 뜻 |
 | --- | --- |
 | `RELAY_HOST` · `RELAY_PORT` | (선택) 받을 IP와 포트(기본 2003). IP를 비우면 이 PC의 모든 IP로 받습니다. 쓰면 이 PC의 IP여야 합니다 |
+| `EQUIPMENT_PORT` | 설비 상태(`EQUIPMENT_DB_*` 를 채웠을 때)를 이 포트에서도 내려 줍니다 (기본 **2004**, 사내 설비 서버와 같은 포트, 이 포트는 설비 상태와 `/health` 만). `RELAY_PORT` 에서도 계속 받습니다. 0 = 끔. 다른 PC 가 받으려면 방화벽에 이 포트도 엽니다 (`--allow-firewall` 이 함께 엶) |
 | `RELAY_BIND` | (선택) 받을 IP를 따로 정할 때. `0.0.0.0`이면 이 PC의 모든 IP |
 | `RELAY_INGEST_KEY` | (선택) 앱 키. 비우면 IP만 맞으면 받고, 쓰면 앱 .env의 RELAY_INGEST_KEY와 같아야 합니다(다르면 "키가 맞지 않습니다") |
 | `RELAY_ADMIN_PASSWORD` | (선택) 관리 페이지 비밀번호(사용자 이름은 아무거나). 비우면 비밀번호 없이 열립니다. 10분에 10번 틀리면 10분 잠깁니다 |

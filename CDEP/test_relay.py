@@ -296,6 +296,38 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertIn("refused", json.loads(body))
 
+    def test_equipment_port(self):
+        """EQUIPMENT_PORT (2004 here and at the company) answers only the equipment table; off without EQUIPMENT_DB_HOST."""
+        self.assertEqual(self.config.equipment_port, 2004)
+        self.assertIsNone(relay.start_equipment_port(self.server))  # no EQUIPMENT_DB_HOST (C-DEP): not opened
+        self.equipment_db([["S1", "S1DPN", "DPN", "EQ-1", "RUN", "1", None, None]], [])
+        self.config.equipment_port = free_port()
+        equipment = relay.start_equipment_port(self.server)
+        self.addCleanup(equipment.server_close)
+        self.addCleanup(equipment.shutdown)
+        base = f"http://127.0.0.1:{self.config.equipment_port}"
+
+        def get(path, headers=None):
+            request = urllib.request.Request(base + path, headers=headers or {})
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status, response.read()
+            except urllib.error.HTTPError as error:
+                return error.code, error.read()
+
+        status, body = get("/api/v1/equipment-status", {"X-EQStatus-API-Key": "eq-key"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["items"][0]["equipmentId"], "EQ-1")
+        self.assertEqual(get("/api/v1/equipment-status")[0], 401)
+        self.assertEqual(get("/health")[0], 200)
+        self.assertEqual(get("/launcher/catalog")[0], 404)  # nothing else of the relay on this port
+        self.assertEqual(get("/admin/api/status")[0], 404)
+        # RELAY_PORT keeps answering it too (apps built with the old address).
+        self.assertEqual(self.call("GET", "/api/v1/equipment-status", headers={"X-EQStatus-API-Key": "eq-key"}, key=False)[0], 200)
+        self.assertIsNone(relay.start_equipment_port(self.server))  # port taken: logged, the relay keeps running
+        self.config.equipment_port = self.port
+        self.assertFalse(self.config.uses_equipment_port())  # the same port as the relay: nothing extra
+
     def test_settings_from_adds_new_keys(self):
         old = '# ── 설정 시작 ──\r\nSETTINGS = {\r\n    "RELAY_HOST": "10.0.0.1",\r\n    "RELAY_PORT": 2003\r\n}\r\n# ── 설정 끝 ──'
         new = relay.settings_block(Path(relay.__file__).read_text(encoding="utf-8"))
