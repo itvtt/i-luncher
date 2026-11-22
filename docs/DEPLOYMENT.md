@@ -121,7 +121,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
 - GitHub 중계(`/api/v3/…`)는 예전에 빌드한 앱을 위해 남아 있을 뿐, 지금 런처 · 앱은 쓰지 않습니다.
-- EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다.
+- EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다 (포트 **2004**). 포트는 어디서나 API 서버 **2003** · 설비 상태 **2004** 입니다 (설비 DB 를 넣은 API 서버는 `EQUIPMENT_PORT` 2004 에서도 설비 상태를 내려 줌).
 - 배포 방법: [`CDEP\README.md`](../CDEP/README.md).
 
 ## 6. 설정 키

@@ -10,7 +10,7 @@ i-luncher와 앱들이 쓰는 API를 `relay.py` 하나로 제공합니다 (Pytho
 - GitHub 중계 (`/api/v3/…`): 예전에 빌드한 앱의 업데이트용으로만 남김. 지금 런처 · 앱은 버전 확인 · 설치 · 업데이트를 GitHub 에 바로 묻습니다
 - Terminal Notes: 문제 보고 · 스킬 스토어 · 공지 (`/api/…`)
 - 관리 화면 API (`/admin/api/…`, 관리자 비밀번호): i-luncher **관리자 메뉴**가 씀
-- **EQ Status 설비 상태 API는 여기서 하지 않습니다.** EQ Status는 다른 서버의 데이터를 읽는 별도 설비 API 서버(`i-Projects\EQStatus\ops\server`)를 씁니다. 이 서버의 `EQUIPMENT_DB_*` 는 비워 둡니다.
+- **EQ Status 설비 상태 API는 여기서 하지 않습니다.** EQ Status는 다른 서버의 데이터를 읽는 별도 설비 API 서버(`i-Projects\EQStatus\ops\server`, 포트 **2004**)를 씁니다. 이 서버의 `EQUIPMENT_DB_*` 는 비워 둡니다 (비우면 설비 상태 포트 `EQUIPMENT_PORT` 도 열지 않음). 포트는 어디서나 API 서버 2003 · 설비 상태 2004 입니다.
 
 **`relay.py` 는 여기 하나뿐입니다.** 런처의 관리자 메뉴가 Windows 서버 PC 에 설치할 때도 이 파일을 씁니다 (`ApiManager.csproj` 가 `..\CDEP\relay.py` 를 설치 폴더의 `server\relay.py` 로 넣음). Windows 서버 PC 에 두는 방식은 [`ApiManager\server\README.md`](../ApiManager/server/README.md).
 
