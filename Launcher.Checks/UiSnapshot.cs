@@ -175,6 +175,14 @@ static class UiSnapshot
                     window.SettingsButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromSeconds(1));
                     Save((FrameworkElement)window.Content, Suffix(output, "-settings"));
+                    // 재설정 → 전체를 누른 모습 (그 줄 아래 확인, 다시 시작은 누르지 않음)
+                    if (window.PageContent.Content is SettingsView settingsView)
+                    {
+                        settingsView.ResetAllButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                        Pump(TimeSpan.FromMilliseconds(400));
+                        Save((FrameworkElement)window.Content, Suffix(output, "-settings-reset"));
+                        Console.WriteLine($"reset confirm: {settingsView.ConfirmPanel.Visibility} · {settingsView.ConfirmText.Text}");
+                    }
                     // 제목줄의 로고·이름 = 홈: 설정 화면에서도, 앱 페이지에서도 전체 앱으로
                     window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromMilliseconds(500));

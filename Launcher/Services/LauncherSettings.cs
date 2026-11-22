@@ -81,7 +81,7 @@ public sealed class BuildSettings
     }
 }
 
-/// <summary>사용자별 설정 (%LOCALAPPDATA%\i-luncher\settings.json). 토큰은 현재 Windows 사용자만 풀 수 있게 DPAPI 로 보호</summary>
+/// <summary>사용자별 설정 (C:\i-luncher\settings.json). 토큰은 현재 Windows 사용자만 풀 수 있게 DPAPI 로 보호</summary>
 public sealed class UserSettings
 {
     /// <summary>비우면 빌드 설정(launcher.env)의 값</summary>
@@ -180,25 +180,31 @@ public sealed class LauncherSettings
     public const string DefaultCatalogPath = "catalog/apps.json";
     public const string DefaultNoticesPath = "공지.txt";
 
-    public LauncherSettings(BuildSettings build, UserSettings user, string dataDirectory)
+    public LauncherSettings(BuildSettings build, UserSettings user, string dataDirectory, string? cacheDirectory = null)
     {
         Build = build;
         User = user;
         DataDirectory = dataDirectory;
+        CacheDirectory = cacheDirectory ?? dataDirectory;
     }
 
     public BuildSettings Build { get; }
     public UserSettings User { get; private set; }
+    /// <summary>백업해 새 PC 에서 다시 쓰는 것 (설정 · 즐겨찾기 · 내 앱 · 뺀 앱 · 고른 아이콘): C:\i-luncher</summary>
     public string DataDirectory { get; }
+    /// <summary>지워도 다시 받는 것 (받아 둔 목록 · 아이콘 · 스크린샷 · 받은 파일 · 읽은 공지): %LOCALAPPDATA%\i-luncher</summary>
+    public string CacheDirectory { get; }
     public string UserSettingsPath => Path.Combine(DataDirectory, "settings.json");
 
-    public static string DefaultDataDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher");
+    /// <summary>C:\i-luncher (만들 수 없는 PC 면 %LOCALAPPDATA%\i-luncher). DataFolder 참고</summary>
+    public static string DefaultDataDirectory => DataFolder.Default;
 
-    public static LauncherSettings Load(string? dataDirectory = null, string? buildDirectory = null)
+    /// <summary>dataDirectory 를 주면(시험 · ILUNCHER_DATA_DIR) 캐시도 그 폴더, 아니면 C:\i-luncher + 캐시 %LOCALAPPDATA%\i-luncher</summary>
+    public static LauncherSettings Load(string? dataDirectory = null, string? buildDirectory = null, string? cacheDirectory = null)
     {
         string data = dataDirectory ?? DefaultDataDirectory;
-        return new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data);
+        string cache = cacheDirectory ?? (dataDirectory is null ? DataFolder.Cache : data);
+        return new LauncherSettings(BuildSettings.Load(buildDirectory), UserSettings.Load(Path.Combine(data, "settings.json")), data, cache);
     }
 
     public void SaveUser() => User.Save(UserSettingsPath);

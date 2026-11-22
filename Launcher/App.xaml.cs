@@ -8,6 +8,7 @@ namespace ILauncher;
 /// <summary>
 /// i-luncher.exe                       앱 목록
 /// i-luncher.exe --uninstall NAME      런처가 설치한 앱 제거 (Windows "앱" 목록의 제거 버튼이 부름). --quiet 이면 묻지 않음
+/// i-luncher.exe --reset list|all --after PID   설정 → 재설정: 앞의 런처(PID)가 끝나길 기다려 지우고 다시 시작
 /// </summary>
 public partial class App : Application
 {
@@ -33,6 +34,11 @@ public partial class App : Application
             return;
         }
 
+        // 재설정으로 다시 시작: 앞의 런처가 끝난 뒤에 지움 (끝나면서 파일을 다시 쓰지 않게)
+        string? reset = ArgumentAfter(args, "--reset");
+        if (reset is not (DataFolder.ResetList or DataFolder.ResetAll)) reset = null;
+        if (int.TryParse(ArgumentAfter(args, "--after"), out int previous)) WaitForExit(previous);
+
         // 하나만 실행: 이미 실행 중이면 (트레이에 숨어 있어도) 그 창을 앞으로
         _singleInstance = new Mutex(true, @"Local\i-luncher-main-window", out bool first);
         if (!first)
@@ -47,15 +53,44 @@ public partial class App : Application
             return;
         }
 
-        // ILUNCHER_DATA_DIR: 설정·목록·캐시 폴더를 바꿈 (확인·시험용. 평소에는 %LOCALAPPDATA%\i-luncher)
-        var settings = LauncherSettings.Load(Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data ? data : null);
-        var window = new MainWindow(settings);
+        // 사용자 데이터 C:\i-luncher (예전 %LOCALAPPDATA%\i-luncher 에 있던 것은 옮김), 캐시 %LOCALAPPDATA%\i-luncher.
+        // ILUNCHER_DATA_DIR: 둘 다 그 폴더로 (확인·시험용)
+        string? custom = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } folder ? folder : null;
+        string data = custom ?? LauncherSettings.DefaultDataDirectory;
+        string cache = custom ?? DataFolder.Cache;
+        if (data == DataFolder.Fixed) DataFolder.MoveFromLegacy(data);
+        string? message = null;
+        if (reset is not null)
+        {
+            var failed = DataFolder.Reset(data, cache, reset);
+            message = failed.Count == 0 ? (reset == DataFolder.ResetAll ? "전체 재설정함" : "목록 재설정함")
+                : "재설정 중 지우지 못함: " + string.Join(", ", failed);
+        }
+        var settings = LauncherSettings.Load(data, null, cache);
+        var window = new MainWindow(settings, message);
         MainWindow = window;
         ILuncher.AppKit.AppUsage.Start(app: "i-luncher");
         window.EnableTray();
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray), null, -1, executeOnlyOnce: false);
         window.Show();
+    }
+
+    private static string? ArgumentAfter(string[] args, string name)
+    {
+        int index = Array.FindIndex(args, arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+    }
+
+    /// <summary>앞의 런처가 끝나길 잠깐 기다림 (이미 끝났으면 바로)</summary>
+    private static void WaitForExit(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            process.WaitForExit(15000);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
 
     private const string ShowSignalName = @"Local\i-luncher-show";

@@ -24,7 +24,7 @@ public static partial class SiteInfo
     private static readonly HttpClient Http = CreateClient();
 
     /// <summary>사이트 아이콘을 둘 폴더 (런처가 시작할 때 정함)</summary>
-    public static string CacheFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher", "site-icons");
+    public static string CacheFolder { get; set; } = Path.Combine(DataFolder.Cache, "site-icons");
 
     private static HttpClient CreateClient()
     {

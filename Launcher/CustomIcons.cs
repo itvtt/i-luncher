@@ -9,7 +9,7 @@ namespace ILauncher;
 /// 사용자가 고른 아이콘 (즐겨찾기 · 내 앱). 값은
 ///   "" = 자동 (프로그램 · 사이트 · 저장소 아이콘),
 ///   "builtin:&lt;이름&gt;" = 기본 아이콘 (아래 Builtins),
-///   전체 경로 = 이미지 파일 (Import 로 %LOCALAPPDATA%\i-luncher\custom-icons 에 PNG 로 복사해 둔 것).
+///   전체 경로 = 이미지 파일 (Import 로 C:\i-luncher\custom-icons 에 PNG 로 복사해 둔 것).
 /// </summary>
 public static class CustomIcons
 {
@@ -43,7 +43,7 @@ public static class CustomIcons
     private static readonly Dictionary<string, ImageSource> Rendered = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>이미지 파일을 복사해 둘 폴더 (런처가 시작할 때 정함)</summary>
-    public static string Folder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher", "custom-icons");
+    public static string Folder { get; set; } = Path.Combine(Services.DataFolder.Fixed, "custom-icons");
 
     public static bool IsCustom(string? value) => !string.IsNullOrWhiteSpace(value) &&
         (value.StartsWith(BuiltinPrefix, StringComparison.OrdinalIgnoreCase) || Path.IsPathFullyQualified(value));

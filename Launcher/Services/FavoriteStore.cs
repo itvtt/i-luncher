@@ -25,7 +25,7 @@ public sealed class FavoriteProgram
     public bool IsWeb => SiteInfo.IsWebAddress(Path);
 }
 
-/// <summary>%LOCALAPPDATA%\i-luncher\favorites.json</summary>
+/// <summary>C:\i-luncher\favorites.json</summary>
 public sealed class FavoriteStore(string filePath)
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };

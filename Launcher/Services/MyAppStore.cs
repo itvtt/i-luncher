@@ -5,7 +5,7 @@ using ILauncher.Models;
 namespace ILauncher.Services;
 
 /// <summary>
-/// 내 앱: 사용자가 큰 창 아래 독의 + → GitHub 프로젝트로 더한 앱. 이 PC 에만 저장 (%LOCALAPPDATA%\i-luncher\my-apps.json).
+/// 내 앱: 사용자가 큰 창 아래 독의 + → GitHub 프로젝트로 더한 앱. 이 PC 에만 저장 (C:\i-luncher\my-apps.json).
 /// 앱 목록(API 서버)의 앱처럼 릴리스로 설치 · 업데이트하고, 사용자가 삭제할 수 있음 (설치한 앱도 함께 제거할지 고름)
 /// </summary>
 public sealed class MyAppStore(string filePath)
@@ -46,7 +46,7 @@ public sealed class MyAppStore(string filePath)
     /// 예전(앱 페이지가 있을 때) 내 앱에 넣은 스크린샷을 복사해 둔 폴더 (런처가 시작할 때 정함).
     /// 이제 새로 넣지는 않고, 내 앱을 지울 때 남은 그림만 정리함
     /// </summary>
-    public static string MediaFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher", "my-media");
+    public static string MediaFolder { get; set; } = Path.Combine(DataFolder.Fixed, "my-media");
 
     /// <summary>MediaFolder 에 복사해 둔 그림이면 지움 (다른 곳의 파일은 건드리지 않음)</summary>
     public static void DeleteMedia(string? path)

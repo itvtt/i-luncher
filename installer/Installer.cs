@@ -30,7 +30,7 @@ internal static class Installer
     private static readonly bool TestRun = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_UNINSTALL_KEY") is { Length: > 0 };
     private static readonly bool IgnoreInstalledDotNet = Environment.GetEnvironmentVariable("ILUNCHER_SETUP_IGNORE_INSTALLED_DOTNET") == "1";
 
-    /// <summary>런처 설정 폴더 (런처 업데이트 · 제거에도 남음). ILUNCHER_DATA_DIR 은 시험용</summary>
+    /// <summary>예전 런처 설정 폴더 (store-group.txt 가 남은 곳. 지금 런처는 C:\i-luncher 로 옮겨 씀). ILUNCHER_DATA_DIR 은 시험용</summary>
     internal static string DataDirectory => Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } data
         ? data : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
 
@@ -210,7 +210,7 @@ internal static class Installer
             File.Copy(SelfPath, destination, overwrite: true);
     }
 
-    /// <summary>바로 가기, "앱" 목록 항목, 설치 폴더를 지움. 런처 설정(%LOCALAPPDATA%\i-luncher)과 런처로 설치한 앱은 남김</summary>
+    /// <summary>바로 가기, "앱" 목록 항목, 설치 폴더를 지움. 런처 설정(C:\i-luncher)과 런처로 설치한 앱은 남김</summary>
     internal static void Uninstall(string directory, Action<string> progress)
     {
         string target = Path.GetFullPath(directory);

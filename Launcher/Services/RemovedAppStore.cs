@@ -8,7 +8,7 @@ namespace ILauncher.Services;
 public sealed record RemovedApp(string Id, string Name, string Repository);
 
 /// <summary>
-/// 목록에서 삭제한 기본 목록 · 서버 목록 앱 (%LOCALAPPDATA%\i-luncher\removed-apps.json, 이 PC · 사용자만).
+/// 목록에서 삭제한 기본 목록 · 서버 목록 앱 (C:\i-luncher\removed-apps.json, 이 PC · 사용자만).
 /// 런처를 업데이트하거나 다시 설치해도 이 폴더는 남으므로, 사용자가 독의 + 로 다시 추가하기 전까지 스토어 · 설치됨에 보이지 않음.
 /// 기본 목록에 새로 들어온 앱은 여기에 없으니 그대로 보임
 /// </summary>

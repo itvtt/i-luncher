@@ -52,7 +52,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 |---|---|---|---|
 | **기본 목록** | 모두 | GitHub 공지 저장소 `i-luncher-notices` 의 `basic-apps.json` + 스크린샷 `basic-media/<id>-1~3.png` (GitHub 에서 편집) | 런처가 다음에 시작 · 새로고침할 때 (런처 릴리스 필요 없음) |
 | **서버 목록** | 마스터 | 관리자 메뉴 → 앱 목록 (처음 넣을 때: `CDEP\seed\apps.json` → `CDEP\import_app_list.py`) | 저장하면 바로 |
-| **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`%LOCALAPPDATA%\i-luncher\my-apps.json`) | 바로 |
+| **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`C:\i-luncher\my-apps.json`) | 바로 |
 
 - **모두에게 나눠 주는 앱은 기본 목록으로만** 관리합니다. 그 밖의 앱은 각 사용자가 내 앱으로 더해 씁니다.
 - 지금 목록: 기본 = DeskCal · Compare · FastCopy · DiskScan · Capture · MemoPad. 서버 = Terminal Notes · EQ Status · File Shared · ImPerformance.
@@ -74,7 +74,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 ### 사용자가 지운 기본 앱
 
 - 사용자는 앱을 우클릭 → **목록에서 삭제…** 로 기본 목록 앱도 뺄 수 있습니다 (설치돼 있으면 목록에서만 빼기 / 설치된 앱도 제거).
-- 뺀 앱은 `%LOCALAPPDATA%\i-luncher\removed-apps.json` 에 남습니다. **런처를 업데이트하거나 다시 설치해도 다시 나오지 않습니다.**
+- 뺀 앱은 `C:\i-luncher\removed-apps.json` 에 남습니다. **런처를 업데이트하거나 다시 설치해도 다시 나오지 않습니다.**
 - 다시 보이는 때는 사용자가 독의 **+ → 삭제한 앱 다시 추가**를 누르거나, **+ → GitHub 프로젝트…** 에 같은 저장소를 넣을 때뿐입니다.
 - 기본 목록에 새로 넣은 앱은 그대로 보입니다 (지운 적이 없으므로).
 
@@ -147,15 +147,19 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | `UPDATE_TOKEN` | 보통 비움 (공개 저장소, 또는 그 PC 사용자가 이 프로젝트에 넣은 토큰) |
 | `UPDATE_INSTALL_NAME` | 설치 폴더 · "앱" 목록 이름 (`basic-apps.json` 의 `installName` 과 같게) |
 
-**사용자 PC** (`%LOCALAPPDATA%\i-luncher`, 런처 업데이트 · 제거에도 남음)
+**사용자 PC** (`C:\i-luncher` = 백업해 새 PC 에서 다시 쓸 것만, 런처 업데이트 · 제거에도 남음. 예전 `%LOCALAPPDATA%\i-luncher` 의 이 파일들은 런처가 처음 시작할 때 옮김, 그 폴더를 만들 수 없는 PC 는 예전 위치)
 
 | 파일 | 내용 |
 |---|---|
 | `settings.json` | 자동 업데이트, 프로젝트마다의 토큰 `RepositoryTokens`(암호화), 마스터 PC 의 git 로그인 토큰 `Tokens` · `AutoTokenHosts`, `GeneralView`(마스터의 일반 화면) |
 | `my-apps.json` | 내 앱 |
 | `removed-apps.json` | 목록에서 삭제한 기본 · 서버 목록 앱 |
-| `basic-apps-cache.json` · `screenshots\basic\` | 마지막으로 GitHub 에서 읽은 기본 목록 · 그 스크린샷 |
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |
+| `custom-icons\` · `my-media\` | 고른 아이콘 · 내 앱 그림 (즐겨찾기 · 내 앱이 전체 경로로 가리킴) |
+
+캐시는 `%LOCALAPPDATA%\i-luncher` 에 둡니다 (지워도 다시 받음): `basic-apps-cache.json` · `catalog-cache.json` (받아 둔 기본 · 서버 목록), `notice-state.json`, `icons\` · `screenshots\` (`screenshots\basic\` = 기본 목록 스크린샷) · `site-icons\` · `downloads\`. 토큰은 PC · 계정마다 암호화라 새 PC 로 옮겨지지 않습니다 (다시 넣음).
+
+설정 → **재설정**: **목록** = `removed-apps.json` · `basic-apps-cache.json` · `catalog-cache.json`, **전체** = 위 사용자 데이터와 캐시 모두. 런처를 다시 시작하며 지우고, 설치한 앱은 그대로 둡니다 (README "설정 · 저장 위치").
 
 ## 7. 처음 구성할 때 · 옮길 때
 

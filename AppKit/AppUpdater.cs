@@ -60,7 +60,7 @@ namespace ILuncher.AppKit
     }
 
     /// <summary>
-    /// 이 PC 사용자가 i-luncher 에 넣은 GitHub 토큰 (%LOCALAPPDATA%\i-luncher\settings.json, DPAPI(현재 사용자)로 보호한 값):
+    /// 이 PC 사용자가 i-luncher 에 넣은 GitHub 토큰 (C:\i-luncher\settings.json, 없으면 %LOCALAPPDATA%\i-luncher\settings.json, DPAPI(현재 사용자)로 보호한 값):
     /// RepositoryTokens("호스트/소유자/이름", 앱 우클릭 → 토큰…) 먼저, 없으면 Tokens(호스트, 마스터 PC 의 git 로그인).
     /// update.json 에 토큰이 없을 때 비공개 저장소의 릴리스를 GitHub 에 바로 묻는 데 씀. 런처와 같은 사용자 · 같은 PC 에서만 풀림.
     /// 없으면 null (공개 저장소는 토큰 없이 읽힘)
@@ -76,10 +76,12 @@ namespace ILuncher.AppKit
             if (host.Length == 0) return null;
             try
             {
-                string data = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } folder
-                    ? folder : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher");
-                string path = Path.Combine(data, "settings.json");
-                if (!File.Exists(path)) return null;
+                // 런처 설정 폴더: C:\i-luncher, 그 폴더를 쓸 수 없는 PC 와 예전 런처는 %LOCALAPPDATA%\i-luncher
+                string? path = (Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR") is { Length: > 0 } folder
+                        ? new[] { folder }
+                        : new[] { @"C:\i-luncher", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher") })
+                    .Select(data => Path.Combine(data, "settings.json")).FirstOrDefault(File.Exists);
+                if (path is null) return null;
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
                 string project = repository is { Length: > 0 } ? (host + "/" + repository.Trim('/')).ToLowerInvariant() : "";

@@ -619,6 +619,75 @@ try
         }
         finally { Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", before); }
     });
+    await CheckSync("data folder: the old folder moves over once, icon paths follow, nothing is overwritten", () =>
+    {
+        string legacy = Path.Combine(root, "move-legacy"), target = Path.Combine(root, "move-target");
+        Directory.CreateDirectory(Path.Combine(legacy, "custom-icons"));
+        File.WriteAllText(Path.Combine(legacy, "custom-icons", "icon-a.png"), "png");
+        string icon = Path.Combine(legacy, "custom-icons", "icon-a.png");
+        new FavoriteStore(Path.Combine(legacy, "favorites.json")).Save([new FavoriteProgram { Name = "메모", Path = @"C:\Tools\memo.exe", Icon = icon }]);
+        File.WriteAllText(Path.Combine(legacy, "removed-apps.json"), "[]");
+        File.WriteAllText(Path.Combine(legacy, "ActionsRunner.txt"), "not the launcher's");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "removed-apps.json"), "[\"kept\"]");
+        int moved = DataFolder.MoveFromLegacy(target, legacy);
+        Equal(2, moved, "favorites + custom-icons (removed-apps.json already there)");
+        var favorite = new FavoriteStore(Path.Combine(target, "favorites.json")).Load().Single();
+        Equal(Path.Combine(target, "custom-icons", "icon-a.png"), favorite.Icon, "icon path now in the new folder");
+        Assert(File.Exists(favorite.Icon), "icon file moved");
+        Equal("[\"kept\"]", File.ReadAllText(Path.Combine(target, "removed-apps.json")), "the new folder's file wins");
+        Assert(File.Exists(Path.Combine(legacy, "removed-apps.json")) && File.Exists(Path.Combine(legacy, "ActionsRunner.txt")), "the rest stays in the old folder");
+        Equal(0, DataFolder.MoveFromLegacy(target, legacy), "second start: nothing more to move");
+        Equal(0, DataFolder.MoveFromLegacy(target, target), "same folder: nothing");
+    });
+    await CheckSync("data folder keeps only what a backup needs: caches live in the cache folder", () =>
+    {
+        Assert(!DataFolder.UserFiles.Intersect(DataFolder.CacheFiles).Any() && !DataFolder.UserFolders.Intersect(DataFolder.CacheFolders).Any(), "no name in both");
+        Assert(DataFolder.UserFiles.Contains("settings.json") && DataFolder.UserFiles.Contains("favorites.json") && DataFolder.UserFiles.Contains("my-apps.json")
+               && DataFolder.UserFiles.Contains("removed-apps.json") && DataFolder.UserFolders.Contains("custom-icons"), "user data");
+        string data = Path.Combine(root, "split-data"), cache = Path.Combine(root, "split-cache"), build = Path.Combine(root, "split-build");
+        var settings = LauncherSettings.Load(data, build, cache);
+        Equal(data, settings.DataDirectory, "data");
+        Equal(cache, settings.CacheDirectory, "cache");
+        Equal(data, LauncherSettings.Load(data, build).CacheDirectory, "a test folder holds both");
+        string legacy = Path.Combine(root, "split-legacy");
+        Directory.CreateDirectory(Path.Combine(legacy, "icons"));
+        File.WriteAllText(Path.Combine(legacy, "basic-apps-cache.json"), "[]");
+        File.WriteAllText(Path.Combine(legacy, "settings.json"), "{}");
+        Equal(1, DataFolder.MoveFromLegacy(data, legacy), "only settings.json moves");
+        Assert(Directory.Exists(Path.Combine(legacy, "icons")) && File.Exists(Path.Combine(legacy, "basic-apps-cache.json")), "caches stay in the cache folder");
+    });
+    await CheckSync("reset: list = removed apps + saved lists, all = user data and caches in both folders, installed apps and other files stay", () =>
+    {
+        string data = Path.Combine(root, "reset-data"), cache = Path.Combine(root, "reset-cache");
+        void Fill()
+        {
+            Directory.CreateDirectory(data);
+            Directory.CreateDirectory(cache);
+            foreach (string name in DataFolder.UserFiles.Append("catalog.json").Append("other.txt")) File.WriteAllText(Path.Combine(data, name), "x");
+            foreach (string name in DataFolder.UserFolders) Directory.CreateDirectory(Path.Combine(data, name, "sub"));
+            foreach (string name in DataFolder.CacheFiles.Append("updates.txt")) File.WriteAllText(Path.Combine(cache, name), "x");
+            foreach (string name in DataFolder.CacheFolders) Directory.CreateDirectory(Path.Combine(cache, name, "sub"));
+        }
+        Fill();
+        Equal(0, DataFolder.Reset(data, cache, DataFolder.ResetList).Count, "list: no failures");
+        Assert(DataFolder.ListFiles.All(name => !File.Exists(Path.Combine(data, name)) && !File.Exists(Path.Combine(cache, name))), "list files gone");
+        Assert(File.Exists(Path.Combine(data, "settings.json")) && File.Exists(Path.Combine(data, "favorites.json"))
+               && File.Exists(Path.Combine(data, "my-apps.json")) && Directory.Exists(Path.Combine(cache, "icons")), "list: settings, favorites, my apps, caches stay");
+        Fill();
+        Equal(0, DataFolder.Reset(data, cache, DataFolder.ResetAll).Count, "all: no failures");
+        Assert(DataFolder.UserFiles.All(name => !File.Exists(Path.Combine(data, name))), "user files gone");
+        Assert(DataFolder.UserFolders.All(name => !Directory.Exists(Path.Combine(data, name))), "user folders gone");
+        Assert(DataFolder.CacheFiles.All(name => !File.Exists(Path.Combine(cache, name))), "cache files gone");
+        Assert(DataFolder.CacheFolders.All(name => !Directory.Exists(Path.Combine(cache, name))), "cache folders gone");
+        Assert(File.Exists(Path.Combine(data, "catalog.json")) && File.Exists(Path.Combine(data, "other.txt")) && File.Exists(Path.Combine(cache, "updates.txt")),
+            "this PC's list and unknown files stay");
+        Fill();
+        Equal(0, DataFolder.Reset(data, data, DataFolder.ResetAll).Count, "one folder for both (no C:\\ access): no failures");
+        Assert(!File.Exists(Path.Combine(data, "settings.json")), "one folder: cleared");
+        Equal(@"{""Icon"":""D:\\new\\custom-icons\\a.png""}", DataFolder.ReplaceFolder(@"{""Icon"":""c:\\OLD\\i-luncher\\custom-icons\\a.png""}", @"C:\old\i-luncher", @"D:\new"), "path prefix, any case");
+        Equal(@"{""Icon"":""C:\\old\\i-luncher-x\\a.png""}", DataFolder.ReplaceFolder(@"{""Icon"":""C:\\old\\i-luncher-x\\a.png""}", @"C:\old\i-luncher", @"D:\new"), "a longer folder name is not the same folder");
+    });
     await CheckSync("version text comparison matches the launcher", () =>
     {
         Assert(VersionText.TryParse("v1.2.10", out var a) && VersionText.TryParse("1.2.9.0", out var b) && VersionText.Compare(a, b) > 0, "1.2.10 > 1.2.9");

@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         _settings = settings;
         _startupMessage = startupMessage;
         CustomIcons.Folder = Path.Combine(settings.DataDirectory, "custom-icons");
-        SiteInfo.CacheFolder = Path.Combine(settings.DataDirectory, "site-icons");
+        SiteInfo.CacheFolder = Path.Combine(settings.CacheDirectory, "site-icons");
         MyAppStore.MediaFolder = Path.Combine(settings.DataDirectory, "my-media");
         _favoriteStore = new FavoriteStore(Path.Combine(settings.DataDirectory, "favorites.json"));
         _favorites = _favoriteStore.Load();
@@ -116,24 +116,24 @@ public partial class MainWindow : Window
         DetailPane.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
         StorePane.Visibility = page is null && !detail ? Visibility.Visible : Visibility.Collapsed;
     }
-    private string IconCacheDirectory => Path.Combine(_settings.DataDirectory, "icons");
+    private string IconCacheDirectory => Path.Combine(_settings.CacheDirectory, "icons");
 
     private void CreateServices()
     {
         _github?.Dispose();
         // 릴리스(버전 · 설치 · 업데이트)는 언제나 그 앱의 GitHub 에 바로 물음. 비공개 저장소면 설정의 토큰(또는 빌드 토큰)
         _github = new GitHubClient(repository => _settings.GetToken(repository), LauncherVersion);
-        _manager = new AppManager(_github, new AppInstaller(), Path.Combine(_settings.DataDirectory, "downloads"), () => _settings.DefaultHost);
+        _manager = new AppManager(_github, new AppInstaller(), Path.Combine(_settings.CacheDirectory, "downloads"), () => _settings.DefaultHost);
         (_store as IDisposable)?.Dispose();
         _store = _settings.CatalogMode switch
         {
             LauncherSettings.ModeApi => new ApiCatalogStore(_settings.ApiServerUrl!, () => null,
-                Path.Combine(_settings.DataDirectory, "catalog-cache.json")),
+                Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
             LauncherSettings.ModeGitHub when _settings.CatalogRepository is { } repository =>
-                new GitHubCatalogStore(_github, repository, _settings.CatalogPath, _settings.CatalogBranch, Path.Combine(_settings.DataDirectory, "catalog-cache.json")),
+                new GitHubCatalogStore(_github, repository, _settings.CatalogPath, _settings.CatalogBranch, Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
             _ => new LocalCatalogStore(Path.Combine(_settings.DataDirectory, "catalog.json"))
         };
-        _notices = new NoticeService(FetchNoticesAsync, _settings.DataDirectory);
+        _notices = new NoticeService(FetchNoticesAsync, _settings.CacheDirectory);
         _icons = new AppIconService(_github, IconCacheDirectory, () => _settings.DefaultHost);
         ShowRole();
     }
@@ -321,7 +321,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task<(List<AppDefinition> Apps, string? Warning)> LoadBasicAppsAsync(bool fetch)
     {
-        string cache = Path.Combine(_settings.DataDirectory, BasicApps.CacheFileName);
+        string cache = Path.Combine(_settings.CacheDirectory, BasicApps.CacheFileName);
         string? warning = null;
         if (fetch && _settings.BasicAppsRepository is { } repository)
         {
@@ -1440,8 +1440,25 @@ public partial class MainWindow : Window
         Render();
     }
 
-    // 토큰은 런처의 기본 호스트(github.com 또는 GITHUB_HOST)용. 저장 · 지우면 새 버전을 다시 확인
-    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser);
+    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser, RestartWithReset);
+
+    /// <summary>
+    /// 설정 → 재설정: 새 런처를 띄우고 이 런처는 끝냄. 새 런처가 이 런처가 끝나길 기다렸다가 지우고 시작
+    /// (끝나면서 즐겨찾기 · 설정을 다시 쓰는 일이 없게)
+    /// </summary>
+    private void RestartWithReset(string scope)
+    {
+        if (Environment.ProcessPath is not { } exe) return;
+        var start = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
+        foreach (string arg in new[] { "--reset", scope, "--after", Environment.ProcessId.ToString() }) start.ArgumentList.Add(arg);
+        try { Process.Start(start)?.Dispose(); }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            ShowError("다시 시작하지 못했습니다: " + error.Message);
+            return;
+        }
+        ExitApp();
+    }
 
     /// <summary>
     /// 이 프로젝트(저장소)의 GitHub 토큰: 비공개 저장소면 프로젝트마다 따로 넣음. 런처와 그 앱의 자체 업데이터가 씀.
