@@ -18,7 +18,7 @@
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
 // usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 // 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
-// 또 Start 는 AppMemory 도 켭니다 (누구에게나): 앱이 뒤에서 한가할 때 쓰지 않는 메모리를 Windows 에 돌려줌 (이 파일 맨 아래).
+// 또 Start 는 AppMemory 도 켭니다 (누구에게나): 앱이 한가할 때(뒤에서 15초, 앞에서는 입력 없이 30초) 쓰지 않는 메모리를 Windows 에 돌려줌 (이 파일 맨 아래).
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -460,11 +460,12 @@ namespace ILuncher.AppKit
     }
 
     /// <summary>
-    /// 쓰지 않는 메모리 돌려주기 (AppUsage.Start 가 켬, 일반 · 마스터 모두).
-    /// 앱이 뒤에 있고(맨 앞 창이 다른 프로그램) 한가한 채로 15초가 지나면 한 번: 쓰지 않는 .NET 힙을 Windows 에 돌려주고(GC) 작업 집합을 비움.
-    /// 다시 앞으로 오거나 일을 하면 필요한 만큼만 다시 올라오고, 그 뒤 또 뒤에서 한가해지면 다시 한 번.
-    /// 뒤에서 조금씩 하는 일(새로고침 · 화면 갱신)로 작업 집합이 16MB 넘게 다시 늘어도 한 번 더.
-    /// 앞에 있거나 바쁠 때(5초에 CPU 0.15초 넘게: 복사 · 분석 · 받기 중)는 하지 않음
+    /// 쓰지 않는 메모리 돌려주기 (AppUsage.Start 가 켬, 일반 · 마스터 모두). 실행 중 메모리의 대부분은 시작할 때 한 번만 쓰는 것
+    /// (화면 읽기 · 코드 준비)이라, 한가해지면 쓰지 않는 .NET 힙을 Windows 에 돌려주고(GC) 작업 집합을 비움 (필요한 만큼만 다시 올라옴).
+    ///  - 뒤에 있을 때(맨 앞 창이 다른 프로그램): 한가한 채로 15초
+    ///  - 앞에 있을 때: 키보드 · 마우스 입력 없이 30초 (시작 직후 · 창을 띄워 두기만 할 때). 쓰는 동안은 하지 않음
+    /// 일을 하거나 다시 쓰면 그 뒤 한가해질 때 또 한 번, 조금씩 하는 일로 작업 집합이 16MB 넘게 다시 늘어도 한 번 더.
+    /// 바쁠 때(5초에 CPU 0.15초 넘게: 복사 · 분석 · 받기 중)는 하지 않음
     /// </summary>
     public static class AppMemory
     {
@@ -472,6 +473,7 @@ namespace ILuncher.AppKit
         private static readonly TimeSpan BusyCpu = TimeSpan.FromMilliseconds(150);
         private const int QuietChecks = 3;
         private const long RegrowBytes = 16L * 1024 * 1024;
+        private static readonly TimeSpan FrontIdleInput = TimeSpan.FromSeconds(30);
         private static readonly object Gate = new object();
         private static System.Threading.Timer? _timer;
         private static TimeSpan _lastCpu;
@@ -510,7 +512,8 @@ namespace ILuncher.AppKit
                 TimeSpan cpu = CpuTime();
                 bool busy = cpu - _lastCpu > BusyCpu;
                 _lastCpu = cpu;
-                if (busy || IsForeground()) { _quiet = 0; _trimmed = false; return; }
+                // 바쁘거나, 앞에서 쓰는 중(30초 안에 입력)이면 기다림. 그동안 늘어난 만큼은 다음에 한가할 때 다시 정리
+                if (busy || IsForeground() && InputIdle() < FrontIdleInput) { _quiet = 0; _trimmed = false; return; }
                 if (_trimmed && WorkingSet() - _trimmedSize < RegrowBytes || ++_quiet < QuietChecks) return;
                 Trim();
                 _lastCpu = CpuTime();  // 정리에 쓴 CPU 는 바쁨으로 세지 않음
@@ -540,8 +543,19 @@ namespace ILuncher.AppKit
             return owner == (uint)ProcessId;
         }
 
+        /// <summary>마지막 키보드 · 마우스 입력 뒤 지난 시간 (모르면 0 = 지금 쓰는 중으로 봄)</summary>
+        private static TimeSpan InputIdle()
+        {
+            var info = new LastInput { cbSize = (uint)Marshal.SizeOf(typeof(LastInput)) };
+            return GetLastInputInfo(ref info) ? TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - info.dwTime)) : TimeSpan.Zero;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LastInput { public uint cbSize; public uint dwTime; }
+
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+        [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInput info);
         [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
     }
