@@ -33,11 +33,12 @@ public partial class MainWindow : Window
     private AvailableUpdate? _launcherUpdate;
     private bool _launcherUpdating;
     private bool _updatingAll;
-    private readonly FavoriteStore _favoriteStore;
+    // 즐겨찾기 · 내 앱 · 목록에서 뺀 앱: 마스터가 일반 화면을 보는 동안은 따로 둔 빈 데이터 (LoadLocalData)
+    private FavoriteStore _favoriteStore;
     private List<FavoriteProgram> _favorites;
-    private readonly MyAppStore _myAppStore;
+    private MyAppStore _myAppStore;
     private List<AppDefinition> _myApps;
-    private readonly RemovedAppStore _removedStore;
+    private RemovedAppStore _removedStore;
     /// <summary>목록에서 삭제한 기본 목록 · 서버 목록 앱 (다시 추가하기 전까지 숨김, 런처 업데이트와 상관없이)</summary>
     private List<RemovedApp> _removed;
     private readonly DispatcherTimer _runningTimer;
@@ -49,15 +50,8 @@ public partial class MainWindow : Window
     {
         _settings = settings;
         _startupMessage = startupMessage;
-        CustomIcons.Folder = Path.Combine(settings.DataDirectory, "custom-icons");
         SiteInfo.CacheFolder = Path.Combine(settings.CacheDirectory, "site-icons");
-        MyAppStore.MediaFolder = Path.Combine(settings.DataDirectory, "my-media");
-        _favoriteStore = new FavoriteStore(Path.Combine(settings.DataDirectory, "favorites.json"));
-        _favorites = _favoriteStore.Load();
-        _myAppStore = new MyAppStore(Path.Combine(settings.DataDirectory, "my-apps.json"));
-        _myApps = _myAppStore.Load();
-        _removedStore = new RemovedAppStore(Path.Combine(settings.DataDirectory, "removed-apps.json"));
-        _removed = _removedStore.Load();
+        LoadLocalData();
         InitializeComponent();
         // 설치됨 아이콘 · 스토어 줄이 3줄은 독 위로 다 보이는 높이 (공지 · 업데이트 띠가 있어도). 화면이 작으면 그 화면에 맞춤
         double workHeight = SystemParameters.WorkArea.Height;
@@ -110,7 +104,7 @@ public partial class MainWindow : Window
         };
         if (!ReferenceEquals(PageContent.Content, page)) PageContent.Content = page;
         PagePane.Visibility = page is null ? Visibility.Collapsed : Visibility.Visible;
-        Sidebar.Visibility = page is null ? Visibility.Visible : Visibility.Collapsed;
+        Sidebar.Visibility = page is null && !IsHome ? Visibility.Visible : Visibility.Collapsed;
         // 앱 페이지는 스토어 위에 (목록의 스크롤 위치는 그대로 남음)
         bool detail = page is null && _detail is not null;
         DetailPane.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
@@ -255,9 +249,72 @@ public partial class MainWindow : Window
     /// </summary>
     private bool IsMaster => IsMasterAccount && !_settings.User.GeneralView;
 
-    /// <summary>일반/마스터 화면에 맞춤: 전환 단추, 관리자 메뉴 단추, 카드의 관리자 메뉴 항목, 공지 단추 · 목록 출처</summary>
+    /// <summary>
+    /// 일반 화면 = 홈 화면 하나 (맥 · 아이폰처럼): 왼쪽 메뉴 · 스토어 없이 큰 아이콘과 아래 독.
+    /// 아이콘은 기본 앱(빌드 설정 GENERAL_APPS, 기본 DeskCal) + 이 PC 에 설치한 앱 · 내 앱 · 내 PC 프로그램
+    /// </summary>
+    private bool IsHome => !IsMaster;
+
+    /// <summary>홈 화면 위쪽의 옅은 파란 빛</summary>
+    private static readonly Brush HomeGlow = Frozen(new RadialGradientBrush(
+        new GradientStopCollection { new GradientStop(Color.FromArgb(0x26, 0x3B, 0x82, 0xF6), 0), new GradientStop(Color.FromArgb(0x00, 0x3B, 0x82, 0xF6), 1) })
+    {
+        Center = new Point(0.5, 0), GradientOrigin = new Point(0.5, 0), RadiusX = 0.75, RadiusY = 0.6
+    });
+
+    /// <summary>
+    /// 홈 화면에 보이는 앱: 기본 앱(GENERAL_APPS) · 받는 중 · 내 앱, 그리고 이 PC 에 설치한 앱.
+    /// 마스터의 일반 화면(미리 보기)은 새로 설치한 일반 사용자와 같게: 이 PC 의 다른 설치 앱은 숨김
+    /// </summary>
+    private bool InHome(AppCard card) =>
+        card.IsBusy || card.App.Personal || card.IsInstalled && !IsPreview
+        || _settings.Build.GeneralApps.Contains(card.App.Id, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>마스터 계정이 일반 화면을 보는 중: 새로 설치한 일반 사용자의 화면 (따로 둔 빈 데이터 general-preview)</summary>
+    private bool IsPreview => IsMasterAccount && _settings.User.GeneralView;
+
+    /// <summary>미리 보기 데이터 폴더 (C:\i-luncher\general-preview): 일반으로 바꿀 때마다 비움</summary>
+    private string PreviewDirectory => Path.Combine(_settings.DataDirectory, DataFolder.PreviewFolder);
+
+    /// <summary>즐겨찾기 · 내 앱 · 뺀 앱 · 고른 아이콘 · 내 앱 그림을 지금 화면의 폴더에서 읽음 (마스터의 일반 화면 = 미리 보기 폴더)</summary>
+    [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(_favoriteStore), nameof(_favorites), nameof(_myAppStore), nameof(_myApps), nameof(_removedStore), nameof(_removed))]
+    private void LoadLocalData()
+    {
+        string data = IsPreview ? PreviewDirectory : _settings.DataDirectory;
+        CustomIcons.Folder = Path.Combine(data, "custom-icons");
+        MyAppStore.MediaFolder = Path.Combine(data, "my-media");
+        _favoriteStore = new FavoriteStore(Path.Combine(data, "favorites.json"));
+        _favorites = _favoriteStore.Load();
+        _myAppStore = new MyAppStore(Path.Combine(data, "my-apps.json"));
+        _myApps = _myAppStore.Load();
+        _removedStore = new RemovedAppStore(Path.Combine(data, "removed-apps.json"));
+        _removed = _removedStore.Load();
+        _programCards.Clear();
+    }
+
+    /// <summary>미리 보기 폴더를 지움 (새로 설치한 것처럼). 사용자 데이터 폴더 안의 그 폴더만</summary>
+    private void ClearPreview()
+    {
+        try { if (Directory.Exists(PreviewDirectory)) Directory.Delete(PreviewDirectory, recursive: true); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("일반 화면을 초기화하지 못했습니다: " + error.Message); }
+    }
+
+    /// <summary>일반/마스터 화면에 맞춤: 전환 단추, 관리자 메뉴 단추, 카드의 관리자 메뉴 항목, 공지 단추 · 목록 출처, 홈 화면 모양</summary>
     private void ApplyViewMode()
     {
+        // 일반 = 홈 화면 (왼쪽 메뉴 칸 · 화면 이름 없음, 위쪽 빛), 마스터 = 왼쪽 메뉴의 스토어 · 설치됨
+        SidebarColumn.Width = new GridLength(IsHome ? 0 : 224);
+        ViewHeading.Visibility = IsHome ? Visibility.Collapsed : Visibility.Visible;
+        InstalledChips.HorizontalAlignment = IsHome ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        InstalledChips.Margin = IsHome ? new Thickness(0) : new Thickness(-4, 14, 0, 0);
+        StorePane.Background = IsHome ? HomeGlow : null;
+        CardScrollViewer.Padding = new Thickness(24, IsHome ? 14 : 4, 24, 118);
+        if (IsHome)
+        {
+            _tab = "installed";
+            _filter = "all";
+            if (SearchBox.Text.Length > 0) SearchBox.Text = "";
+        }
         ViewModeSwitch.Visibility = IsMasterAccount ? Visibility.Visible : Visibility.Collapsed;
         SetSegment(GeneralViewButton, !IsMaster);
         SetSegment(MasterViewButton, IsMaster);
@@ -295,6 +352,9 @@ public partial class MainWindow : Window
         _settings.User.GeneralView = general;
         try { _settings.SaveUser(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("화면 전환을 저장하지 못했습니다: " + error.Message); }
+        // 일반으로 바꿀 때마다 새로 설치한 일반 사용자처럼 (미리 보기 데이터를 비움). 마스터의 즐겨찾기 · 내 앱은 그대로
+        if (general) ClearPreview();
+        LoadLocalData();
         ApplyViewMode();
         StatusText.Text = general ? "일반 화면" : "마스터 화면";
         await RefreshAsync(checkReleases: true);
@@ -1095,7 +1155,7 @@ public partial class MainWindow : Window
     {
         if (_tabChosen) return;
         _tabChosen = true;
-        _tab = _cards.Any(InInstalled) || ProgramCards().Count > 0 ? "installed" : "store";
+        _tab = IsHome || _cards.Any(InInstalled) || ProgramCards().Count > 0 ? "installed" : "store";
     }
 
     /// <summary>스토어(store) · 설치됨(installed) 의 전체 화면</summary>
@@ -1118,12 +1178,15 @@ public partial class MainWindow : Window
             return;
         }
         string search = SearchBox.Text.Trim();
-        bool store = _tab == "store";
+        // 일반 = 홈 화면 하나: 스토어 · 분류 · 즐겨찾기 · 업데이트 화면 없이 홈 아이콘 전부
+        bool home = IsHome;
+        bool store = !home && _tab == "store";
         var programs = store ? [] : ProgramCards();
         int palette = 0;
         foreach (var card in Sorted(_cards)) card.Palette = palette++ % CardArt.Count;
 
-        var pool = Sorted(_cards.Where(store ? InStore : InInstalled));
+        Func<AppCard, bool> visible = home ? InHome : store ? InStore : InInstalled;
+        var pool = Sorted(_cards.Where(visible));
         string? category = _filter.StartsWith("category:", StringComparison.Ordinal) ? _filter[9..] : null;
         bool InCategory(string name) => string.Equals(name, category, StringComparison.CurrentCultureIgnoreCase);
         bool updates = !store && _filter == "updates" && search.Length == 0;
@@ -1150,11 +1213,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            _title = store ? "스토어" : "설치됨";
+            _title = home ? "홈" : store ? "스토어" : "설치됨";
             items = [.. pool, .. programs];
         }
         ViewHeading.Text = _title;
-        RenderInstalledChips(search.Length == 0 && !store);
+        if (home) RenderHomeChips(pool, programs);
+        else RenderInstalledChips(search.Length == 0 && !store);
         // 스토어는 같은 앱 칸을 한 줄 모양으로
         if (store) items = items.Select(item => item is AppCard card ? new StoreRow(card) : item).ToList();
 
@@ -1174,13 +1238,23 @@ public partial class MainWindow : Window
                     : new StoreSection(name, rows));
             }
         }
-        else if (items.Count > 0) sections.Add(updates ? _updatesSection = UpdatesSection(items) : new StoreSection("", items));
+        else if (items.Count > 0)
+        {
+            // 홈: 업데이트할 앱이 있으면 아이콘 위에 "업데이트 N개 · 모두 업데이트"
+            int pending = home ? items.OfType<AppCard>().Count(card => card.UpdateAvailable) : 0;
+            sections.Add(updates ? _updatesSection = UpdatesSection(items)
+                : pending > 0 ? _updatesSection = HomeUpdatesSection(items, pending)
+                : new StoreSection("", items));
+        }
         // 칸은 늘 같은 크기 (창을 키우면 열만 늘어남). 제목 없는 묶음은 한 줄이 안 차면 그 개수만큼만 열을 두어 가운데로
         int columns = store ? StoreColumns : RowColumns;
         foreach (var section in sections)
         {
             section.Columns = section.Title.Length > 0 ? columns : Math.Max(1, Math.Min(columns, section.Items.Count));
             section.PanelWidth = section.Columns * (store ? StoreRowWidth : CellWidth);
+            if (home) section.Alignment = HorizontalAlignment.Center;
+            // 홈의 업데이트 줄은 앱이 하나여도 글자가 들어가는 폭 (아이콘은 가운데)
+            if (home && section.HeaderVisibility == Visibility.Visible) section.PanelWidth = Math.Max(section.PanelWidth, HomeHeaderWidth);
         }
         SectionList.ItemsSource = sections;
         VisibleCards = items.Select(item => item is StoreRow row ? row.Card : item as AppCard).OfType<AppCard>().ToList();
@@ -1190,11 +1264,18 @@ public partial class MainWindow : Window
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         CardScrollViewer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         if (!empty) return;
-        if (!store && _filter == "favorites" && search.Length == 0)
+        if (home && _filter == "all" && search.Length == 0)
+        {
+            // 홈 화면이 빔 (기본 앱이 목록에 없고 설치한 것도 없음): 독의 + 로 더함
+            EmptyStateTitle.Text = "앱이 없습니다";
+            EmptyStateText.Text = "아래 + 로 프로그램을 추가하세요.";
+            EmptyStateButton.Tag = "none";
+        }
+        else if (!store && _filter == "favorites" && search.Length == 0)
         {
             EmptyStateTitle.Text = "즐겨찾기가 없습니다";
             EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 우클릭 → 즐겨찾기에 추가";
-            EmptyStateButton.Content = "설치됨";
+            EmptyStateButton.Content = home ? "전체" : "설치됨";
             EmptyStateButton.Tag = "installed";
         }
         else if (!store && _filter == "all" && search.Length == 0)
@@ -1219,8 +1300,13 @@ public partial class MainWindow : Window
             EmptyStateButton.Content = "전체 보기";
             EmptyStateButton.Tag = "clear";
         }
-        EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "admin" && !IsApiManager ? Visibility.Collapsed : Visibility.Visible;
+        EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "none" || EmptyStateButton.Tag as string == "admin" && !IsApiManager ? Visibility.Collapsed : Visibility.Visible;
     }
+
+    private const double HomeHeaderWidth = 360;
+
+    private StoreSection HomeUpdatesSection(IReadOnlyList<object> items, int pending) =>
+        new("", items, $"업데이트 {pending}개", _updatingAll ? "업데이트 중…" : "모두 업데이트", () => _ = UpdateAllAsync()) { ActionEnabled = !_updatingAll };
 
     private StoreSection UpdatesSection(IReadOnlyList<object> updates) =>
         new("업데이트", updates, $"{updates.Count}개", _updatingAll ? "업데이트 중…" : "모두 업데이트", () => _ = UpdateAllAsync()) { ActionEnabled = !_updatingAll };
@@ -1275,7 +1361,8 @@ public partial class MainWindow : Window
     private void RenderDock()
     {
         var favorites = FavoriteItems().Take(DockFavoritesMax).ToList();
-        var running = Sorted(_cards.Where(card => card.IsRunning && !card.IsFavorite)).Take(DockRunningMax).ToList();
+        // 홈 화면에 없는 앱(미리 보기에서 숨긴 이 PC 의 앱)은 독에도 넣지 않음
+        var running = Sorted(_cards.Where(card => card.IsRunning && !card.IsFavorite && (!IsHome || InHome(card)))).Take(DockRunningMax).ToList();
         DockFavorites.ItemsSource = favorites;
         DockRunning.ItemsSource = running;
         DockDivider.Visibility = favorites.Count > 0 && running.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1369,6 +1456,46 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 홈(일반 화면) 위쪽 가운데 분류 버튼 줄 (예전 홈 화면처럼): 전체 · 즐겨찾기 · 업데이트(있을 때) · 분류마다, 색이 다른 아이콘과 개수.
+    /// 개수는 홈에 보이는 앱 · 내 PC 프로그램. 고른 것은 흰 버튼 (홈이 비면 줄도 숨김)
+    /// </summary>
+    private void RenderHomeChips(IReadOnlyList<AppCard> pool, IReadOnlyList<FavoriteCard> programs)
+    {
+        InstalledChips.Children.Clear();
+        var groups = pool.Select(card => card.Category).Concat(programs.Select(card => card.Category))
+            .GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase).OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
+        int favorites = pool.Count(card => card.IsFavorite) + programs.Count(card => card.Program.Starred);
+        int updates = pool.Count(card => card.UpdateAvailable);
+        bool show = pool.Count + programs.Count > 0 || _filter != "all";
+        InstalledChips.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+        AddChip("전체", pool.Count + programs.Count, "all", CategoryLook.AllGlyph, Brushes.White, ChipOnText);
+        if (favorites > 0 || _filter == "favorites") AddChip("즐겨찾기", favorites, "favorites", "\uE735", StarLight, StarInk);
+        if (updates > 0 || _filter == "updates") AddChip("업데이트", updates, "updates", "\uE896", UpdateLight, UpdateInk);
+        int index = 0;
+        foreach (var group in groups)
+            AddChip(group.Key, group.Count(), "category:" + group.Key, CategoryLook.Glyph(group.Key), CategoryLook.Light(index), CategoryLook.Ink(index++));
+
+        void AddChip(string name, int count, string filter, string glyph, Brush color, Brush ink)
+        {
+            bool on = _filter == filter;
+            var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            text.Inlines.Add(new System.Windows.Documents.Run(name));
+            text.Inlines.Add(new System.Windows.Documents.Run("  " + count) { FontWeight = FontWeights.Normal, Foreground = on ? Brushes.Gray : (Brush)FindResource("MutedTextBrush") });
+            var icon = new TextBlock
+            {
+                Text = glyph, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14, FontWeight = FontWeights.Normal,
+                Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = on ? ink : color
+            };
+            var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, text } }, Tag = on ? "on" : "off" };
+            if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
+            System.Windows.Automation.AutomationProperties.SetName(button, name);
+            button.Click += (_, _) => SelectFilter(filter);
+            InstalledChips.Children.Add(button);
+        }
+    }
+
     private static readonly Brush SideIconBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x4A, 0xA3, 0xFF)));
     private static Brush Frozen(Brush brush) { brush.Freeze(); return brush; }
 
@@ -1448,6 +1575,16 @@ public partial class MainWindow : Window
     /// </summary>
     private void RestartWithReset(string scope)
     {
+        // 마스터의 일반 화면: 미리 보기 데이터만 비우고 홈으로 (마스터의 데이터는 그대로)
+        if (IsPreview)
+        {
+            ClearPreview();
+            LoadLocalData();
+            _filter = "all";
+            StatusText.Text = "일반 화면 초기화함";
+            _ = RefreshAsync(checkReleases: false);
+            return;
+        }
         if (Environment.ProcessPath is not { } exe) return;
         var start = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
         foreach (string arg in new[] { "--reset", scope, "--after", Environment.ProcessId.ToString() }) start.ArgumentList.Add(arg);

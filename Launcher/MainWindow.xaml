@@ -367,8 +367,9 @@
         </Border>
 
         <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 즐겨찾기 · 업데이트. 설정 · 관리자 메뉴에서는 숨김 -->
+            <!-- 왼쪽 메뉴 칸: 마스터 화면만 (일반 화면은 폭 0 = 홈 화면, 코드에서) -->
+            <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 즐겨찾기 · 업데이트. 설정 · 관리자 메뉴 · 일반 화면에서는 숨김 -->
             <Border x:Name="Sidebar" Background="#FF161618" BorderBrush="#FF2A2B30" BorderThickness="0,0,1,0">
                 <DockPanel Margin="12,16,12,12">
                     <Border DockPanel.Dock="Top" Height="34" Background="#FF2C2D32" CornerRadius="9">
@@ -399,14 +400,15 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
-            <!-- 오른쪽: 스토어(앱 줄) · 설치됨(큰 아이콘) · 앱 페이지, 아래 독(즐겨찾기 · 실행 중 · 프로그램 추가) -->
+            <!-- 오른쪽: 스토어(앱 줄) · 설치됨(큰 아이콘) · 앱 페이지, 아래 독(즐겨찾기 · 실행 중 · 프로그램 추가).
+                 일반 화면은 홈 화면 하나: 왼쪽 메뉴 · 화면 이름 없이 큰 아이콘과 아래 독, 위쪽에 옅은 파란 빛 (배경은 코드에서) -->
             <Grid x:Name="StorePane" Grid.Column="1">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
 
-                <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 즐겨찾기 · 업데이트 · 검색) -->
-                <StackPanel Margin="30,22,30,4">
+                <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 즐겨찾기 · 업데이트 · 검색). 일반 화면(홈)은 이름 없이 가운데 분류 버튼 줄만 -->
+                <StackPanel x:Name="ViewHeader" Margin="30,22,30,4">
                     <TextBlock x:Name="ViewHeading" FontSize="26" FontWeight="Bold" Foreground="#FFF5F5F7" TextTrimming="CharacterEllipsis" />
-                    <!-- 설치됨: 분류별 필터 단추 (전체 · 분류마다 개수), 검색 중에는 숨김 -->
+                    <!-- 설치됨: 분류별 필터 단추 (전체 · 분류마다 개수), 검색 중에는 숨김. 홈은 가운데에 색 아이콘이 든 단추 (전체 · 즐겨찾기 · 업데이트 · 분류마다) -->
                     <WrapPanel x:Name="InstalledChips" Margin="-4,14,0,0" Visibility="Collapsed" />
                 </StackPanel>
 
@@ -594,11 +596,11 @@
                             </DataTemplate>
                         </ScrollViewer.Resources>
 
-                        <!-- 칸 묶음: 제목 줄(업데이트 화면의 모두 업데이트 등)은 있을 때만, 칸은 창 폭에 맞춰 열 수가 바뀌고 가운데 -->
+                        <!-- 칸 묶음: 제목 줄(업데이트 화면의 모두 업데이트 등)은 있을 때만, 칸은 창 폭에 맞춰 열 수가 바뀜 (일반 화면의 홈은 가운데) -->
                         <ItemsControl x:Name="SectionList" Focusable="False">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:StoreSection}">
-                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,26" HorizontalAlignment="Left">
+                                    <StackPanel Width="{Binding PanelWidth}" Margin="0,4,0,26" HorizontalAlignment="{Binding Alignment}">
                                         <DockPanel Margin="12,6,12,4" Visibility="{Binding HeaderVisibility}">
                                             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButtonStyle}" Content="{Binding ActionText}" Tag="{Binding}" Click="SectionAction_Click"
                                                     Visibility="{Binding ActionVisibility}" IsEnabled="{Binding ActionEnabled}" />

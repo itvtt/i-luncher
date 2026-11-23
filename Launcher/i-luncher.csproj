@@ -66,7 +66,7 @@
       <Output TaskParameter="Lines" ItemName="_LauncherEnvLine" />
     </ReadLinesFromFile>
     <ItemGroup>
-      <_LauncherSetting Include="@(_LauncherEnvLine)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*(API_SERVER|MASTER_USERS|LAUNCHER_REPOSITORY|CATALOG_REPOSITORY|CATALOG_PATH|CATALOG_BRANCH|NOTICES_REPOSITORY|NOTICES_PATH|BASIC_APPS_PATH|GITHUB_HOST|LAUNCHER_TOKEN)\s*='))" />
+      <_LauncherSetting Include="@(_LauncherEnvLine)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*(API_SERVER|MASTER_USERS|GENERAL_APPS|LAUNCHER_REPOSITORY|CATALOG_REPOSITORY|CATALOG_PATH|CATALOG_BRANCH|NOTICES_REPOSITORY|NOTICES_PATH|BASIC_APPS_PATH|GITHUB_HOST|LAUNCHER_TOKEN)\s*='))" />
       <_LauncherRepositoryLine Include="@(_LauncherSetting)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^\s*LAUNCHER_REPOSITORY\s*=\s*\S'))" />
     </ItemGroup>
     <ItemGroup Condition="'@(_LauncherRepositoryLine)' == '' and '$(GITHUB_ACTIONS)' == 'true' and '$(GITHUB_SERVER_URL)' != ''">

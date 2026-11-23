@@ -17,7 +17,7 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
     public string? ActionText
     {
         get => _actionText;
-        set { _actionText = value; Changed(nameof(ActionText)); Changed(nameof(ActionVisibility)); }
+        set { _actionText = value; Changed(nameof(ActionText)); Changed(nameof(ActionVisibility)); Changed(nameof(HeaderVisibility)); }
     }
 
     public bool ActionEnabled
@@ -32,8 +32,11 @@ public sealed class StoreSection(string title, IReadOnlyList<object> items, stri
     /// <summary>목록 폭: 열 수 × 카드 한 칸 (창을 키워도 카드는 같은 크기, 열만 늘어남)</summary>
     public double PanelWidth { get; set; } = double.NaN;
 
-    /// <summary>제목 줄: 제목이 비면 숨김 (전체 앱 · 분류 화면의 한 덩어리 목록)</summary>
-    public Visibility HeaderVisibility => Title.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    /// <summary>목록 놓는 곳: 왼쪽 (스토어 · 설치됨), 가운데 (일반 화면의 홈, 맥 · 아이폰처럼)</summary>
+    public HorizontalAlignment Alignment { get; set; } = HorizontalAlignment.Left;
+
+    /// <summary>제목 줄: 제목도 링크도 없으면 숨김 (전체 앱 · 분류 화면의 한 덩어리 목록). 홈은 제목 없이 "업데이트 N개 · 모두 업데이트"</summary>
+    public Visibility HeaderVisibility => Title.Length == 0 && ActionVisibility == Visibility.Collapsed ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility ActionVisibility => string.IsNullOrEmpty(_actionText) || Action is null ? Visibility.Collapsed : Visibility.Visible;
 

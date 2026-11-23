@@ -39,12 +39,26 @@ static class UiSnapshot
                         InstalledApp Installed(AppCard card, string version) => new(card.App.EffectiveInstallName, @"C:\demo\" + card.App.EffectiveInstallName, null,
                             ReleaseVersion.Parse(version), "설치한 릴리스", null, true, null, null);
                         if (demo.Count > 0) demo[0].Installed = Installed(demo[0], "1.0.9");
+                        // GitHub 에 닿지 못해 릴리스를 모르면 둘째 칸까지 그림용 새 릴리스 (업데이트 표시 · 모두 업데이트가 보이게)
+                        foreach (var card in demo.Take(2).Where(card => card.Latest is null))
+                            card.SetRelease(new GitHubRelease("v9.9.9", "v9.9.9", ReleaseVersion.Parse("9.9.9"), false, DateTimeOffset.Now, "", "", []), null);
                         if (demo.Count > 1 && demo[1].Latest?.Version is { } latest) demo[1].Installed = Installed(demo[1], latest.ToString());
                         if (demo.Count > 2) { demo[2].BeginWork("받는 중…"); demo[2].ReportWork(new AppProgress("Compare-win-x64.zip (3.1 MB) 받는 중… 42%", 0.42)); }
+                        window.ShowTab(window.CurrentTab);  // 업데이트 줄(홈의 모두 업데이트 등)도 다시 그림
+                        Console.WriteLine("demo: " + string.Join(", ", demo.Take(3).Select(card => $"{card.Name} {card.CellAction} latest {card.Latest?.Version}")));
                         window.UpdateLayout();
                         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
                     }
                     Save((FrameworkElement)window.Content, output);
+                    // ILUNCHER_SNAPSHOT_FRESH=1: 아무것도 설치하지 않은 PC 처럼 (설치 표시를 지우고 다시 그림, -fresh). 이후 그림도 그 상태
+                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_FRESH") == "1")
+                    {
+                        foreach (var card in window.VisibleCards.ToList()) card.Installed = null;
+                        window.ShowTab(window.CurrentTab);
+                        Pump(TimeSpan.FromMilliseconds(700));
+                        Save((FrameworkElement)window.Content, Suffix(output, "-fresh"));
+                        Console.WriteLine($"fresh: {window.ViewTitle} · " + string.Join(", ", window.VisibleCards.Select(card => card.Name)));
+                    }
                     // 아래로 내린 화면 (앱 카드 줄)
                     window.CardScrollViewer.ScrollToEnd();
                     Pump(TimeSpan.FromMilliseconds(500));

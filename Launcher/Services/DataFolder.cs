@@ -20,7 +20,9 @@ public static class DataFolder
 
     /// <summary>사용자 데이터 파일 · 폴더 (C:\i-luncher). 즐겨찾기 · 내 앱은 custom-icons · my-media 의 그림을 전체 경로로 가리킴</summary>
     public static readonly string[] UserFiles = ["settings.json", "favorites.json", "my-apps.json", "removed-apps.json"];
-    public static readonly string[] UserFolders = ["custom-icons", "my-media"];
+    public static readonly string[] UserFolders = ["custom-icons", "my-media", PreviewFolder];
+    /// <summary>마스터가 일반 화면을 볼 때 쓰는 빈 데이터 (새로 설치한 일반 사용자처럼, 일반으로 바꿀 때마다 비움)</summary>
+    public const string PreviewFolder = "general-preview";
 
     /// <summary>캐시 파일 · 폴더 (%LOCALAPPDATA%\i-luncher)</summary>
     public static readonly string[] CacheFiles = ["basic-apps-cache.json", "catalog-cache.json", "notice-state.json"];

@@ -28,6 +28,9 @@ public sealed class BuildSettings
     public string Token { get; init; } = "";
     /// <summary>마스터 계정 (MASTER_USERS, 쉼표로 Windows 계정 이름): 앱 목록의 "마스터만" 앱은 이 계정에만 보임. 비우면 제한 없음</summary>
     public IReadOnlyList<string> MasterUsers { get; init; } = [];
+    /// <summary>일반 화면(홈)에 늘 보이는 기본 앱 id (GENERAL_APPS, 쉼표). 비우면 deskcal. 그 밖에는 이 PC 에 설치한 앱만 보임</summary>
+    public IReadOnlyList<string> GeneralApps { get; init; } = [DefaultGeneralApp];
+    public const string DefaultGeneralApp = "deskcal";
 
     /// <summary>목록이 비어 있으면 누구나. 계정은 도메인(DOMAIN\이름)을 떼고 대소문자 없이 비교</summary>
     public bool IsMaster(string account)
@@ -75,6 +78,8 @@ public sealed class BuildSettings
             BasicAppsPath = Read("BASIC_APPS_PATH"),
             DefaultHost = Read("GITHUB_HOST"),
             Token = Read("LAUNCHER_TOKEN"),
+            GeneralApps = Read("GENERAL_APPS").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is { Length: > 0 } general
+                ? general : [DefaultGeneralApp],
             MasterUsers = Read("MASTER_USERS").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(account => account[(account.LastIndexOf('\\') + 1)..]).Where(account => account.Length > 0).ToArray()
         };
