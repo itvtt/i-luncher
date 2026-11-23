@@ -77,3 +77,12 @@ jobs:
           RELEASE_TITLE: i-luncher
           RELEASE_FOOTER: '처음 설치: i-luncher-Setup.exe 를 실행하세요. 설치된 런처는 시작할 때 스스로 업데이트합니다.'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File build\New-GitHubRelease.ps1
+
+      # 빌드가 끝나면 컴파일러 서버(VBCSCompiler · MSBuild 서버)를 끔: 끝난 뒤에도 몇 분씩 수백 MB 를 잡고 있음 (빌드 속도는 그대로).
+      # 이 PC 에서 다른 작업이 아직 빌드 중이면(Runner.Worker 가 둘 이상) 그 빌드가 쓰므로 끄지 않음
+      - name: Free build memory
+        if: always()
+        shell: powershell
+        run: |
+          try { if (@(Get-Process Runner.Worker -ErrorAction SilentlyContinue).Count -le 1) { dotnet build-server shutdown } } catch { Write-Host "build-server shutdown skipped: $_" }
+          exit 0
