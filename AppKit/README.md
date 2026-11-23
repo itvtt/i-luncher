@@ -53,6 +53,8 @@ protected override void OnStartup(StartupEventArgs e)
 
 ## 사용량 집계 (`AppUsage.cs`)
 
+`AppUsage.Start()` 는 **메모리 정리(`AppMemory`, 같은 파일)** 도 켭니다 (일반 · 마스터 모두): 앱이 뒤에 있고(맨 앞 창이 다른 프로그램) 한가한 채로 15초가 지나면 한 번, 쓰지 않는 .NET 힙을 Windows 에 돌려주고 작업 집합을 비웁니다 (작업 관리자의 메모리가 트레이 앱은 보통 10MB 안팎으로). 앞에 있거나 바쁠 때(5초에 CPU 0.15초 넘게)는 하지 않고, 뒤에서 다시 16MB 넘게 늘면 한 번 더 합니다. 따로 부를 것은 없습니다 (지금 바로: `AppMemory.Trim()`).
+
 앱을 실제로 얼마나 쓰는지 API 서버(`/launcher/usage`, 코드는 `CDEP\relay.py` 의 `Usage`)에 모읍니다. **마스터 계정만** (설치된 i-luncher `launcher.env` 의 `MASTER_USERS`): 일반 사용자는 모으지도 보내지도 않습니다 (나중에 정함). ImPerformance 가 이 값으로 성과 금액을 계산합니다. `AppUpdater.cs` 없이 이 파일만 복사해도 되고(자체 업데이터가 따로 있는 앱), 다른 DLL 을 쓰지 않아 실행 파일만 복사해 도는 서비스 사본(File Shared)에서도 동작합니다.
 
 ```csharp

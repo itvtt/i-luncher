@@ -18,6 +18,7 @@
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
 // usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 // 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
+// 또 Start 는 AppMemory 도 켭니다 (누구에게나): 앱이 뒤에서 한가할 때 쓰지 않는 메모리를 Windows 에 돌려줌 (이 파일 맨 아래).
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -69,6 +70,8 @@ namespace ILuncher.AppKit
         /// <summary>앱 시작 때 한 번. app 을 비우면 update.json 의 InstallName, 없으면 실행 파일 이름</summary>
         public static void Start(UsageKind kind = UsageKind.Interactive, string? app = null)
         {
+            // 쓰지 않는 메모리 돌려주기는 누구에게나 (사용량 집계는 아래처럼 마스터만)
+            AppMemory.Start();
             lock (Gate)
             {
                 if (_timer != null) return;
@@ -454,5 +457,92 @@ namespace ILuncher.AppKit
         }
 
         internal static string PendingPath { get { lock (Gate) return _pendingPath; } }
+    }
+
+    /// <summary>
+    /// 쓰지 않는 메모리 돌려주기 (AppUsage.Start 가 켬, 일반 · 마스터 모두).
+    /// 앱이 뒤에 있고(맨 앞 창이 다른 프로그램) 한가한 채로 15초가 지나면 한 번: 쓰지 않는 .NET 힙을 Windows 에 돌려주고(GC) 작업 집합을 비움.
+    /// 다시 앞으로 오거나 일을 하면 필요한 만큼만 다시 올라오고, 그 뒤 또 뒤에서 한가해지면 다시 한 번.
+    /// 뒤에서 조금씩 하는 일(새로고침 · 화면 갱신)로 작업 집합이 16MB 넘게 다시 늘어도 한 번 더.
+    /// 앞에 있거나 바쁠 때(5초에 CPU 0.15초 넘게: 복사 · 분석 · 받기 중)는 하지 않음
+    /// </summary>
+    public static class AppMemory
+    {
+        private static readonly TimeSpan Check = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan BusyCpu = TimeSpan.FromMilliseconds(150);
+        private const int QuietChecks = 3;
+        private const long RegrowBytes = 16L * 1024 * 1024;
+        private static readonly object Gate = new object();
+        private static System.Threading.Timer? _timer;
+        private static TimeSpan _lastCpu;
+        private static int _quiet;
+        private static bool _trimmed;
+        private static long _trimmedSize;
+
+        public static void Start()
+        {
+            lock (Gate)
+            {
+                if (_timer != null) return;
+                _lastCpu = CpuTime();
+                _timer = new System.Threading.Timer(_ => OnCheck(), null, Check, Check);
+            }
+        }
+
+        /// <summary>지금 한 번 정리 (보통은 Start 가 알아서)</summary>
+        public static void Trim()
+        {
+#if NET7_0_OR_GREATER
+            // Aggressive: 빈 힙 구역까지 Windows 에 돌려줌 (커밋도 줄어듦)
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+#else
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+#endif
+            SetProcessWorkingSetSize(GetCurrentProcess(), (IntPtr)(-1), (IntPtr)(-1));
+        }
+
+        private static void OnCheck()
+        {
+            if (!Monitor.TryEnter(Gate)) return;  // 앞 정리가 아직이면 건너뜀
+            try
+            {
+                TimeSpan cpu = CpuTime();
+                bool busy = cpu - _lastCpu > BusyCpu;
+                _lastCpu = cpu;
+                if (busy || IsForeground()) { _quiet = 0; _trimmed = false; return; }
+                if (_trimmed && WorkingSet() - _trimmedSize < RegrowBytes || ++_quiet < QuietChecks) return;
+                Trim();
+                _lastCpu = CpuTime();  // 정리에 쓴 CPU 는 바쁨으로 세지 않음
+                _trimmed = true;
+                _trimmedSize = WorkingSet();
+                _quiet = 0;
+            }
+            catch (Exception)
+            {
+                // 정리는 덤: 실패해도 앱은 그대로 (타이머에서 예외가 나가면 앱이 끝나므로 삼킴)
+            }
+            finally { Monitor.Exit(Gate); }
+        }
+
+        private static TimeSpan CpuTime() { using var process = Process.GetCurrentProcess(); return process.TotalProcessorTime; }
+        private static long WorkingSet() { using var process = Process.GetCurrentProcess(); return process.WorkingSet64; }
+
+        private static readonly int ProcessId = GetProcessId();
+        private static int GetProcessId() { using var process = Process.GetCurrentProcess(); return process.Id; }
+
+        /// <summary>맨 앞 창이 이 앱 (잠금 화면 · 로그인 화면이면 아님)</summary>
+        private static bool IsForeground()
+        {
+            IntPtr window = GetForegroundWindow();
+            if (window == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(window, out uint owner);
+            return owner == (uint)ProcessId;
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+        [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
     }
 }
