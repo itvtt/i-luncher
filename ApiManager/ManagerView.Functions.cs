@@ -31,7 +31,11 @@ public partial class ManagerView
             return;
         }
         string? selected = (FunctionsList.SelectedItem as FunctionRow)?.Id;
-        _functions = (listing["functions"] as JsonArray ?? []).OfType<JsonObject>().Select(item => new FunctionRow(item)).ToList();
+        // 막대는 늘 최근 30일 (기록이 없는 날은 0): 기록이 하루뿐이어도 막대 너비가 같게
+        int days = (int?)listing["days"] ?? 30;
+        var span = DateTime.TryParse(listing["today"]?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var today)
+            ? Enumerable.Range(0, days).Select(back => today.AddDays(back - days + 1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).ToList() : [];
+        _functions = (listing["functions"] as JsonArray ?? []).OfType<JsonObject>().Select(item => new FunctionRow(item, span)).ToList();
         var view = new ListCollectionView(_functions);
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(FunctionRow.Group)));
         FunctionsList.ItemsSource = view;
@@ -118,10 +122,13 @@ internal sealed class FunctionRow : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public FunctionRow(JsonObject data)
+    private readonly List<string> _span;
+
+    public FunctionRow(JsonObject data, List<string> span)
     {
         Id = Text(data["id"]);
         Group = Text(data["group"]);
+        _span = span;
         Update(data);
     }
 
@@ -141,8 +148,11 @@ internal sealed class FunctionRow : INotifyPropertyChanged
         LastFailure = data["lastFailure"] is JsonObject failure
             ? $"마지막 실패 {Local(failure["at"])} · {(int?)failure["status"] ?? 0} · {Text(failure["message"])}".TrimEnd(' ', '·')
             : "";
-        Days = (data["perDay"] as JsonArray ?? []).OfType<JsonObject>()
-            .Select(day => (Text(day["day"]), (long?)day["calls"] ?? 0, (long?)day["failures"] ?? 0)).ToList();
+        var recorded = (data["perDay"] as JsonArray ?? []).OfType<JsonObject>()
+            .ToDictionary(day => Text(day["day"]), day => ((long?)day["calls"] ?? 0, (long?)day["failures"] ?? 0));
+        Days = _span.Count > 0
+            ? _span.Select(day => recorded.TryGetValue(day, out var counts) ? (day, counts.Item1, counts.Item2) : (day, 0L, 0L)).ToList()
+            : recorded.Select(pair => (pair.Key, pair.Value.Item1, pair.Value.Item2)).ToList();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     }
 
