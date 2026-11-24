@@ -1,6 +1,5 @@
-# CDEP\ (회사 배포 환경 C-DEP 에서 돌리는 API 서버) 확인: CDEP\ 가 바뀐 채로 main 에 push 하거나 손으로 실행하면
-# 시험(test_relay.py)을 돌리고, docker 가 있으면 컨테이너 이미지가 만들어지는지 확인합니다.
-# C-DEP 배포(CD) 단계는 회사의 C-DEP 방식에 맞게 여기에 더하거나 C-DEP 쪽에서 CDEP 폴더를 빌드하게 합니다 (CDEP\README.md).
+# CDEP\ (API 서버 relay.py, 사내 서버 PC 한 대에서 돌림) 확인: CDEP\ 가 바뀐 채로 main 에 push 하거나 손으로 실행하면
+# 시험(test_relay.py)을 돌리고, docker 가 있으면 컨테이너 이미지가 만들어지는지 확인합니다 (컨테이너는 지금 쓰지 않음, CDEP\README.md).
 name: CDEP
 
 on:

@@ -119,12 +119,13 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 앱 사용 기록 (`/launcher/usage`) | 마스터 계정의 앱 (AppKit `AppUsage`), ImPerformance 가 읽음 |
 | 문제 보고 · 스킬 · 공지 (`/api/…`) | Terminal Notes |
 
+- **사내 서버 PC 한 대**에서 돌립니다 (C-DEP 에는 올리지 않음). 그 PC 에서 런처의 관리자 메뉴를 열면 서버를 설치하고 켭니다.
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
 - GitHub 중계(`/api/v3/…`)는 예전에 빌드한 앱을 위해 남아 있을 뿐, 지금 런처 · 앱은 쓰지 않습니다.
 - EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다 (포트 **2004**). 포트는 어디서나 API 서버 **2003** · 설비 상태 **2004** 입니다 (설비 DB 를 넣은 API 서버는 `EQUIPMENT_PORT` 2004 에서도 설비 상태를 내려 줌).
 - **서버 주소**: 런처 빌드 설정 `API_SERVER` 가 기본이고, 마스터는 관리자 메뉴 → 서버 → **서버 주소**에서 바꿉니다 (IP 만 쓰면 포트 2003, 비우고 연결하면 기본값, `C:\i-luncher\settings.json` 의 `ApiServer`). 그 PC 의 서버 목록 · 관리자 메뉴 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다. 주소를 바꾸려고 런처를 다시 릴리스하지 않아도 됩니다.
 - 서버 주소가 다른 PC 면 관리자 메뉴는 이 PC 에 서버를 설치 · 시작하지 않고 그 서버에 연결만 합니다 (다시 시작 · 멈추기 숨김). 관리자 비밀번호는 이 PC 의 `API_ADMIN_PASSWORD` (환경 변수 또는 프로필 `i-luncher.env`).
-- 배포 방법: [`CDEP\README.md`](../CDEP/README.md).
+- 서버 PC 에 두는 방법: [`CDEP\README.md`](../CDEP/README.md).
 
 ## 6. 설정 키
 
@@ -169,7 +170,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 1. 런처와 기본 목록 앱 저장소가 **공개**인지 확인합니다 (4장 확인 항목 포함). 공지 저장소 `i-luncher-notices`(공개)를 만들고 `공지.txt`, 그리고 `i-luncher\basic-apps.json` · `basic-media\` 의 복사본을 넣습니다.
 2. 저장소마다 self-hosted 러너를 등록하고, 앱 빌드 설정 `UPDATE_GITHUB_API` 를 GitHub(Enterprise) API 로 둡니다.
 3. 런처 빌드 설정에 `API_SERVER` · `GITHUB_HOST` · `LAUNCHER_REPOSITORY` · `MASTER_USERS` 를 넣습니다.
-4. API 서버를 배포하고 서버 목록을 넣습니다 (`CDEP\README.md`, `import_app_list.py`).
+4. 서버 PC 에서 관리자 메뉴를 열어 API 서버를 두고 서버 목록을 넣습니다 (`CDEP\README.md`, `import_app_list.py`). 다른 마스터 PC 는 관리자 메뉴 → 서버 → 서버 주소에 그 PC 의 IP 를 넣습니다.
 5. 런처와 앱을 한 번씩 릴리스합니다. **러너가 같은 PC 를 쓰면 하나씩** (빌드가 겹치면 메모리가 모자랄 수 있음). 이미 설치된 앱은 그 릴리스를 받은 뒤부터 새 업데이트 주소를 씁니다.
 6. 확인:
    - 일반 계정 PC: 왼쪽 메뉴 없는 홈 화면에 DeskCal(+ 설치한 앱), 관리자 메뉴 없음, `공지.txt` 의 공지가 보임, 버전이 보이고 받기 · 업데이트 · 모두 업데이트가 됨.
