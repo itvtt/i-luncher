@@ -1,11 +1,11 @@
-# CDEP\ (API 서버 relay.py, 사내 서버 PC 한 대에서 돌림) 확인: CDEP\ 가 바뀐 채로 main 에 push 하거나 손으로 실행하면
-# 시험(test_relay.py)을 돌리고, docker 가 있으면 컨테이너 이미지가 만들어지는지 확인합니다 (컨테이너는 지금 쓰지 않음, CDEP\README.md).
+# CDEP\ (API 서버 i-api, C#, 사내 서버 PC 한 대에서 돌림) 확인: CDEP\ · i-api.Checks\ 가 바뀐 채로 main 에 push 하거나 손으로 실행하면
+# 확인(i-api.Checks)을 돌리고, docker 가 있으면 컨테이너 이미지가 만들어지는지 확인합니다 (컨테이너는 지금 쓰지 않음, CDEP\README.md).
 name: CDEP
 
 on:
   push:
     branches: [main]
-    paths: ['CDEP/**', '.github/workflows/cdep.yml']
+    paths: ['CDEP/**', 'i-api.Checks/**', '.github/workflows/cdep.yml']
   workflow_dispatch:
 
 permissions:
@@ -18,18 +18,26 @@ jobs:
     defaults:
       run:
         shell: powershell
-        working-directory: CDEP
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test
+      - name: Check
         run: |
-          $python = if (Get-Command python -ErrorAction SilentlyContinue) { 'python' } else { 'py' }
-          & $python -m unittest test_relay
-          if ($LASTEXITCODE -ne 0) { throw "test_relay failed ($LASTEXITCODE)" }
+          dotnet run --project i-api.Checks\i-api.Checks.csproj -c Release -m:1
+          if ($LASTEXITCODE -ne 0) { throw "i-api.Checks failed ($LASTEXITCODE)" }
 
       - name: Container image
+        working-directory: CDEP
         run: |
           if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Write-Host '::notice::docker 가 없어 이미지 확인을 건너뜁니다.'; exit 0 }
           docker build -t i-luncher-api:ci .
           if ($LASTEXITCODE -ne 0) { throw "docker build failed ($LASTEXITCODE)" }
+
+      - name: Free build memory
+        if: always()
+        run: |
+          try { if (@(Get-Process Runner.Worker -ErrorAction SilentlyContinue).Count -le 1) { dotnet build-server shutdown } } catch { Write-Host "build-server shutdown skipped: $_" }
+          exit 0

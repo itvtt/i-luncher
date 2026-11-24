@@ -19,9 +19,8 @@ public partial class ManagerView : UserControl
 {
     private static readonly Brush Good = Brush("#FF3DD68C"), Warn = Brush("#FFE6C07A"), Muted = Brush("#FFA1A1A6"), Text1 = Brush("#FFF5F5F7");
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(5) };
-    private ServerAddress _address = ServerManager.ReadAddress(ServerManager.DeployedScript);
+    private ServerAddress _address = ServerManager.ReadAddress();
     private AdminClient? _admin;
-    private string? _python;
     private bool _busy, _healthy;
     private readonly HashSet<string> _loaded = [];
 
@@ -71,7 +70,7 @@ public partial class ManagerView : UserControl
             if (_admin is null) return;
             _timer.Start();
             await RefreshHealthAsync();
-            if (CurrentSection is "Server" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
+            if (CurrentSection is "Server" or "Functions" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
         };
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
     }
@@ -95,7 +94,7 @@ public partial class ManagerView : UserControl
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        RestartButton.IsEnabled = StopButton.IsEnabled = !busy && _python is not null;
+        RestartButton.IsEnabled = StopButton.IsEnabled = !busy && ServerManager.CanControl && ManagerHost.IsLocalServer;
         Cursor = busy ? System.Windows.Input.Cursors.Wait : null;
     }
 
@@ -108,31 +107,29 @@ public partial class ManagerView : UserControl
         // 다른 PC 의 서버: 이 PC 에 서버를 두거나 켜지 않고 그 서버에 연결만
         if (!ManagerHost.IsLocalServer)
         {
-            _python = null;
             SetBusy(false);
             ConnectAdmin();
             await RefreshHealthAsync();  // 응답하면 지금 화면을 읽음 (응답하지 않으면 서버가 살아날 때)
             if (IsVisible) _timer.Start();
             return;
         }
-        _python = ServerManager.FindPython();
-        if (_python is null)
+        if (!ServerManager.CanControl)
         {
             SetBusy(false);
-            SetMessage("Python 3.8 이상이 필요합니다 (https://www.python.org/downloads/). 설치한 뒤 다시 여세요.", warning: true);
+            SetMessage(@"이 런처에 서버 프로그램(server\i-api.exe)이 없습니다. 런처를 다시 설치하세요.", warning: true);
             await RefreshHealthAsync();
             return;
         }
         SetBusy(true);
         try
         {
-            string? deployed = await ServerManager.DeployIfNewerAsync(_python);
-            _address = ServerManager.ReadAddress(ServerManager.DeployedScript);
+            string? deployed = await ServerManager.DeployIfNewerAsync();
+            _address = ServerManager.ReadAddress();
             UpdateVersions();
             if (deployed is not null || !await ServerManager.IsHealthyAsync(_address))
             {
                 SetMessage((deployed ?? "서버가 응답하지 않아 시작합니다.") + " 시작하는 중…");
-                var (exitCode, output) = await ServerManager.RestartAsync(_python);
+                var (exitCode, output) = await ServerManager.RestartAsync();
                 SetMessage((deployed is null ? "" : deployed + " ") + (exitCode == 0 ? "서버를 시작했습니다." : "서버가 시작되지 않았습니다: " + LastLine(output)),
                     warning: exitCode != 0);
             }
@@ -152,7 +149,7 @@ public partial class ManagerView : UserControl
     private void ConnectAdmin()
     {
         _admin?.Dispose();
-        _address = ServerManager.ReadAddress(ServerManager.DeployedScript);
+        _address = ServerManager.ReadAddress();
         _admin = new AdminClient(_address.ApiBase, ServerManager.AdminPassword());
     }
 
@@ -211,8 +208,8 @@ public partial class ManagerView : UserControl
             VersionsText.Text = _versionText;
             return;
         }
-        string bundled = ServerManager.ReadVersion(ServerManager.BundledScript)?.ToString() ?? "없음";
-        string deployed = ServerManager.ReadVersion(ServerManager.DeployedScript)?.ToString() ?? "설치 안 됨";
+        string bundled = ServerManager.ReadVersion(ServerManager.BundledExe)?.ToString() ?? "없음";
+        string deployed = ServerManager.DeployedVersion is { } version ? version + (ServerManager.IsPython ? " (Python)" : "") : "설치 안 됨";
         _versionText = $"i-luncher v{app} · 서버 {deployed}" + (bundled != deployed ? $" (포함된 서버 {bundled})" : "");
         VersionsText.Text = _versionText;
     }
@@ -230,13 +227,13 @@ public partial class ManagerView : UserControl
 
     private async void RestartButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_python is null || _busy) return;
+        if (!ServerManager.CanControl || _busy) return;
         SetBusy(true);
         SetMessage("다시 시작하는 중…");
         try
         {
-            string? deployed = await ServerManager.DeployIfNewerAsync(_python);
-            var (exitCode, output) = await ServerManager.RestartAsync(_python);
+            string? deployed = await ServerManager.DeployIfNewerAsync();
+            var (exitCode, output) = await ServerManager.RestartAsync();
             SetMessage((deployed is null ? "" : deployed + " ") + (exitCode == 0 ? "다시 시작했습니다." : "시작되지 않았습니다: " + LastLine(output)), exitCode != 0);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or Win32Exception)
@@ -252,13 +249,13 @@ public partial class ManagerView : UserControl
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_python is null || _busy) return;
+        if (!ServerManager.CanControl || _busy) return;
         if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
                 "관리자 메뉴", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         SetBusy(true);
         try
         {
-            var (_, output) = await ServerManager.HaltAsync(_python);
+            var (_, output) = await ServerManager.HaltAsync();
             SetMessage(LastLine(output) + " · 로그인하면 다시 시작합니다 (시작 폴더의 i-api.vbs).");
         }
         catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or Win32Exception)
@@ -277,7 +274,7 @@ public partial class ManagerView : UserControl
         menu.IsOpen = true;
     }
 
-    private void SettingsFileButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", ServerManager.DeployedScript);
+    private void SettingsFileButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", ServerManager.SettingsPath);
     private void LogButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", _address.LogFile);
     private void DataFolderButton_Click(object sender, RoutedEventArgs e) => OpenWith("explorer.exe", _address.DataFolder);
 
@@ -331,7 +328,8 @@ public partial class ManagerView : UserControl
         string running = uptime >= 86400 ? $"{uptime / 86400}일 {uptime % 86400 / 3600}시간" : uptime >= 3600 ? $"{uptime / 3600}시간 {uptime % 3600 / 60}분" : $"{uptime / 60}분";
         VersionsText.Text = ManagerHost.IsLocalServer ? $"{_versionText} · 실행 {running}" : $"{_versionText} · 서버 {Str(status["version"])} · 실행 {running}";
         string size = (((double?)counts["reportsBytes"] ?? 0) / 1048576).ToString("0.0", CultureInfo.InvariantCulture);
-        ServerFootText.Text = $"Python {Str(status["python"])} · 보고서 {size} MB · GitHub 중계로 여는 저장소: 앱 목록 {status["githubRepositories"]!.AsArray().Count}개" +
+        string runtime = Str(status["runtime"]) is { Length: > 0 } engine ? engine : "Python " + Str(status["python"]);
+        ServerFootText.Text = $"{runtime} · 보고서 {size} MB · GitHub 중계로 여는 저장소: 앱 목록 {status["githubRepositories"]!.AsArray().Count}개" +
             (status["githubProxyRepositories"]!.AsArray().Count > 0 ? $", LAUNCHER_GITHUB_REPOS {status["githubProxyRepositories"]!.AsArray().Count}개" : "");
     }
 
@@ -345,12 +343,12 @@ public partial class ManagerView : UserControl
     {
         if (SkillsSection is null) return;  // 화면을 만드는 중 (처음 고른 탭)
         string section = CurrentSection;
-        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Server", ServerSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
+        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Server", ServerSection), ("Functions", FunctionsSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
                      ("Runners", RunnersSection), ("Notices", NoticesSection), ("Reports", ReportsSection), ("Skills", SkillsSection) })
             panel.Visibility = name == section ? Visibility.Visible : Visibility.Collapsed;
         if (!IsLoaded) return;
         if (section != "Runners") _runnerTimer?.Stop();
-        await LoadSectionAsync(section, force: section is "Server" or "Releases" or "Runners");
+        await LoadSectionAsync(section, force: section is "Server" or "Functions" or "Releases" or "Runners");
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await RefreshCurrentAsync();
@@ -387,6 +385,7 @@ public partial class ManagerView : UserControl
             switch (section)
             {
                 case "Server": await LoadStatusAsync(); break;
+                case "Functions": await LoadFunctionsAsync(); break;
                 case "Apps": await LoadAppsAsync(); break;
                 case "Releases": await LoadReleasesAsync(); break;
                 case "Runners": await LoadRunnersAsync(); break;

@@ -34,6 +34,7 @@
         <ListBox x:Name="Nav" Grid.Row="1" Margin="30,16,22,0" Style="{StaticResource TabStripStyle}" ItemContainerStyle="{StaticResource TabItemStyle}"
                  SelectionChanged="Nav_SelectionChanged">
             <ListBoxItem Content="서버" Tag="Server" IsSelected="True" />
+            <ListBoxItem Content="API" Tag="Functions" />
             <ListBoxItem Content="앱 목록" Tag="Apps" />
             <ListBoxItem Content="릴리스" Tag="Releases" />
             <ListBoxItem Content="러너" Tag="Runners" />
@@ -135,6 +136,101 @@
                     </Border>
                 </StackPanel>
             </ScrollViewer>
+
+            <!-- API: 서버의 API 마다 켜고 끄기, 호출 · 실패 · 걸린 시간 (서버 3.0 이상) -->
+            <Grid x:Name="FunctionsSection" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="FunctionsSummaryText" Style="{StaticResource HintStyle}" TextWrapping="Wrap" />
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="380" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="16,0,26,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /><ColumnDefinition Width="72" /><ColumnDefinition Width="52" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="1" Text="API" Style="{StaticResource HintStyle}" />
+                            <TextBlock Grid.Column="2" Text="오늘" Style="{StaticResource HintStyle}" HorizontalAlignment="Right" />
+                            <TextBlock Grid.Column="3" Text="30일" Style="{StaticResource HintStyle}" HorizontalAlignment="Right" />
+                            <TextBlock Grid.Column="4" Text="실패" Style="{StaticResource HintStyle}" HorizontalAlignment="Right" />
+                        </Grid>
+                        <ListBox x:Name="FunctionsList" Grid.Row="1" SelectionChanged="FunctionsList_SelectionChanged">
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource MutedTextBrush}" Margin="10,12,0,4" />
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ToolTip="{Binding Description}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="48" /><ColumnDefinition Width="*" /><ColumnDefinition Width="64" /><ColumnDefinition Width="72" /><ColumnDefinition Width="52" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Style="{StaticResource SwitchStyle}" IsChecked="{Binding On, Mode=OneWay}" IsEnabled="{Binding Switchable}" Tag="{Binding}"
+                                                  HorizontalAlignment="Left" Click="FunctionSwitch_Click" AutomationProperties.Name="{Binding Title}" />
+                                        <StackPanel Grid.Column="1" Opacity="{Binding RowOpacity}">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Route}" Style="{StaticResource HintStyle}" FontFamily="Consolas, Malgun Gothic" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding TodayText}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="{Binding PeriodText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource LabelTextBrush}" />
+                                        <TextBlock Grid.Column="4" Text="{Binding FailuresText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{Binding FailuresBrush}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- 고른 API -->
+                    <ScrollViewer Grid.Column="1" Margin="18,0,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="FunctionDetail" Visibility="Collapsed">
+                            <TextBlock x:Name="FunctionTitleText" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="FunctionRouteText" Style="{StaticResource HintStyle}" FontFamily="Consolas, Malgun Gothic" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            <TextBlock x:Name="FunctionDescriptionText" FontSize="12.5" Foreground="{StaticResource LabelTextBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <TextBlock x:Name="FunctionStateText" FontSize="12.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <UniformGrid Columns="3" Margin="0,16,0,0">
+                                <Border Style="{StaticResource CardStyle}" Margin="0,0,6,0" Padding="10,8">
+                                    <StackPanel><TextBlock Text="오늘" Style="{StaticResource HintStyle}" /><TextBlock x:Name="FunctionTodayText" FontSize="18" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource CardStyle}" Margin="0,0,6,0" Padding="10,8">
+                                    <StackPanel><TextBlock Text="30일" Style="{StaticResource HintStyle}" /><TextBlock x:Name="FunctionPeriodText" FontSize="18" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource CardStyle}" Padding="10,8">
+                                    <StackPanel><TextBlock Text="평균" Style="{StaticResource HintStyle}" /><TextBlock x:Name="FunctionAverageText" FontSize="18" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                            </UniformGrid>
+                            <!-- 최근 30일 호출 (실패는 노랑) -->
+                            <ItemsControl x:Name="FunctionBars" Height="64" Margin="0,16,0,0" Focusable="False">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="1,0" Background="Transparent" ToolTip="{Binding Tip}">
+                                            <Border Height="{Binding CallsHeight}" VerticalAlignment="Bottom" CornerRadius="2" Background="{StaticResource AccentBrush}" Opacity="0.75" />
+                                            <Border Height="{Binding FailuresHeight}" VerticalAlignment="Bottom" CornerRadius="2" Background="{StaticResource WarnBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="FunctionBarsText" Style="{StaticResource HintStyle}" Margin="0,4,0,0" />
+                            <TextBlock x:Name="FunctionLastText" FontSize="12.5" Foreground="{StaticResource LabelTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                            <TextBlock x:Name="FunctionFailureText" FontSize="12.5" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
 
             <!-- 앱 목록 (i-luncher) -->
             <Grid x:Name="AppsSection" Visibility="Collapsed">

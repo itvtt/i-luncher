@@ -36,6 +36,10 @@ if (-not $SkipChecks) {
     Write-Host 'Running Launcher.Checks'
     & dotnet run --project (Join-Path $root 'Launcher.Checks\Launcher.Checks.csproj') -c Release -nologo -m:1
     if ($LASTEXITCODE -ne 0) { throw "Launcher.Checks failed (exit $LASTEXITCODE)." }
+    # 런처에 드는 API 서버(CDEP\i-api.csproj)도 확인 (임시 포트 · 임시 폴더)
+    Write-Host 'Running i-api.Checks'
+    & dotnet run --project (Join-Path $root 'i-api.Checks\i-api.Checks.csproj') -c Release -nologo -m:1
+    if ($LASTEXITCODE -ne 0) { throw "i-api.Checks failed (exit $LASTEXITCODE)." }
 }
 
 $out = [IO.Path]::Combine($root, $OutputDirectory)

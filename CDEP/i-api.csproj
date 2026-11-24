@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- API 서버 i-api (C#, 예전 relay.py 를 옮김). .NET 10 실행 환경만 있으면 되고 설치할 것이 없음 (NuGet 패키지 없음).
+       런처의 관리자 메뉴(ApiManager)가 이 프로그램을 런처 설치 폴더의 server\ 로 넣고, 서버 PC 에서는 %LOCALAPPDATA%\i-api 에 두고 돌림.
+       설정은 그 폴더의 settings.txt, 데이터는 C:\ProgramData\i-api-data (CDEP\README.md) -->
+  <PropertyGroup>
+    <!-- 창 없이 도는 서버: 명령 줄(서버 시작.cmd 등)에서는 부른 쪽 콘솔에 씀 (Program.AttachConsole) -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>IApi</RootNamespace>
+    <AssemblyName>i-api</AssemblyName>
+    <!-- 서버 버전 (관리자 메뉴가 서버 PC 의 것과 견줘 새 버전이면 바꿈). relay.py 의 마지막 버전은 2.23.0 -->
+    <Version>3.0.0</Version>
+    <Product>i-api</Product>
+    <Description>i-luncher API 서버</Description>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
+    <!-- Windows 전용 기능(러너 · 방화벽 · 자동 실행)은 OperatingSystem.IsWindows() 로 감쌈. 컨테이너(Linux)에서도 서버는 돔 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <DefaultItemExcludes>$(DefaultItemExcludes);seed\**;out\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="i-api.Checks" />
+    <None Remove="*.py;Dockerfile;env.sample;README.md" />
+  </ItemGroup>
+</Project>

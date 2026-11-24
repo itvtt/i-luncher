@@ -21,7 +21,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
    일반 PC ─ i-luncher ─┘                       └─ 설치된 앱
    모든 PC ─ i-luncher ─── 공지 · 기본 목록: GitHub 공지 저장소의 공지.txt · basic-apps.json
    마스터 PC ─ i-luncher ─┬─ (위와 같음)
-                          └─ API 서버(CDEP\relay.py): 서버 목록 · 관리자 메뉴 · 사용 기록
+                          └─ API 서버(i-api, CDEP): 서버 목록 · 관리자 메뉴 · 사용 기록
 ```
 
 ## 1. 역할: 일반 · 마스터
@@ -110,7 +110,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - 커밋 이메일이 공개해도 되는 주소인지.
 - **workflow 트리거가 `push` · `workflow_dispatch` 뿐인지.** self-hosted 러너를 쓰는 공개 저장소에 `pull_request` 트리거를 두면, 누구나 포크해 PR 로 러너 PC 에서 코드를 실행할 수 있습니다. 넣지 않습니다.
 
-## 5. API 서버 (`CDEP\relay.py`)
+## 5. API 서버 (i-api, `CDEP\i-api.csproj`)
 
 | 하는 일 | 쓰는 쪽 |
 |---|---|
@@ -120,7 +120,8 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 문제 보고 · 스킬 · 공지 (`/api/…`) | Terminal Notes |
 
 - **사내 서버 PC 한 대**에서 돌립니다 (C-DEP 에는 올리지 않음). 그 PC 에서 런처의 관리자 메뉴를 열면 서버를 설치하고 켭니다.
-- 이름은 **i-api**: 서버 `%LOCALAPPDATA%\i-api\relay.py`, 데이터 `C:\ProgramData\i-api-data`, 로그인 자동 시작 `i-api.vbs`. 예전 이름(`TerminalNotesRelay`)으로 깔린 서버는 서버 PC 에서 새 런처가 켜질 때 저절로 옮겨집니다.
+- 이름은 **i-api** (C#, 3.0 부터): 서버 `%LOCALAPPDATA%\i-api\i-api.exe`, 설정 그 옆의 `settings.txt`, 데이터 `C:\ProgramData\i-api-data`, 로그인 자동 시작 `i-api.vbs`. 서버 PC 에 Python 이 필요 없습니다. 예전 Python 서버(`relay.py`, 예전 이름 `TerminalNotesRelay` 포함)는 서버 PC 에서 새 런처가 켜질 때 저절로 옮겨집니다 (SETTINGS → `settings.txt`).
+- 관리자 메뉴 → **API**: API 마다 켜고 끄기 (끈 API 는 503), 오늘 · 30일 호출, 실패, 평균 시간. 새 API 는 `CDEP\Server\Functions.cs` 에 등록합니다.
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
 - GitHub 중계(`/api/v3/…`)는 예전에 빌드한 앱을 위해 남아 있을 뿐, 지금 런처 · 앱은 쓰지 않습니다.
 - EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다 (포트 **2004**). 포트는 어디서나 API 서버 **2003** · 설비 상태 **2004** 입니다 (설비 DB 를 넣은 API 서버는 `EQUIPMENT_PORT` 2004 에서도 설비 상태를 내려 줌).

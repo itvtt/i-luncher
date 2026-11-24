@@ -10,7 +10,7 @@ public static class ManagerHost
 
     /// <summary>
     /// 런처가 쓰는 API 서버 (마스터가 서버 화면에서 바꾼 주소, 없으면 빌드 설정 API_SERVER). 런처가 정함.
-    /// 이 PC 가 아니면 관리자 메뉴는 이 PC 에 서버를 두거나 켜지 않고 그 서버만 고침. 비었거나 이 PC 면 이 PC 서버의 relay.py SETTINGS(RELAY_HOST·RELAY_PORT)
+    /// 이 PC 가 아니면 관리자 메뉴는 이 PC 에 서버를 두거나 켜지 않고 그 서버만 고침. 비었거나 이 PC 면 이 PC 서버의 설정 파일(RELAY_HOST·RELAY_PORT)
     /// </summary>
     public static string ApiServer { get; set; } = "";
 
@@ -57,19 +57,17 @@ public static class ManagerHost
     internal static void RaiseCatalogSaved() => CatalogSaved?.Invoke();
 
     /// <summary>
-    /// 화면 없이: 이 PC 가 서버 PC 면(relay.py 가 배포돼 있으면) 런처에 든 relay.py 가 더 새 버전일 때 바꾸고, 서버가 꺼져 있으면 시작.
-    /// 서버 PC 가 아니거나 런처가 다른 PC 의 서버를 쓰면 아무것도 하지 않음. 실패는 조용히 넘김 (관리자 메뉴에서 자세히 보임)
+    /// 화면 없이: 이 PC 가 서버 PC 면(서버가 설치돼 있으면) 런처에 든 서버(i-api.exe)가 더 새 버전일 때 바꾸고 (예전 Python 서버면 C# 서버로 옮김),
+    /// 서버가 꺼져 있으면 시작. 서버 PC 가 아니거나 런처가 다른 PC 의 서버를 쓰면 아무것도 하지 않음. 실패는 조용히 넘김 (관리자 메뉴에서 자세히 보임)
     /// </summary>
     public static async Task ApplyAsync()
     {
         try
         {
-            if (!IsLocalServer || !ServerManager.IsDeployed || !File.Exists(ServerManager.BundledScript)) return;
-            string? python = ServerManager.FindPython();
-            if (python is null) return;
-            string? deployed = await ServerManager.DeployIfNewerAsync(python);
-            if (deployed is null && await ServerManager.IsHealthyAsync(ServerManager.ReadAddress(ServerManager.DeployedScript))) return;
-            await ServerManager.RestartAsync(python);
+            if (!IsLocalServer || !ServerManager.IsDeployed || !ServerManager.CanControl) return;
+            string? deployed = await ServerManager.DeployIfNewerAsync();
+            if (deployed is null && await ServerManager.IsHealthyAsync(ServerManager.ReadAddress())) return;
+            await ServerManager.RestartAsync();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or System.ComponentModel.Win32Exception) { }
     }

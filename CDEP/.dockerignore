@@ -1,2 +1,4 @@
-*
-!relay.py
+bin/
+obj/
+seed/
+*.py

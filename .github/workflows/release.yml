@@ -17,7 +17,7 @@ on:
   push:
     branches: [main]
     paths-ignore: ['catalog/**', '공지.txt', '**.md', '.env.sample', '.gitignore', 'AppKit/templates/**', 'Projects/**',
-                   'CDEP/Dockerfile', 'CDEP/.dockerignore', 'CDEP/env.sample', 'CDEP/seed/**', 'CDEP/test_relay.py', 'CDEP/import_app_list.py', '.github/workflows/cdep.yml']
+                   'CDEP/Dockerfile', 'CDEP/.dockerignore', 'CDEP/env.sample', 'CDEP/seed/**', 'CDEP/import_app_list.py', 'i-api.Checks/**', '.github/workflows/cdep.yml']
   workflow_dispatch:
     inputs:
       version:
