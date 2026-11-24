@@ -37,7 +37,7 @@ internal static class Program
     private static readonly string[] FlagNames =
     [
         "--check", "--quiet", "--allow-firewall", "--install-startup", "--no-firewall", "--uninstall-startup", "--start", "--stop", "--restart", "--halt",
-        "--version", "--start-runners", "--backup", "--help", "-h",
+        "--version", "--start-runners", "--backup", "--setup", "--help", "-h",
     ];
 
     private static Arguments Parse(string[] argv)
@@ -117,6 +117,23 @@ internal static class Program
             return 0;
         }
         if (args.CtrlBreak is { } pid) return int.TryParse(pid, out int target) ? Native.CtrlBreakHelper(target) : 2;
+        // 손으로 실행 (더블클릭 · 바로 가기, 또는 --setup): 포트를 묻는 창. 로그인 자동 실행(wscript) · 관리자 메뉴가 띄운 서버는 그냥 서버로 돎
+        if (args.Flags.Contains("--setup") || argv.Length == 0 && StartedByHand())
+        {
+#if WINDOWS
+            return SetupWindow.Run(args.Options);
+#else
+            throw new ConfigError("포트를 정해 실행하세요: i-api --port <포트>");
+#endif
+        }
+        // i-api.exe --port <포트> 만: 그 포트로 정하고 (설정 파일에 씀) 로그인 자동 실행 · 방화벽, 서버를 (다시) 시작
+        if (args.Options.Port is { } chosen && args.Flags.Count == 0 && args.SettingsFrom is null && args.RestoreBackup is null)
+        {
+            if (!int.TryParse(chosen, out int port)) throw new ConfigError($"--port 는 숫자로 씁니다: {chosen}");
+            var (ok, message) = Configure(args.Options, port);
+            Console.WriteLine(message);
+            return ok ? 0 : 1;
+        }
         if (args.Flags.Contains("--halt"))
         {
             Console.WriteLine($"멈춘 서버 {Setup.StopRunning()}개");
@@ -189,6 +206,70 @@ internal static class Program
             return 0;
         }
         return Serve(config, quiet: args.Flags.Contains("--quiet"));
+    }
+
+    /// <summary>탐색기(더블클릭 · 바로 가기)에서 실행됨</summary>
+    private static bool StartedByHand()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        var processes = Native.Processes();
+        int parent = processes.FirstOrDefault(process => process.Pid == Environment.ProcessId).Parent;
+        return processes.Any(process => process.Pid == parent && process.Name.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 이 PC 에서 이 포트로 서버를 켬: 설정 파일에 포트를 쓰고, 로그인 자동 실행을 등록하고 (재부팅해도 다시 켜짐), 방화벽을 열고 (없으면 Windows 확인 창),
+    /// 돌고 있던 이 서버를 멈춘 뒤 창 없이 시작해 응답을 확인. (성공, 알릴 글)
+    /// </summary>
+    internal static (bool Ok, string Message) Configure(Options given, int port)
+    {
+        if (port is < 1 or > 65535) return (false, "포트는 1~65535 의 숫자로 씁니다.");
+        string file = Path.GetFullPath(given.SettingsFile ?? Settings.DefaultFile);
+        if (Setup.StopRunning() > 0) Thread.Sleep(1000);
+        Settings.EnsureComplete(file);
+        Settings.SetValue(file, "RELAY_PORT", port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var options = new Options { SettingsFile = given.SettingsFile, Bind = given.Bind };
+        options.Sets.AddRange(given.Sets);
+        Config config;
+        try
+        {
+            config = new Config(options);
+            config.Validate();
+        }
+        catch (ConfigError problem) { return (false, problem.Message); }
+        try
+        {
+            using var probe = new System.Net.Sockets.TcpListener(config.Bind is "" or "0.0.0.0" ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(config.Bind), port);
+            probe.Start();
+            probe.Stop();
+        }
+        catch (Exception error) when (error is System.Net.Sockets.SocketException or FormatException)
+        {
+            return (false, $"포트 {port} 을(를) 이 PC 의 다른 프로그램이 쓰고 있습니다. 다른 포트를 고르세요.");
+        }
+        var output = Console.Out;
+        Console.SetOut(TextWriter.Null);
+        try
+        {
+            Setup.InstallStartup(config.SetArgs, Util.SamePath(config.SettingsFile, Settings.DefaultFile) ? null : config.SettingsFile);
+            if (!Config.IsLoopback(config.Bind))
+            {
+                if (Setup.FirewallAllowed(port) == false) Setup.AllowFirewall(port);
+                if (config.UsesEquipmentPort && Setup.FirewallAllowed(config.EquipmentPort) == false) Setup.AllowFirewall(config.EquipmentPort);
+            }
+            if (Setup.RestartServer(config) != 0)
+            {
+                string last = "";
+                try { last = File.ReadLines(config.LogFile, Encoding.UTF8).LastOrDefault() ?? ""; } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+                return (false, $"서버가 응답하지 않습니다. 로그: {config.LogFile}" + (last.Length > 0 ? "\n" + last : ""));
+            }
+        }
+        finally { Console.SetOut(output); }
+        string scheme = config.TlsCert.Length > 0 ? "https" : "http";
+        var addresses = config.Host.Length > 0 ? [config.Host] : Config.LocalAddresses();
+        string where = string.Join(", ", addresses.Select(address => $"{scheme}://{address}:{port}"));
+        string firewall = Config.IsLoopback(config.Bind) || Setup.FirewallAllowed(port) != false ? "" : "\n방화벽이 닫혀 있어 다른 PC 는 접속하지 못합니다 (다시 실행해 Windows 확인 창에서 \"예\").";
+        return (true, $"실행 중: {where}\n로그인하면 자동으로 다시 켜집니다. i-luncher 서버 주소에는 IP:{port} 를 넣습니다.{firewall}");
     }
 
     /// <summary>예전 relay.py 의 SETTINGS (또는 다른 settings.txt) 를 이 서버의 설정 파일로 옮김</summary>

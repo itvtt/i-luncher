@@ -9,11 +9,13 @@
 
 ## 서버 PC에서
 
-보통은 서버 PC 에서 i-luncher(마스터 계정)의 **관리자 메뉴**를 열면 이 폴더의 파일이 `%LOCALAPPDATA%\i-api` 에 들어가고, 로그인 자동 실행(시작 폴더의 `i-api.vbs`)이 등록되고, 서버가 켜집니다. 런처가 새 버전이 되면 시작할 때 서버도 바꿉니다 (예전 파일은 `backup\i-api-<버전>\`, 설정은 그대로).
+**`i-api.exe` 를 실행하면 됩니다.** 작은 창이 뜨면 **포트**를 넣고 [실행]: 그 PC 에서 서버가 켜지고, 포트를 설정 파일에 쓰고, 로그인 자동 실행(시작 폴더의 `i-api.vbs`)을 등록해 재부팅해도 다시 켜지며, 방화벽에 그 포트를 엽니다 (Windows 확인 창에서 "예" 한 번). **포트는 기본값이 없습니다**: 정하지 않으면 서버가 시작하지 않습니다. 포트를 바꾸려면 `i-api.exe` 를 다시 실행해 새 포트로 [실행]. 창 없이는 `i-api.exe --port <포트>`.
+
+i-luncher(마스터 계정)의 **관리자 메뉴**를 서버 PC 에서 열어도 이 폴더의 파일을 `%LOCALAPPDATA%\i-api` 에 넣고 같은 창을 엽니다. 런처가 새 버전이 되면 시작할 때 서버도 바꿉니다 (예전 파일은 `backup\i-api-<버전>\`, 설정은 그대로).
 
 예전 Python 서버(`%LOCALAPPDATA%\i-api\relay.py` 또는 `%LOCALAPPDATA%\TerminalNotesRelay\relay.py`)는 그때 **한 번 저절로 옮깁니다**: 그 서버를 멈추고, `relay.py` 맨 위 SETTINGS 를 `settings.txt` 로, 로그인 자동 실행을 `i-api.exe` 로, 러너 로그온 작업(`GitHub Runners`)도 새 서버로. `relay.py` 는 `backup\relay-<버전>.py` 로 남습니다.
 
-손으로 둘 때: 이 폴더(런처 설치 폴더의 `server\`)를 서버 PC 에 복사하고 **`서버 시작.cmd`** (자동 실행 등록 · 방화벽 열기(Windows 확인 창 한 번) · 시작 · 응답 확인, 실행 중이면 다시 시작). 끄려면 **`서버 중지.cmd`** (멈추고 자동 실행 해제).
+끄려면 **`서버 중지.cmd`** (멈추고 자동 실행 해제). 다시 켜려면 `i-api.exe` 또는 `서버 시작.cmd`.
 
 ## 설정 (`settings.txt`, i-api.exe 옆)
 
@@ -21,7 +23,7 @@
 
 | 항목 | 뜻 |
 | --- | --- |
-| `RELAY_HOST` · `RELAY_PORT` | 받을 IP와 포트(기본 2003). IP 를 비우면 이 PC 의 모든 IP. 쓰면 이 PC 의 IP 여야 함 |
+| `RELAY_HOST` · `RELAY_PORT` | 받을 IP 와 **포트 (필수, 기본값 없음: i-api.exe 를 실행해 정함)**. IP 를 비우면 이 PC 의 모든 IP. 쓰면 이 PC 의 IP 여야 함 |
 | `RELAY_BIND` | (선택) 받을 IP 를 따로 (`0.0.0.0` = 모든 IP) |
 | `RELAY_ADMIN_PASSWORD` | 관리자 메뉴 · 관리 페이지 비밀번호. 비우면 누구나 고침. 10분에 10번 틀리면 10분 잠김 |
 | `RELAY_INGEST_KEY` | (선택) Terminal Notes 앱 키 (앱 `.env` 와 같게) |
@@ -50,7 +52,8 @@
 ## 명령
 
 ```powershell
-i-api.exe                         # 설정대로 실행 (창 없이)
+i-api.exe                         # 더블클릭: 포트를 묻는 창 (서버 시작 · 자동 실행 · 방화벽)
+i-api.exe --port 2003             # 창 없이 같은 일 (포트를 설정 파일에 씀)
 i-api.exe --check                 # 설정 · 방화벽만 확인
 i-api.exe --start | --stop        # 서버 시작.cmd · 서버 중지.cmd 와 같음
 i-api.exe --restart | --halt      # 다시 시작 / 멈추기만 (관리자 메뉴가 씀)

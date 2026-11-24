@@ -132,7 +132,9 @@ internal sealed class Config
         }
 
         Host = Text("RELAY_HOST");
-        Port = options.Port is { } port && int.TryParse(port, out int given) ? given : Number("RELAY_PORT", 2003);
+        // 포트는 기본값이 없음: 정하지 않았으면 0 (Validate 가 거절)
+        Port = options.Port is { } port ? (int.TryParse(port, out int given) ? given : throw new ConfigError($"--port 는 숫자로 씁니다: {port}"))
+            : Text("RELAY_PORT").Length > 0 ? Number("RELAY_PORT", 0) : 0;
         // 서비스의 IP 는 앱이 빌드된 주소인 RELAY_HOST: 서버는 그 주소로 받음. RELAY_BIND 가 대신함 (0.0.0.0: 이 PC 의 모든 주소)
         Bind = options.Bind ?? (Text("RELAY_BIND") is { Length: > 0 } bind ? bind : ListenAddress(Host));
         BindSource = options.Bind is not null ? "--bind" : Text("RELAY_BIND").Length > 0 ? "RELAY_BIND" : "RELAY_HOST";
@@ -226,6 +228,8 @@ internal sealed class Config
     /// <summary>필요한 것은 없음: 키가 없으면 IP 로 닿은 앱을 모두 받고, 비밀번호가 없으면 누구나 고치며, RELAY_HOST 가 없으면 이 PC 의 모든 IP 에서 받음</summary>
     public void Validate()
     {
+        if (Port is < 1 or > 65535)
+            throw new ConfigError("포트가 정해지지 않았습니다. i-api.exe 를 실행해 포트를 정하거나(또는 i-api.exe --port <포트>) 설정 파일의 RELAY_PORT 를 쓰세요.");
         if ((TlsCert.Length > 0) != (TlsKey.Length > 0)) throw new ConfigError("HTTPS를 쓰려면 RELAY_TLS_CERT와 RELAY_TLS_KEY를 함께 설정하세요.");
         if (Bind != "0.0.0.0" && !IsLocalAddress(Bind))
         {

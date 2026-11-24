@@ -126,7 +126,12 @@ public partial class ManagerView : UserControl
             string? deployed = await ServerManager.DeployIfNewerAsync();
             _address = ServerManager.ReadAddress();
             UpdateVersions();
-            if (deployed is not null || !await ServerManager.IsHealthyAsync(_address))
+            if (!ServerManager.HasPort)
+            {
+                if (deployed is null) ServerManager.OpenSetupWindow();
+                SetMessage(deployed ?? "서버의 포트가 정해지지 않았습니다. 열린 창에서 포트를 정하고 [실행]하세요.", warning: deployed is null);
+            }
+            else if (deployed is not null || !await ServerManager.IsHealthyAsync(_address))
             {
                 SetMessage((deployed ?? "서버가 응답하지 않아 시작합니다.") + " 시작하는 중…");
                 var (exitCode, output) = await ServerManager.RestartAsync();
@@ -158,8 +163,8 @@ public partial class ManagerView : UserControl
     {
         bool local = ManagerHost.IsLocalServer;
         ServerAddressBox.Text = ManagerHost.ApiServer;
-        ServerAddressBox.Tag = ManagerHost.DefaultApiServer.Length > 0 ? ManagerHost.DefaultApiServer : "예: 192.168.0.10";
-        ServerAddressHint.Text = "IP 만 쓰면 포트 2003 · 비우고 연결하면 기본값" + (ManagerHost.DefaultApiServer.Length > 0 ? $" ({ManagerHost.DefaultApiServer})" : " (이 PC)")
+        ServerAddressBox.Tag = ManagerHost.DefaultApiServer.Length > 0 ? ManagerHost.DefaultApiServer : "예: 192.168.0.10:2003";
+        ServerAddressHint.Text = "IP:포트 (서버 PC 에서 i-api.exe 로 정한 포트) · 비우고 연결하면 기본값" + (ManagerHost.DefaultApiServer.Length > 0 ? $" ({ManagerHost.DefaultApiServer})" : " (이 PC)")
             + (local ? "" : " · 다른 PC 의 서버라 이 PC 에서 켜거나 멈추지 않음");
         ConnectButton.IsEnabled = ManagerHost.ChangeApiServer is not null;
         var visibility = local ? Visibility.Visible : Visibility.Collapsed;
@@ -182,7 +187,7 @@ public partial class ManagerView : UserControl
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         if (change(ServerAddressBox.Text) is null)
         {
-            SetMessage("주소가 올바르지 않습니다. 예: 192.168.0.10 · 192.168.0.10:2003 · https://서버", warning: true);
+            SetMessage("주소를 IP:포트로 쓰세요. 예: 192.168.0.10:2003 · https://서버", warning: true);
             ServerAddressBox.Focus();
             return;
         }

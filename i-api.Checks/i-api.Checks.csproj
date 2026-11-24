@@ -4,7 +4,7 @@
        서버를 이 프로세스 안에서 루프백 · 임시 폴더로 띄우고, GitHub 은 가짜 서버. 이 PC 의 실제 데이터 · 시작 폴더 · 작업 스케줄러는 건드리지 않음 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>IApi.Checks</RootNamespace>

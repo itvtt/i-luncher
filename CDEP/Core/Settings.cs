@@ -21,7 +21,7 @@ internal static partial class Settings
     public static readonly SettingDefault[] Defaults =
     [
         new("RELAY_HOST", "", "이 서버 PC의 IP(앱 .env 의 RELAY_HOST 와 같게). 비우면 이 PC의 모든 IP에서 받습니다."),
-        new("RELAY_PORT", "2003"),
+        new("RELAY_PORT", "", "(필수) 이 서버가 받을 포트. 기본값은 없습니다: i-api.exe 를 실행하면 묻고 여기에 씁니다 (또는 i-api.exe --port <포트>)."),
         new("RELAY_BIND", "", "(선택) 받을 주소를 따로 정할 때. 0.0.0.0 = 이 PC의 모든 IP"),
         new("RELAY_INGEST_KEY", "", "(선택) 앱 키. 쓰면 앱 .env 의 RELAY_INGEST_KEY 와 같아야 받습니다."),
         new("RELAY_ADMIN_PASSWORD", "", "(선택) 관리자 비밀번호 (관리자 메뉴 · 관리 페이지). 비우면 누구나 고칩니다."),
@@ -132,6 +132,16 @@ internal static partial class Settings
             foreach (string key in extra) text.Append(key).Append('=').Append(Quote(values[key])).Append("\r\n");
         }
         return text.ToString();
+    }
+
+    /// <summary>설정 하나를 파일에 씀 (그 줄을 바꾸고, 없으면 덧붙임). 다른 줄 · 설명은 그대로</summary>
+    public static void SetValue(string path, string key, string value)
+    {
+        string text = File.Exists(path) ? Util.ReadText(path) : Compose(new Dictionary<string, string>());
+        var pattern = new Regex("^" + Regex.Escape(key) + @"\s*=[^\r\n]*", RegexOptions.Multiline);
+        string line = key + "=" + Quote(value);
+        text = pattern.IsMatch(text) ? pattern.Replace(text, line.Replace("$", "$$"), 1) : text.TrimEnd('\r', '\n') + "\r\n" + line + "\r\n";
+        Util.AtomicWrite(path, Util.Utf8.GetBytes(text));
     }
 
     /// <summary>파일에 없는 설정을 설명 · 기본값과 함께 덧붙인 글과 그 키들 (빠진 것이 없으면 그대로)</summary>

@@ -235,8 +235,8 @@ public sealed class LauncherSettings
     public const int DefaultApiPort = 2003;
 
     /// <summary>
-    /// API 서버 주소를 http(s)://호스트[:포트] 로 정리. IP · 이름만 쓰면 http 와 포트 2003 (192.168.0.10 → http://192.168.0.10:2003).
-    /// 비었거나 틀리면 null. AppKit AppUsage 의 NormalizeServer 와 같은 규칙
+    /// API 서버 주소를 http(s)://호스트:포트 로 정리 (192.168.0.10:2003 → http://192.168.0.10:2003). 서버에 기본 포트가 없으므로 IP · 이름만 쓰면
+    /// 포트를 함께 써야 함 (없으면 null). http(s):// 로 쓴 주소는 그대로 (포트가 없으면 80 · 443). 비었거나 틀리면 null
     /// </summary>
     public static string? NormalizeServer(string? text)
     {
@@ -246,7 +246,7 @@ public sealed class LauncherSettings
         if (!Uri.TryCreate(bare ? "http://" + value : value, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps || uri.Host.Length == 0) return null;
         string authority = value[(bare ? 0 : value.IndexOf("://", StringComparison.Ordinal) + 3)..].Split('/', '?', '#')[0];
-        if (bare && !System.Text.RegularExpressions.Regex.IsMatch(authority, @":\d+$")) uri = new UriBuilder(uri) { Port = DefaultApiPort }.Uri;
+        if (bare && !System.Text.RegularExpressions.Regex.IsMatch(authority, @":\d+$")) return null;
         return uri.GetLeftPart(UriPartial.Authority);
     }
 

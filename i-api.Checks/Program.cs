@@ -477,7 +477,7 @@ Check("skill version chosen by its author", () =>
 
 Check("service ip from settings", () =>
 {
-    Config Make(params string[] lines) => Harness.Make(sandbox, [$"RELAY_INGEST_KEY={Harness.Key}", $"RELAY_ADMIN_PASSWORD={Harness.Admin}", .. lines]);
+    Config Make(params string[] lines) => Harness.Make(sandbox, ["RELAY_PORT=5099", $"RELAY_INGEST_KEY={Harness.Key}", $"RELAY_ADMIN_PASSWORD={Harness.Admin}", .. lines]);
     Equal("127.0.0.1", Make("RELAY_HOST=127.0.0.1").Bind);
     Equal("127.0.0.1", Make("RELAY_HOST=localhost").Bind);
     Equal("0.0.0.0", Make("RELAY_HOST=relay.example.com").Bind);
@@ -500,6 +500,21 @@ Check("service ip from settings", () =>
     Contains("이 PC의 IP가 아닙니다", everywhere.AddressText());
     Contains("RELAY_HOST가 비어 있습니다", Make().AddressText());
     Throws<ConfigError>(() => Make("no-equals-sign"), "--set needs key=value");
+    var portless = Harness.Make(sandbox, []);
+    Equal(0, portless.Port, "no default port");
+    try
+    {
+        portless.Validate();
+        throw new CheckFailed("a server without a port must not start");
+    }
+    catch (ConfigError refused) { Contains("포트가 정해지지 않았습니다", refused.Message); }
+    string file = Path.Combine(sandbox, "port-settings.txt");
+    Settings.EnsureComplete(file);
+    Equal("", Settings.Read(file)["RELAY_PORT"], "a new settings file has no port");
+    Settings.SetValue(file, "RELAY_PORT", "2005");
+    Settings.SetValue(file, "RELAY_PORT", "2006");
+    Equal("2006", Settings.Read(file)["RELAY_PORT"], "the chosen port is written once, in place");
+    Equal(1, File.ReadAllLines(file).Count(line => line.StartsWith("RELAY_PORT=")));
     var bare = Harness.Make(sandbox, ["RELAY_PORT=5099"]);
     bare.Validate();
     Equal("0.0.0.0||0", $"{bare.Bind}|{bare.IngestKey}{bare.AdminPassword}|{bare.Editors.Count}");
@@ -520,7 +535,7 @@ Check("environment values replace settings and --set still wins", () =>
 Check("no app key takes any app", () =>
 {
     string root = Harness.NewFolder("i-api nokey");
-    var config = Harness.Make(root, ["RELAY_PORT=0", $"RELAY_ADMIN_PASSWORD={Harness.Admin}", $"RELAY_DATA_ROOT={root}"], bind: "127.0.0.1");
+    var config = Harness.Make(root, [$"RELAY_PORT={Harness.FreePort()}", $"RELAY_ADMIN_PASSWORD={Harness.Admin}", $"RELAY_DATA_ROOT={root}"], bind: "127.0.0.1");
     config.Validate();
     using var server = new RelayServer(config);
     server.Start();

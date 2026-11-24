@@ -3,7 +3,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
-RUN dotnet publish i-api.csproj -c Release -o /app --nologo
+RUN dotnet publish i-api.csproj -c Release -o /app --nologo -p:ApiServerContainer=true
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0
 ENV RELAY_BIND=0.0.0.0 \

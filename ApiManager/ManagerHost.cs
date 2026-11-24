@@ -66,7 +66,8 @@ public static class ManagerHost
         {
             if (!IsLocalServer || !ServerManager.IsDeployed || !ServerManager.CanControl) return;
             string? deployed = await ServerManager.DeployIfNewerAsync();
-            if (deployed is null && await ServerManager.IsHealthyAsync(ServerManager.ReadAddress())) return;
+            // 포트를 아직 정하지 않은 서버는 켜지 않음 (관리자 메뉴 · i-api.exe 의 창에서 정함)
+            if (!ServerManager.HasPort || deployed is null && await ServerManager.IsHealthyAsync(ServerManager.ReadAddress())) return;
             await ServerManager.RestartAsync();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or System.ComponentModel.Win32Exception) { }

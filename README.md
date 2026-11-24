@@ -187,7 +187,7 @@ API 서버 `i-api.exe`(C#, `CDEP\i-api.csproj`, 3.0 부터. 2.23 까지는 Pytho
 API 서버 이름은 **i-api** 입니다. 런처 설치 폴더의 `server\i-api.exe` 가 배포된 서버(`%LOCALAPPDATA%\i-api\i-api.exe`)보다 새 버전이면, 서버 PC의 마스터가 런처를 켤 때(또는 관리자 메뉴를 열 때) 서버를 멈추고 바꾼 뒤 다시 시작합니다 (설정 `settings.txt` 는 그대로). 예전 Python 서버(`relay.py`)는 그때 한 번 C# 서버로 옮깁니다 (SETTINGS → `settings.txt`, 자동 시작, 러너 로그온 작업, `relay.py` 는 `backup\`). 관리자 메뉴 → **API** 에서 API 마다 켜고 끄고 호출 · 실패 · 걸린 시간을 봅니다. 처음 설치는 서버 PC 에서 관리자 메뉴를 열면 됩니다 (서버 주소가 이 PC 일 때만). 데이터는 `C:\ProgramData\i-api-data`에 따로 있고, 로그인 자동 시작은 시작 폴더의 `i-api.vbs` 입니다.
 예전 이름(서버 `%LOCALAPPDATA%\TerminalNotesRelay`, 데이터 `C:\ProgramData\TerminalNotesRelayData`, `Terminal Notes Relay.vbs`)의 서버는 같은 때 한 번 저절로 옮깁니다: 예전 서버를 멈추고, SETTINGS 를 옮기고, 자동 시작을 새 이름으로 바꾸고, 새 서버가 처음 시작할 때 데이터 폴더 이름을 바꾸고 러너 로그온 작업(`GitHub Runners`)도 새 서버를 가리키게 합니다. 방화벽 규칙은 예전 이름(`TerminalNotesRelay-2003`)도 그대로 인정합니다 (Windows 확인 창 없음). 예전 서버 폴더는 `MOVED-TO-i-api.txt` 와 함께 남깁니다.
 
-런처는 빌드 설정 `API_SERVER`로 서버를 압니다 (마스터만 씀). 마스터는 **관리자 메뉴 → 서버 → 서버 주소**에서 바로 바꿀 수 있습니다: IP 만 쓰면 포트 2003, 비우고 연결하면 빌드 설정의 주소. 바꾼 주소는 `C:\i-luncher\settings.json` 의 `ApiServer` 에 남고, 그 PC 의 서버 목록 · 관리자 메뉴 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다 (런처를 다시 릴리스하지 않음). 앱의 업데이트는 서버를 거치지 않고 GitHub에 바로 묻습니다 (빌드할 때 `UPDATE_GITHUB_API=https://api.github.com` 또는 `https://<호스트>/api/v3`).
+런처는 빌드 설정 `API_SERVER`로 서버를 압니다 (마스터만 씀). 마스터는 **관리자 메뉴 → 서버 → 서버 주소**에서 바로 바꿀 수 있습니다: `IP:포트` (포트는 서버에서 정한 것), 비우고 연결하면 빌드 설정의 주소. 바꾼 주소는 `C:\i-luncher\settings.json` 의 `ApiServer` 에 남고, 그 PC 의 서버 목록 · 관리자 메뉴 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다 (런처를 다시 릴리스하지 않음). 앱의 업데이트는 서버를 거치지 않고 GitHub에 바로 묻습니다 (빌드할 때 `UPDATE_GITHUB_API=https://api.github.com` 또는 `https://<호스트>/api/v3`).
 
 ## 아이콘
 

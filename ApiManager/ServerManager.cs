@@ -151,7 +151,8 @@ internal static partial class ServerManager
     public static ServerAddress ReadAddress()
     {
         string host = Setting("RELAY_HOST"), bind = Setting("RELAY_BIND");
-        int port = int.TryParse(Setting("RELAY_PORT"), out int value) && value is > 0 and < 65536 ? value : 2003;
+        // 서버에 기본 포트가 없음: 정하지 않았으면 0 (응답 없음으로 보이고, 관리자 메뉴가 포트 창을 엶)
+        int port = int.TryParse(Setting("RELAY_PORT"), out int value) && value is > 0 and < 65536 ? value : 0;
         string scheme = Setting("RELAY_TLS_CERT").Length > 0 ? "https" : "http";
         string listen = bind.Length > 0 ? bind : IPAddress.TryParse(host, out _) ? host : host is "localhost" ? "127.0.0.1" : "0.0.0.0";
         string healthHost = listen is "0.0.0.0" or "" ? "127.0.0.1" : listen;
@@ -227,8 +228,8 @@ internal static partial class ServerManager
         {
             Directory.CreateDirectory(DeployFolder);
             CopyBundled(null);
-            await RunServerAsync("--install-startup", "--no-firewall");
-            return $"서버 {bundled}을(를) 처음 설치했습니다. 설정 파일(settings.txt)에서 RELAY_HOST·관리자 비밀번호를 채운 뒤 다시 시작하세요.";
+            OpenSetupWindow();
+            return $"서버 {bundled}을(를) 이 PC 에 설치했습니다. 열린 창에서 포트를 정하고 [실행]하세요 (그다음 설정 파일 settings.txt 에 관리자 비밀번호).";
         }
         Version? deployed = ReadVersion(DeployedExe);
         if (deployed is not null && deployed >= bundled) return null;
@@ -355,6 +356,19 @@ internal static partial class ServerManager
             if (command.Contains(script, StringComparison.OrdinalIgnoreCase) && !command.Contains("--start-runners", StringComparison.OrdinalIgnoreCase)) found.Add(pid);
         }
         return found;
+    }
+
+    /// <summary>포트가 정해져 있음 (서버에 기본 포트가 없음)</summary>
+    public static bool HasPort => int.TryParse(Setting("RELAY_PORT"), out int port) && port is > 0 and < 65536;
+
+    /// <summary>포트를 묻는 서버 창 (i-api.exe --setup): 포트를 쓰고 자동 실행 · 방화벽 · 시작까지 그 창이 함</summary>
+    public static void OpenSetupWindow()
+    {
+        var start = new ProcessStartInfo(DeployedExe) { UseShellExecute = false, WorkingDirectory = DeployFolder };
+        start.ArgumentList.Add("--setup");
+        if (PrivateRuntime() is { } runtime) start.Environment["DOTNET_ROOT"] = runtime;
+        foreach (var (key, value) in ChildEnvironment) start.Environment[key] = value;
+        Process.Start(start)?.Dispose();
     }
 
     public static Task<(int ExitCode, string Output)> RestartAsync() => RunServerAsync("--restart");

@@ -28,11 +28,28 @@
 
 NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 런처의 `ApiManager.csproj` 가 이 서버를 게시해 런처 설치 폴더의 `server\` 로 넣습니다.
 
+## 새 API 더하기
+
+1. **`Server\Functions.cs`** 의 목록에 한 줄: id(바꾸지 않음) · 구역 · 묶음 · 방법 · 주소 · 이름 · 설명 · 처리기.
+   ```csharp
+   Make("hello.read", "launcher", GroupLauncher, "GET", "/launcher/hello/{name}", "인사 읽기", "예시: 이름을 받아 인사를 돌려줌", HelloRead),
+   ```
+   - 구역(앞의 확인): `launcher` = `/launcher/…` (누구나, 고치기는 처리기에서 `RequireAdmin`), `app` = `/api/…` (Terminal Notes 앱 키), `admin` = `/admin/api/…` (관리자 비밀번호, POST · PUT 은 JSON 만)
+   - 주소의 `{이름}` 은 조각 하나 (`request.Value("name")`), 끝의 `**` 는 나머지 모두. 방법을 여럿 받으면 `"GET|PUT"`
+   - 끄면 안 되는 API 는 마지막에 `switchable: false`
+2. **`Server\Handlers.cs`** 에 처리기:
+   ```csharp
+   private void HelloRead(Request request) => request.Json(200, new JsonObject { ["text"] = "안녕 " + request.Value("name") });
+   ```
+   거절은 `throw new RelayError(400, "이유")` (앱 · 관리자 메뉴가 그 글을 그대로 보여 줌). 본문은 `request.JsonObjectBody()`, 쿼리는 `request.QueryValue("from")`.
+3. **`i-api.Checks\Program.cs`** 에 확인 하나 (`Check("…", () => { using var h = new Harness(); … })`) 를 더하고 `dotnet run --project i-api.Checks`.
+4. **`i-api.csproj` 의 `<Version>` 을 올리고** 런처를 릴리스합니다. 서버 PC 의 런처가 켜질 때 서버를 새 버전으로 바꾸고, 새 API 는 관리자 메뉴 → **API** 에 저절로 보입니다 (켜고 끄기 · 호출 수).
+
 ## 서버 PC 에서 실행
 
-1. 서버 PC 에서 런처(마스터 계정)의 **관리자 메뉴**를 엽니다. 처음 열면 그 PC 에 서버를 설치하고 켭니다 (`%LOCALAPPDATA%\i-api\i-api.exe`, 로그인하면 시작 폴더의 `i-api.vbs` 가 다시 시작). 예전 Python 서버(`relay.py`)는 이때 저절로 옮겨집니다 (SETTINGS → `settings.txt` · 자동 실행 · 러너 로그온 작업).
+1. 서버 PC 에서 **`i-api.exe` 를 실행하고 포트를 넣어 [실행]** 합니다 (포트는 기본값이 없어 꼭 정함). 그 PC 에서 서버가 켜지고, 로그인 자동 실행(`i-api.vbs`)으로 재부팅해도 다시 켜지며, 방화벽에 그 포트를 엽니다. 런처(마스터 계정)의 **관리자 메뉴**를 그 PC 에서 열어도 `%LOCALAPPDATA%\i-api` 에 설치하고 같은 창을 엽니다. 예전 Python 서버(`relay.py`)는 이때 저절로 옮겨집니다 (SETTINGS → `settings.txt` · 자동 실행 · 러너 로그온 작업).
 2. 설정은 `%LOCALAPPDATA%\i-api\settings.txt` (관리자 메뉴 → 서버 → ⋯ → 설정 파일 열기): `RELAY_ADMIN_PASSWORD`, GitHub Enterprise 면 `RELAY_GITHUB_API=https://<Enterprise 호스트>/api/v3` · `RELAY_GITHUB_TOKEN`(읽기 전용). 고친 뒤 [다시 시작].
-3. 방화벽에서 포트 2003 을 엽니다 (관리자 메뉴 → 서버에 "규칙 없음"이 보이면 서버 PC 에서 `서버 시작.cmd` 또는 `i-api.exe --allow-firewall`. 자세한 것은 [`ApiManager\server\README.md`](../ApiManager/server/README.md)).
+3. 방화벽은 [실행]할 때 엽니다 (관리자 메뉴 → 서버에 "규칙 없음"이 보이면 서버 PC 에서 `i-api.exe` 를 다시 실행하고 Windows 확인 창에서 "예". 자세한 것은 [`ApiManager\server\README.md`](../ApiManager/server/README.md)).
 4. 데이터(앱 목록 · 스크린샷 · 사용 기록 · 공지 · 스킬 · 보고서 · API 기록 · 백업)는 `C:\ProgramData\i-api-data` 에 따로 있습니다. 서버 PC 를 옮길 때는 이 폴더를 새 서버 PC 에 그대로 복사합니다.
 5. 런처를 새로 릴리스하면 서버 PC 의 런처가 켜질 때 서버를 새 버전으로 바꿉니다 (settings.txt 는 그대로).
 
@@ -40,7 +57,7 @@ NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 런처의 `Api
 
 | 쓰는 곳 | 설정 |
 |---|---|
-| 마스터 PC 의 i-luncher | 관리자 메뉴 → 서버 → **서버 주소**에 서버 PC 의 IP (IP 만 쓰면 포트 2003). 새로 설치하는 마스터의 기본값은 빌드 설정(프로필 `i-luncher.env`) `API_SERVER=http://<서버 PC>:2003` |
+| 마스터 PC 의 i-luncher | 관리자 메뉴 → 서버 → **서버 주소**에 서버 PC 의 `IP:포트` (포트를 꼭 씀). 새로 설치하는 마스터의 기본값은 빌드 설정(프로필 `i-luncher.env`) `API_SERVER=http://<서버 PC>:2003` |
 | 마스터 PC 의 관리자 메뉴 | 그 PC 프로필 `i-luncher.env` 에 `API_ADMIN_PASSWORD=<RELAY_ADMIN_PASSWORD 와 같은 값>` (서버 PC 자신은 settings.txt 에서 읽음) |
 | AppKit 앱 (DeskCal, FastCopy …) | 바꾸지 않음 (사용 기록은 런처의 주소를 따라가고, 업데이트는 GitHub) |
 | Terminal Notes | 그 앱 `.env` 의 중계 서버 주소 · 키 (`.env.sample` 참고) |
@@ -50,7 +67,7 @@ NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 런처의 `Api
 
 ## 컨테이너 (지금은 쓰지 않음)
 
-[`Dockerfile`](Dockerfile) · [`env.sample`](env.sample) 은 나중에 컨테이너로 돌릴 때를 위해 남겨 둡니다 (.NET 10, 포트 2003, 데이터 `/data`, 상태 `GET /health`). 그때는 설정 파일 대신 같은 이름의 환경 변수로 설정하고 (순서: settings.txt < 환경 변수 < `--set`), `/data` 를 영구 저장소에 연결합니다.
+[`Dockerfile`](Dockerfile) · [`env.sample`](env.sample) 은 나중에 컨테이너로 돌릴 때를 위해 남겨 둡니다 (.NET 10, 포트는 RELAY_PORT 로 꼭 정함, 데이터 `/data`, 상태 `GET /health`). 그때는 설정 파일 대신 같은 이름의 환경 변수로 설정하고 (순서: settings.txt < 환경 변수 < `--set`), `/data` 를 영구 저장소에 연결합니다.
 
 ## 확인 · CI
 

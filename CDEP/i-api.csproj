@@ -6,13 +6,16 @@
   <PropertyGroup>
     <!-- 창 없이 도는 서버: 명령 줄(서버 시작.cmd 등)에서는 부른 쪽 콘솔에 씀 (Program.AttachConsole) -->
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Windows: 손으로 실행하면 포트를 묻는 작은 창(WinForms). 컨테이너(Linux)는 -p:ApiServerContainer=true 로 창 없이 net10.0 -->
+    <TargetFramework Condition="'$(ApiServerContainer)' != 'true'">net10.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(ApiServerContainer)' == 'true'">net10.0</TargetFramework>
+    <UseWindowsForms Condition="'$(ApiServerContainer)' != 'true'">true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>IApi</RootNamespace>
     <AssemblyName>i-api</AssemblyName>
     <!-- 서버 버전 (관리자 메뉴가 서버 PC 의 것과 견줘 새 버전이면 바꿈). relay.py 의 마지막 버전은 2.23.0 -->
-    <Version>3.0.1</Version>
+    <Version>3.0.2</Version>
     <Product>i-api</Product>
     <Description>i-luncher API 서버</Description>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -28,6 +31,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WinForms 이름(Timer · Application …)이 서버 코드와 겹치지 않게 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
     <InternalsVisibleTo Include="i-api.Checks" />
     <None Remove="*.py;Dockerfile;env.sample;README.md" />
   </ItemGroup>

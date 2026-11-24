@@ -394,7 +394,7 @@ try
     {
         foreach (var (input, expected) in new (string, string?)[]
                  {
-                     ("192.168.0.10", "http://192.168.0.10:2003"), (" 192.168.0.10:2004 ", "http://192.168.0.10:2004"), ("server01", "http://server01:2003"),
+                     ("192.168.0.10:2003", "http://192.168.0.10:2003"), (" 192.168.0.10:2004 ", "http://192.168.0.10:2004"), ("server01:2003", "http://server01:2003"),
                      ("192.168.0.10:80", "http://192.168.0.10"), ("http://10.0.0.5:2003/", "http://10.0.0.5:2003"), ("https://api.example.com", "https://api.example.com"),
                      ("http://10.0.0.5", "http://10.0.0.5"), ("", null), ("ftp://10.0.0.5", null), ("not an address", null),
                  })
@@ -402,13 +402,16 @@ try
             Equal(expected, LauncherSettings.NormalizeServer(input), "launcher: " + input);
             Equal(expected, ILuncher.AppKit.AppUsage.NormalizeServer(input), "AppKit AppUsage: " + input);
         }
+        // 서버에 기본 포트가 없으므로 마스터가 넣는 주소에는 포트가 꼭 있어야 함
+        Equal(null, LauncherSettings.NormalizeServer("192.168.0.10"), "an IP without a port is refused");
+        Equal(null, LauncherSettings.NormalizeServer("server01"), "a name without a port is refused");
         string buildDir = Path.Combine(root, "api-server-change");
         Directory.CreateDirectory(buildDir);
         File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003\nMASTER_USERS=boss\n");
         string data = Path.Combine(root, "api-server-change-data");
         var settings = LauncherSettings.Load(data, buildDir);
         Equal("http://10.0.0.5:2003", settings.ApiServerUrl, "build setting by default");
-        settings.User.ApiServer = "192.168.0.10";
+        settings.User.ApiServer = "192.168.0.10:2003";
         settings.SaveUser();
         Equal("http://192.168.0.10:2003", LauncherSettings.Load(data, buildDir).ApiServerUrl, "the master's address wins and is kept");
         Equal("http://10.0.0.5:2003", settings.BuildApiServerUrl, "build address kept for 'empty = default'");
