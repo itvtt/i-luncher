@@ -1703,8 +1703,8 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 칸 열 수 ─────────────────────────
 
-    // 홈 화면 칸 한 칸의 폭 (아이콘 칸 132 + 양옆 4). 창 폭에 맞춰 열 수가 바뀜
-    private const double CellWidth = 140;
+    // 홈 화면 칸 한 칸의 폭 (아이콘 칸 106 + 양옆 4). 창 폭에 맞춰 열 수가 바뀜
+    private const double CellWidth = 114;
 
     public static readonly DependencyProperty RowColumnsProperty =
         DependencyProperty.Register(nameof(RowColumns), typeof(int), typeof(MainWindow), new PropertyMetadata(6));

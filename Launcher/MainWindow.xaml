@@ -86,7 +86,7 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Face" CornerRadius="18" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" RenderTransformOrigin="0.5,0.5">
+                            <Border x:Name="Face" CornerRadius="14" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" RenderTransformOrigin="0.5,0.5">
                                 <ContentPresenter />
                             </Border>
                             <ControlTemplate.Triggers>
@@ -127,10 +127,10 @@
             <!-- 아이콘 칸의 즐겨찾기 별 (마우스를 올리면 아이콘 오른쪽 위에): 즐겨찾기면 채운 금색 별 · 아니면 빈 별 -->
             <!-- 아이콘 아래 상태 단추: 둥근 알약, 받기 · 업데이트는 파랑, 열기는 회색, 실행 중은 초록 글자 -->
             <Style x:Key="CellActionStyle" TargetType="Button">
-                <Setter Property="Height" Value="24" />
-                <Setter Property="MinWidth" Value="52" />
-                <Setter Property="Padding" Value="12,0" />
-                <Setter Property="FontSize" Value="11.5" />
+                <Setter Property="Height" Value="21" />
+                <Setter Property="MinWidth" Value="44" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="FontSize" Value="11" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -438,9 +438,9 @@
                                  아이콘 밖 오른쪽 위에 작은 버전(회색 판), 이름 아래 상태 단추(받기 · 업데이트 · 실행 중 · 진행 중, 열기는 없음).
                                  아이콘을 누르면 바로 실행 (받기 · 업데이트는 상태 단추로도). 마우스를 올리면 왼쪽 위 즐겨찾기 별, 우클릭은 메뉴 (내 앱은 삭제도) -->
                             <DataTemplate DataType="{x:Type local:AppCard}">
-                                <Grid x:Name="Cell" Width="132" Margin="4,0,4,10">
+                                <Grid x:Name="Cell" Width="106" Margin="4,0,4,8">
                                     <!-- 실행 중: 형형색색 형광 테두리가 칸을 따라 돎 (배지 없음) -->
-                                    <Border CornerRadius="18" Background="#0EFFFFFF" BorderThickness="2.5" IsHitTestVisible="False"
+                                    <Border CornerRadius="14" Background="#0EFFFFFF" BorderThickness="2" IsHitTestVisible="False"
                                             Visibility="{Binding RunningVisibility}">
                                         <Border.BorderBrush>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -486,23 +486,23 @@
                                                       Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <StackPanel Margin="0,26,0,12" VerticalAlignment="Center">
-                                            <Grid Width="76" Height="76" HorizontalAlignment="Center">
+                                        <StackPanel Margin="0,21,0,10" VerticalAlignment="Center">
+                                            <Grid Width="60" Height="60" HorizontalAlignment="Center">
                                                 <Grid Opacity="{Binding CellIconOpacity}">
-                                                    <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
-                                                    <Border CornerRadius="18" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}">
-                                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="28" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
+                                                    <Grid.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="5" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
+                                                    <Border CornerRadius="14" Background="{Binding TileBrush}" Visibility="{Binding InitialsVisibility}">
+                                                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" />
                                                     </Border>
                                                     <Image Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                                 </Grid>
                                                 <!-- 버전: 아이콘 밖, 오른쪽 위 모서리 위에 작게 (회색 판에 밝은 글자) -->
-                                                <Border Margin="0,-17,-10,0" Padding="4,0,4,1" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="5"
+                                                <Border Margin="0,-14,-10,0" Padding="4,0,4,1" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="5"
                                                         Background="#FF34353B" Visibility="{Binding IconVersionVisibility}" IsHitTestVisible="False">
                                                     <TextBlock FontSize="9" FontWeight="SemiBold" Foreground="#FFE5E5EA" Text="{Binding IconVersionText}" />
                                                 </Border>
                                             </Grid>
-                                            <TextBlock Margin="6,11,6,0" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />
-                                            <Button Margin="0,7,0,0" HorizontalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding}" Click="CellAction_Click"
+                                            <TextBlock Margin="4,9,4,0" HorizontalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" ToolTip="{Binding FullName}" TextTrimming="CharacterEllipsis" />
+                                            <Button Margin="0,6,0,0" HorizontalAlignment="Center" Style="{StaticResource CellActionStyle}" Tag="{Binding}" Click="CellAction_Click"
                                                     Visibility="{Binding CellPillVisibility}" Content="{Binding CellActionText}" Background="{Binding CellActionBackground}" Foreground="{Binding CellActionInk}"
                                                     IsHitTestVisible="{Binding CellActionEnabled}" ToolTip="{Binding VersionToolTip}" AutomationProperties.Name="{Binding CellActionText}" />
                                         </StackPanel>
@@ -510,7 +510,7 @@
                                     <Button x:Name="Star" Style="{StaticResource CardStarButtonStyle}" Margin="8,6,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
                                             Tag="{Binding}" Click="FavoriteToggleMenu_Click" Content="{Binding FavoriteGlyph}" Foreground="{Binding FavoriteGlyphBrush}"
                                             ToolTip="{Binding FavoriteMenuHeader}" AutomationProperties.Name="{Binding FavoriteMenuHeader}" />
-                                    <ProgressBar Height="3" Margin="28,0,28,4" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
+                                    <ProgressBar Height="3" Margin="22,0,22,3" VerticalAlignment="Bottom" IsHitTestVisible="False" Minimum="0" Maximum="100"
                                                  IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding ProgressValue, Mode=OneWay}" Visibility="{Binding BusyVisibility}"
                                                  Background="#FF2C2D32" BorderThickness="0" Foreground="#FF4AA3FF" />
                                 </Grid>
@@ -568,7 +568,7 @@
 
 <!-- 내 PC 프로그램 칸: 둥근 판 위 아이콘, 이름, "내 PC". 누르면 실행, 우클릭은 편집 · 파일 위치 · 삭제 -->
                             <DataTemplate DataType="{x:Type local:FavoriteCard}">
-                                <Grid Width="132" Margin="4,0,4,10">
+                                <Grid Width="106" Margin="4,0,4,8">
                                     <Button Style="{StaticResource IconCellStyle}" Tag="{Binding}" Click="FavoriteCard_Click" ToolTip="{Binding ToolTipText}"
                                             AutomationProperties.AutomationId="{Binding AutomationId}" AutomationProperties.Name="{Binding Name}">
                                         <Button.ContextMenu>
@@ -581,15 +581,15 @@
                                             <MenuItem Header="삭제" Icon="&#xE74D;" Tag="{Binding}" Click="FavoriteDeleteMenu_Click" Style="{StaticResource DangerMenuItemStyle}" />
                                             </ContextMenu>
                                         </Button.ContextMenu>
-                                        <StackPanel Margin="0,14,0,11" Opacity="{Binding CardOpacity}">
-                                            <Grid Width="76" Height="76" HorizontalAlignment="Center">
-                                                <Grid.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
-                                                <Border CornerRadius="18" Background="#FF2E2F35" BorderBrush="#14FFFFFF" BorderThickness="1" />
-                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="28" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
-                                                <Image Width="50" Height="50" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <StackPanel Margin="0,11,0,9" Opacity="{Binding CardOpacity}">
+                                            <Grid Width="60" Height="60" HorizontalAlignment="Center">
+                                                <Grid.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="5" Direction="270" Opacity="0.35" Color="#FF000000" /></Grid.Effect>
+                                                <Border CornerRadius="14" Background="#FF2E2F35" BorderBrush="#14FFFFFF" BorderThickness="1" />
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="22" FontWeight="Bold" Foreground="White" Text="{Binding Initials}" Visibility="{Binding InitialsVisibility}" />
+                                                <Image Width="40" Height="40" Source="{Binding Icon}" Stretch="Uniform" Visibility="{Binding IconVisibility}" RenderOptions.BitmapScalingMode="HighQuality" />
                                             </Grid>
-                                            <TextBlock Margin="6,11,6,0" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Margin="6,3,6,0" HorizontalAlignment="Center" FontSize="11.5" Foreground="#FF8E8E93" Text="{Binding CellStateText}" ToolTip="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Margin="4,9,4,0" HorizontalAlignment="Center" FontSize="12.5" FontWeight="SemiBold" Foreground="#FFF5F5F7" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Margin="4,2,4,0" HorizontalAlignment="Center" FontSize="11" Foreground="#FF8E8E93" Text="{Binding CellStateText}" ToolTip="{Binding DescriptionText}" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Button>
                                 </Grid>
