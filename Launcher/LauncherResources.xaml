@@ -9,6 +9,7 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#FF7C9CFF" />
     <SolidColorBrush x:Key="SubtleSurfaceBrush" Color="#FF10141C" />
 
+    <!-- 글자는 모든 창에서 Ideal 로 그림. Pretendard 는 힌팅이 없어 Display(화소 맞춤)로 그리면 한글 획이 계단처럼 깨짐 -->
     <Style TargetType="Window">
         <Setter Property="Background" Value="{StaticResource WindowBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />

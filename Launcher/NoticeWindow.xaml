@@ -1,5 +1,5 @@
 <Window x:Class="ILauncher.NoticeWindow"
-        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType" UseLayoutRounding="True"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="공지" Width="740" Height="500" MinWidth="560" MinHeight="340"

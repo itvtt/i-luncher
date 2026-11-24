@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
         AllowsTransparency="True" Background="Transparent" Foreground="#FFF5F5F7"
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
-        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True" TextOptions.TextRenderingMode="ClearType"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True" TextOptions.TextRenderingMode="ClearType"
         PreviewKeyDown="Window_PreviewKeyDown" Loaded="Window_Loaded">
     <Window.Resources>
         <ResourceDictionary>

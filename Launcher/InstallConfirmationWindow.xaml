@@ -16,7 +16,7 @@
         Background="Transparent"
         Foreground="#FFF5F7FB"
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
-        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
         PreviewKeyDown="Window_PreviewKeyDown"
         Loaded="Window_Loaded">

@@ -39,7 +39,8 @@
   <ItemGroup>
     <Resource Include="Assets/ILauncher.ico" />
     <Resource Include="Assets/ILauncher.png" />
-    <!-- 글꼴: Pretendard TrueType 판 (SIL OFL 1.1, 라이선스 파일을 함께 배포). OTF(CFF) 판은 화소 맞춤 그리기에서 획이 빠짐 -->
+    <!-- 글꼴: Pretendard TrueType 판 (SIL OFL 1.1, 라이선스 파일을 함께 배포). 글자는 Ideal 로 그림 (LauncherResources.xaml):
+         Pretendard 는 힌팅이 없어 Display(화소 맞춤)로 그리면 한글 획이 계단처럼 깨짐 -->
     <Resource Include="Assets/Fonts/*.ttf" />
     <Content Include="Assets/Fonts/Pretendard-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Remove="Assets/Build-Icon.ps1;Assets/ILauncher.svg" />

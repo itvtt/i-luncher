@@ -7,7 +7,7 @@
         Icon="Assets/ILauncher.ico"
         Foreground="#FFF5F7FB"
         FontFamily="pack://application:,,,/i-luncher;component/Assets/Fonts/#Pretendard"
-        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True"
         TextOptions.TextRenderingMode="ClearType"
         Width="1100" Height="860" MinWidth="640" MinHeight="840"
         WindowStartupLocation="CenterScreen"
