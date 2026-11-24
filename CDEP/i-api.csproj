@@ -12,7 +12,7 @@
     <RootNamespace>IApi</RootNamespace>
     <AssemblyName>i-api</AssemblyName>
     <!-- 서버 버전 (관리자 메뉴가 서버 PC 의 것과 견줘 새 버전이면 바꿈). relay.py 의 마지막 버전은 2.23.0 -->
-    <Version>3.0.0</Version>
+    <Version>3.0.1</Version>
     <Product>i-api</Product>
     <Description>i-luncher API 서버</Description>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

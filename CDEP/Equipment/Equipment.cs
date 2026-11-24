@@ -148,7 +148,7 @@ internal sealed class MySqlClient : IEquipmentDb
             WritePacket(HandshakeHead(flags));
             // DB 의 인증서는 보통 자체 서명: 여기서 TLS 는 비밀번호가 그대로 지나가지 않게 함
             var tls = new SslStream(_stream, false, (_, _, _, _) => true);
-            tls.AuthenticateAsClient(new SslClientAuthenticationOptions { TargetHost = "", RemoteCertificateValidationCallback = (_, _, _, _) => true });
+            tls.AuthenticateAsClient(new SslClientAuthenticationOptions { TargetHost = "" });
             _stream = tls;
             secure = true;
         }
