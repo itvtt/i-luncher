@@ -67,11 +67,15 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock x:Name="FunctionsSummaryText" Style="{StaticResource HintStyle}" TextWrapping="Wrap" />
+                <DockPanel>
+                    <Button x:Name="AddFunctionButton" DockPanel.Dock="Right" Content="+ API 추가" Style="{StaticResource PrimaryButtonStyle}" Margin="0"
+                            Click="AddFunctionButton_Click" />
+                    <TextBlock x:Name="FunctionsSummaryText" Style="{StaticResource HintStyle}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                </DockPanel>
                 <Grid Grid.Row="1" Margin="0,12,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="380" />
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="*" MinWidth="360" />
+                        <ColumnDefinition Width="380" />
                     </Grid.ColumnDefinitions>
                     <Grid>
                         <Grid.RowDefinitions>
@@ -118,13 +122,18 @@
                         </ListBox>
                     </Grid>
 
-                    <!-- 고른 API -->
+                    <!-- 고른 API (사용자 API 면 편집 · 삭제), 또는 편집 칸 -->
                     <ScrollViewer Grid.Column="1" Margin="18,0,0,0" VerticalScrollBarVisibility="Auto">
+                        <Grid>
                         <StackPanel x:Name="FunctionDetail" Visibility="Collapsed">
                             <TextBlock x:Name="FunctionTitleText" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
                             <TextBlock x:Name="FunctionRouteText" Style="{StaticResource HintStyle}" FontFamily="Consolas, Malgun Gothic" TextWrapping="Wrap" Margin="0,4,0,0" />
                             <TextBlock x:Name="FunctionDescriptionText" FontSize="12.5" Foreground="{StaticResource LabelTextBrush}" TextWrapping="Wrap" Margin="0,10,0,0" />
                             <TextBlock x:Name="FunctionStateText" FontSize="12.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <StackPanel x:Name="CustomActions" Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
+                                <Button Content="편집" Click="EditFunctionButton_Click" />
+                                <Button Content="삭제" Click="DeleteFunctionButton_Click" />
+                            </StackPanel>
                             <UniformGrid Columns="3" Margin="0,16,0,0">
                                 <Border Style="{StaticResource CardStyle}" Margin="0,0,6,0" Padding="10,8">
                                     <StackPanel><TextBlock Text="오늘" Style="{StaticResource HintStyle}" /><TextBlock x:Name="FunctionTodayText" FontSize="18" FontWeight="SemiBold" /></StackPanel>
@@ -152,6 +161,53 @@
                             <TextBlock x:Name="FunctionLastText" FontSize="12.5" Foreground="{StaticResource LabelTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
                             <TextBlock x:Name="FunctionFailureText" FontSize="12.5" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
                         </StackPanel>
+                        <!-- 사용자 API 편집: 저장하면 바로 동작 -->
+                        <StackPanel x:Name="FunctionEditor" Visibility="Collapsed">
+                            <TextBlock x:Name="EditorTitleText" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="이름" Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox x:Name="EditorNameBox" Tag="예: 설비 목록" TextChanged="Editor_Changed" />
+                            <TextBlock Text="설명" Style="{StaticResource FieldLabelStyle}" />
+                            <TextBox x:Name="EditorDescriptionBox" Tag="(선택)" TextChanged="Editor_Changed" />
+                            <TextBlock Text="방법 · 주소" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="EditorGet" Content="GET" GroupName="EditorMethod" IsChecked="True" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorPost" Content="POST" GroupName="EditorMethod" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorPut" Content="PUT" GroupName="EditorMethod" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorDelete" Content="DELETE" GroupName="EditorMethod" Checked="Editor_Changed" />
+                            </StackPanel>
+                            <TextBox x:Name="EditorPathBox" Margin="0,8,0,0" Tag="/hello/{name}" FontFamily="Consolas, Malgun Gothic" TextChanged="Editor_Changed" />
+                            <TextBlock Text="부를 수 있는 사람" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="EditorOpen" Content="누구나" GroupName="EditorAccess" IsChecked="True" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorKey" Content="앱 키" GroupName="EditorAccess" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorAdmin" Content="관리자" GroupName="EditorAccess" Checked="Editor_Changed" />
+                            </StackPanel>
+                            <TextBlock Text="종류" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="EditorText" Content="고정 응답" GroupName="EditorKind" IsChecked="True" Checked="EditorKind_Checked" />
+                                <RadioButton x:Name="EditorScript" Content="PowerShell" GroupName="EditorKind" Checked="EditorKind_Checked" />
+                                <RadioButton x:Name="EditorForward" Content="다른 주소로 전달" GroupName="EditorKind" Checked="EditorKind_Checked" />
+                            </StackPanel>
+                            <TextBlock x:Name="EditorBodyHint" Style="{StaticResource HintStyle}" TextWrapping="Wrap" Margin="0,10,0,6" />
+                            <TextBox x:Name="EditorBodyBox" Style="{StaticResource DocumentBoxStyle}" Height="170" TextChanged="Editor_Changed" />
+                            <DockPanel Margin="0,14,0,0">
+                                <Button x:Name="EditorDeleteButton" DockPanel.Dock="Right" Content="삭제" Style="{StaticResource LinkButtonStyle}" Click="DeleteFunctionButton_Click" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="EditorSaveButton" Content="저장" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0" Click="SaveFunctionButton_Click" />
+                                    <Button Content="취소" Click="CancelEditButton_Click" />
+                                </StackPanel>
+                            </DockPanel>
+                            <!-- 시험 호출: 저장한 것을 이 서버에 그대로 부름 -->
+                            <TextBlock Text="시험" Style="{StaticResource FieldLabelStyle}" Margin="0,20,0,6" />
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="부르기" Margin="8,0,0,0" Click="TryFunctionButton_Click" />
+                                <TextBox x:Name="TryPathBox" FontFamily="Consolas, Malgun Gothic" Tag="/hello/test" />
+                            </DockPanel>
+                            <TextBox x:Name="TryBodyBox" Margin="0,8,0,0" Style="{StaticResource DocumentBoxStyle}" Height="64" Tag="보낼 본문 (POST · PUT, 선택)" />
+                            <TextBlock x:Name="TryResultText" Style="{StaticResource HintStyle}" Margin="0,10,0,4" />
+                            <TextBox x:Name="TryResultBox" Style="{StaticResource DocumentBoxStyle}" Height="110" IsReadOnly="True" Visibility="Collapsed" />
+                        </StackPanel>
+                        </Grid>
                     </ScrollViewer>
                 </Grid>
             </Grid>

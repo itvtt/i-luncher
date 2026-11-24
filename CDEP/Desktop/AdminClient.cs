@@ -44,6 +44,21 @@ internal sealed class AdminClient : IDisposable
         return JsonNode.Parse(text.Length == 0 ? "null" : text) ?? new JsonObject();
     }
 
+    /// <summary>
+    /// 사용자 API 시험 호출: 그 방법 · 주소로 그대로 보내고 (관리자 비밀번호와 앱 키를 함께) 상태 · 받은 글 · 걸린 시간을 돌려줌. 실패도 그대로 돌려줌
+    /// </summary>
+    public async Task<(int Status, string Text, long Milliseconds)> TryAsync(string method, string path, string body, string appKey)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod(method), path.TrimStart('/'));
+        if (appKey.Length > 0) request.Headers.TryAddWithoutValidation("X-TerminalNotes-Key", appKey);
+        if (body.Length > 0) request.Content = new StringContent(body, Encoding.UTF8, body.TrimStart().StartsWith('{') || body.TrimStart().StartsWith('[') ? "application/json" : "text/plain");
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(130));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        using var response = await _http.SendAsync(request, cancel.Token);
+        string text = await response.Content.ReadAsStringAsync();
+        return ((int)response.StatusCode, text, watch.ElapsedMilliseconds);
+    }
+
     /// <summary>파일 그대로 올림 (스크린샷 이미지)</summary>
     public async Task<JsonNode> PostBytesAsync(string path, byte[] data, string contentType)
     {

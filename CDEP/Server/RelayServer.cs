@@ -27,7 +27,6 @@ internal sealed partial class RelayServer : IDisposable
     public ApiSwitches Switches { get; }
     public ApiStats Stats { get; }
     public DateTimeOffset Started { get; } = Util.Now();
-    public IReadOnlyList<ApiFunction> Functions { get; }
 
     private HttpServer? _http, _equipmentHttp;
     private X509Certificate2? _certificate;
@@ -50,7 +49,9 @@ internal sealed partial class RelayServer : IDisposable
         Usage = new Usage(config.UsageDir);
         Switches = new ApiSwitches(config.ApiDir);
         Stats = new ApiStats(config.ApiDir);
-        Functions = BuildFunctions();
+        Customs = new CustomApis(config.ApiDir);
+        _builtins = BuildFunctions();
+        RebuildFunctions();
     }
 
     /// <summary>포트를 열고 받기 시작 (설비 상태 포트도, 쓰면). 포트가 이미 쓰이면 예외</summary>
@@ -174,6 +175,8 @@ internal sealed partial class RelayServer : IDisposable
             Invoke(request, Function("health"));
             return;
         }
+        // 관리 창에서 만든 사용자 API (기본 API 에 맞는 요청은 늘 기본 API)
+        if (DispatchedCustom(request)) return;
         if (parts.Count >= 2 && parts[0] == "api" && parts[1] == "v3")
         {
             // GitHub 중계: 읽기만, 앱 키 없이 (런처와 모든 앱이 씀), 주소마다 넉넉한 제한

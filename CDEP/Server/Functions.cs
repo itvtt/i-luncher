@@ -68,6 +68,8 @@ internal sealed partial class RelayServer
                 request => request.Json(200, StatusData()), switchable: false),
             Make("admin.functions", "admin", GroupAdmin, "GET", "/admin/api/functions", "API 목록", "이 화면: API 마다 켜짐 · 호출 · 실패 · 걸린 시간", FunctionsList, switchable: false),
             Make("admin.functions.switch", "admin", GroupAdmin, "PUT", "/admin/api/functions/{id}", "API 켜고 끄기", "이 화면의 스위치", FunctionSwitch, switchable: false),
+            Make("admin.custom.add", "admin", GroupAdmin, "POST", "/admin/api/custom", "사용자 API 더하기", "[+ API 추가]: 저장하면 바로 동작", CustomCreate, switchable: false),
+            Make("admin.custom.change", "admin", GroupAdmin, "PUT|DELETE", "/admin/api/custom/{id}", "사용자 API 고치기 · 지우기", "사용자 API 의 [저장] · [삭제]", CustomChange, switchable: false),
             Make("admin.skills", "admin", GroupAdmin, "GET", "/admin/api/skills", "스킬 목록 (관리)", "",
                 request => request.Json(200, new JsonArray(Skills.All().Select(skill => (JsonNode)skill).ToArray())), switchable: false),
             Make("admin.skill", "admin", GroupAdmin, "GET|DELETE", "/admin/api/skills/{name}", "스킬 읽기 · 지우기", "", AdminSkill, switchable: false),
@@ -116,6 +118,8 @@ internal sealed partial class RelayServer
             ["perDay"] = new JsonArray(days.Select(day => (JsonNode)new JsonObject { ["day"] = day.Day, ["calls"] = day.Calls, ["failures"] = day.Failures }).ToArray()),
             ["lastCall"] = last is { } moment ? Util.Iso(moment) : null,
             ["lastFailure"] = failure is { } failed ? new JsonObject { ["at"] = Util.Iso(failed.At), ["status"] = failed.Status, ["message"] = failed.Message } : null,
+            // 사용자 API: 관리 창의 편집 칸
+            ["custom"] = _customById.TryGetValue(function.Id, out var custom) ? custom.ToJson() : null,
         };
     }
 

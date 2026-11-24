@@ -1177,6 +1177,68 @@ Check("a release workflow without a version input takes only the next version", 
     Equal("{\"ref\":\"main\"}", github.Dispatched[^1].Body!.ToJsonString(), "started without inputs");
 });
 
+// ── 사용자 API (관리 창 → API → [+ API 추가]) ──────────────────────────────────────────────────────
+
+Check("custom APIs: add, call, edit, switch off and delete from the management window, without a restart", () =>
+{
+    using var h = new Harness();
+    JsonObject Api(string title, string method, string path, string access, string kind, string body) =>
+        new() { ["title"] = title, ["method"] = method, ["path"] = path, ["access"] = access, ["kind"] = kind, ["body"] = body };
+    var added = h.AdminJson("POST", "/admin/api/custom", Api("인사", "GET", "/hello/{name}", "open", "text", """{"text":"안녕 {name}"}"""));
+    Equal(200, added.Status, added.Text);
+    string id = Str(added.Json!["id"]);
+    Equal("인사 사용자 API", $"{Str(added.Json["custom"]!["title"])} {Str(added.Json["group"])}");
+    var hello = h.Call("GET", "/hello/" + Uri.EscapeDataString("철수"), key: false);
+    Equal("200 안녕 철수", $"{hello.Status} {Str(hello.Json!["text"])}", "answers at once, JSON stays JSON");
+
+    // 겹치거나 틀린 주소
+    Equal(409, h.AdminJson("POST", "/admin/api/custom", Api("x", "GET", "/api/skills", "open", "text", "x")).Status, "a built-in API's address");
+    Equal(409, h.AdminJson("POST", "/admin/api/custom", Api("x", "GET", "/admin/anything", "open", "text", "x")).Status, "the server's own place");
+    Equal(409, h.AdminJson("POST", "/admin/api/custom", Api("x", "GET", "/hello/{who}", "open", "text", "x")).Status, "the same shape as another custom API");
+    Equal(400, h.AdminJson("POST", "/admin/api/custom", Api("x", "GET", "no-slash", "open", "text", "x")).Status, "an address starts with /");
+    Equal(400, h.AdminJson("POST", "/admin/api/custom", Api("x", "PATCH", "/p", "open", "text", "x")).Status, "only GET · POST · PUT · DELETE");
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("같은 주소 다른 방법", "POST", "/hello/{name}", "open", "text", "posted")).Status, "another method on the same address");
+
+    // 부를 수 있는 사람
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("키", "GET", "/keyed", "key", "text", "ok")).Status);
+    Equal("401 200", $"{h.Call("GET", "/keyed", key: false).Status} {h.Call("GET", "/keyed").Status}", "the app key");
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("관리", "GET", "/only-admin", "admin", "text", "ok")).Status);
+    Equal("401 200", $"{h.Call("GET", "/only-admin", key: false).Status} {h.Call("GET", "/only-admin", key: false, admin: Harness.Admin).Status}", "the admin password");
+
+    // PowerShell: $request 로 받고 출력이 응답, exit 404 는 404
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("되돌려 주기", "POST", "/echo/{kind}", "open", "script",
+        "@{ name = $request.json.name; kind = $request.values.kind; method = $request.method; page = $request.query.page } | ConvertTo-Json -Compress")).Status);
+    var echo = h.Call("POST", "/echo/test?page=2", Encoding.UTF8.GetBytes("""{"name":"영희"}"""), key: false, contentType: "application/json");
+    Equal("200 영희 test POST 2", $"{echo.Status} {Str(echo.Json!["name"])} {Str(echo.Json["kind"])} {Str(echo.Json["method"])} {Str(echo.Json["page"])}", echo.Text);
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("없음", "GET", "/missing", "open", "script", "Write-Output '없어요'\nexit 404")).Status);
+    var missing = h.Call("GET", "/missing", key: false);
+    Equal("404 없어요", $"{missing.Status} {missing.Text}");
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("오류", "GET", "/broken", "open", "script", "throw '일부러'")).Status);
+    var broken = h.Call("GET", "/broken", key: false);
+    Equal(500, broken.Status);
+    Contains("일부러", broken.Text);
+
+    // 고치기: 저장하면 바로
+    var changed = h.AdminJson("PUT", $"/admin/api/custom/{id}", Api("인사", "GET", "/hello/{name}", "open", "text", "반가워요 {name}"));
+    Equal(200, changed.Status, changed.Text);
+    Equal("반가워요 민수", h.Call("GET", "/hello/" + Uri.EscapeDataString("민수"), key: false).Text);
+    Equal(404, h.AdminJson("PUT", "/admin/api/custom/custom-none", Api("x", "GET", "/y", "open", "text", "x")).Status);
+
+    // 목록 · 통계 · 켜고 끄기 (기본 API 와 같음)
+    var listed = h.AdminJson("GET", "/admin/api/functions").Json!["functions"]!.AsArray().First(item => Str(item!["id"]) == id)!;
+    Equal("2 사용자 API", $"{listed["today"]!["calls"]} {Str(listed["group"])}");
+    Equal(200, h.AdminJson("PUT", $"/admin/api/functions/{id}", J("""{"on":false}""")).Status);
+    Equal(503, h.Call("GET", "/hello/a", key: false).Status, "switched off");
+    Equal(200, h.AdminJson("PUT", $"/admin/api/functions/{id}", J("""{"on":true}""")).Status);
+
+    // 다시 켜도 남고, 지우면 사라짐
+    var again = new RelayServer(h.Config);
+    Equal(7, again.Customs.All().Count, "kept in api\\custom.json");
+    Equal(200, h.AdminJson("DELETE", $"/admin/api/custom/{id}").Status);
+    True(h.Call("GET", "/hello/a", key: false).Status != 200, "gone");
+    True(!h.Server.Functions.Any(function => function.Id == id), "and out of the list");
+});
+
 // ── 관리 창 (i-api.exe 를 손으로 실행하면 뜨는 창) ──────────────────────────────────────────────────────
 
 Check("management window: changing an app's id or install folder name keeps the old value for the launcher", () =>

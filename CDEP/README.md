@@ -34,6 +34,18 @@ NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 릴리스(`bui
 
 ## 새 API 더하기
 
+**보통은 i-api 창에서 합니다 (코드 · 릴리스 없이):** 관리 창 → API → **[+ API 추가]** → 이름 · 설명 · 방법(GET · POST · PUT · DELETE) · 주소(`/hello/{name}`) · 부를 수 있는 사람(누구나 · 앱 키 · 관리자) · 종류를 정하고 [저장] 하면 그 자리에서 동작합니다. 고른 API 의 [편집] · [삭제], [부르기]로 시험. 켜고 끄기 · 호출 수는 기본 API 와 같습니다. 정의는 데이터 폴더의 `api\custom.json` (`Stores\CustomApis.cs`, 실행은 `Server\CustomFunctions.cs`).
+
+| 종류 | 하는 일 |
+|---|---|
+| 고정 응답 | 적어 둔 JSON · 글을 돌려줌. 주소의 `{이름}` 은 그 값으로 |
+| PowerShell | 스크립트를 돌려 출력한 글을 돌려줌 (JSON 이면 JSON). `$request.values.이름` · `$request.query.이름` · `$request.json` · `$request.body` · `$request.method`. `exit 404` 처럼 끝내면 그 상태 코드, 오류는 500, 정한 시간(기본 30초)을 넘기면 504 |
+| 다른 주소로 전달 | 방법 · 쿼리 · 본문을 그대로 그 주소로 보내고 받은 것을 돌려줌 (`{이름}` 은 그 값으로) |
+
+기본 API 와 같은 방법 · 주소, 서버가 쓰는 자리(`/health` · `/admin` · `/launcher` · `/api/v3` · 설비 상태)는 만들 수 없습니다.
+
+**기본 API (앱들이 쓰는 것)를 코드로 더하거나 고칠 때만** 아래처럼 합니다:
+
 1. **`Server\Functions.cs`** 의 목록에 한 줄: id(바꾸지 않음) · 구역 · 묶음 · 방법 · 주소 · 이름 · 설명 · 처리기.
    ```csharp
    Make("hello.read", "launcher", GroupLauncher, "GET", "/launcher/hello/{name}", "인사 읽기", "예시: 이름을 받아 인사를 돌려줌", HelloRead),
