@@ -119,17 +119,48 @@ public partial class MainWindow : Window
         _github = new GitHubClient(repository => _settings.GetToken(repository), LauncherVersion);
         _manager = new AppManager(_github, new AppInstaller(), Path.Combine(_settings.CacheDirectory, "downloads"), () => _settings.DefaultHost);
         (_store as IDisposable)?.Dispose();
-        _store = _settings.CatalogMode switch
-        {
-            LauncherSettings.ModeApi => new ApiCatalogStore(_settings.ApiServerUrl!, () => null,
-                Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
-            LauncherSettings.ModeGitHub when _settings.CatalogRepository is { } repository =>
-                new GitHubCatalogStore(_github, repository, _settings.CatalogPath, _settings.CatalogBranch, Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
-            _ => new LocalCatalogStore(Path.Combine(_settings.DataDirectory, "catalog.json"))
-        };
+        _store = CreateStore();
         _notices = new NoticeService(FetchNoticesAsync, _settings.CacheDirectory);
         _icons = new AppIconService(_github, IconCacheDirectory, () => _settings.DefaultHost);
+        // 관리자 메뉴의 서버 = 런처가 쓰는 API 서버 (이 PC 가 아니면 관리자 메뉴는 이 PC 에 서버를 두지 않고 그 서버를 고침)
+        ApiManager.ManagerHost.ApiServer = _settings.ApiServerUrl ?? "";
+        ApiManager.ManagerHost.DefaultApiServer = _settings.BuildApiServerUrl ?? "";
+        ApiManager.ManagerHost.ChangeApiServer = ChangeApiServer;
         ShowRole();
+    }
+
+    private ICatalogStore CreateStore() => _settings.CatalogMode switch
+    {
+        LauncherSettings.ModeApi => new ApiCatalogStore(_settings.ApiServerUrl!, () => null,
+            Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
+        LauncherSettings.ModeGitHub when _settings.CatalogRepository is { } repository =>
+            new GitHubCatalogStore(_github, repository, _settings.CatalogPath, _settings.CatalogBranch, Path.Combine(_settings.CacheDirectory, "catalog-cache.json")),
+        _ => new LocalCatalogStore(Path.Combine(_settings.DataDirectory, "catalog.json"))
+    };
+
+    /// <summary>
+    /// 마스터가 관리자 메뉴 → 서버에서 API 서버 주소를 바꿈 (비우면 빌드 설정의 주소). C:\i-luncher\settings.json 에 두고 서버 목록을 새 주소에서 다시 읽음.
+    /// 설치된 앱의 사용 기록도 이 주소로 감 (AppKit AppUsage 가 같은 파일을 읽음). 틀린 주소면 null, 아니면 지금 쓰는 주소 (없으면 "")
+    /// </summary>
+    private string? ChangeApiServer(string text)
+    {
+        string? url = LauncherSettings.NormalizeServer(text);
+        if (url is null && text.Trim().Length > 0) return null;
+        _settings.User.ApiServer = url is null || url == _settings.BuildApiServerUrl ? null : url;
+        _settings.SaveUser();
+        ApiManager.ManagerHost.ApiServer = _settings.ApiServerUrl ?? "";
+        _ = SwitchStoreAsync();
+        return ApiManager.ManagerHost.ApiServer;
+    }
+
+    /// <summary>읽던 목록이 끝난 뒤 새 주소의 목록으로 바꾸고 다시 읽음 (새 서버 목록의 릴리스도 확인)</summary>
+    private async Task SwitchStoreAsync()
+    {
+        while (_refreshing) await Task.Delay(200);
+        (_store as IDisposable)?.Dispose();
+        _store = CreateStore();
+        ShowRole();
+        await RefreshAsync(checkReleases: true);
     }
 
     /// <summary>

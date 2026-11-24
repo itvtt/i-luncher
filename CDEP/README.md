@@ -30,7 +30,7 @@ i-luncher와 앱들이 쓰는 API를 `relay.py` 하나로 제공합니다 (Pytho
 
 | 쓰는 곳 | 설정 |
 |---|---|
-| i-luncher | 빌드 설정(프로필 `i-luncher.env`) `API_SERVER=https://<배포 주소>` |
+| i-luncher | 빌드 설정(프로필 `i-luncher.env`) `API_SERVER=https://<배포 주소>`. 릴리스 전에 마스터 PC 에서 바로 바꾸려면 관리자 메뉴 → 서버 → 서버 주소 |
 | AppKit 앱 (DeskCal, FastCopy …) | 바꾸지 않음 (업데이트는 GitHub: `UPDATE_GITHUB_API=https://<Enterprise 호스트>/api/v3`) |
 | Terminal Notes | 그 앱 `.env` 의 중계 서버 주소 · 키 (`.env.sample` 참고) |
 | i-luncher 관리자 메뉴 | 관리자 PC 의 프로필 `i-luncher.env` 에 `API_ADMIN_PASSWORD=<RELAY_ADMIN_PASSWORD 와 같은 값>` (이 PC 에 relay.py 가 없을 때 이 값을 씀) |

@@ -13,7 +13,7 @@
 //   running = 가동 시간(초, Resident 만): 앱이 떠 있고 사용자가 PC 앞에 있음 (잠금 아님, 입력 5분 안)
 //   launch  = 실행 횟수
 // 모은 값은 날짜별로 5분마다 <API 서버>/launcher/usage 로 보내고, 못 보내면 %LOCALAPPDATA%\<앱>\usage-pending.json 에 두었다가 다시 보냄.
-// API 서버 주소: 설치된 i-luncher 의 launcher.env (API_SERVER).
+// API 서버 주소: i-luncher 가 쓰는 주소 (마스터가 관리자 메뉴 → 서버에서 바꾼 값 = 런처 settings.json 의 ApiServer, 없으면 설치된 i-luncher 의 launcher.env 의 API_SERVER).
 // 마스터 계정(그 launcher.env 의 MASTER_USERS 에 이 PC 의 Windows 계정)만 모읍니다. 일반 사용자는 모으지도 보내지도 않습니다 (나중에 정함).
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
 // usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
@@ -332,11 +332,49 @@ namespace ILuncher.AppKit
                    baseDirectory.IndexOf(@"\bin\Release\", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        /// <summary>설치된 i-luncher 의 launcher.env 의 API_SERVER</summary>
-        internal static string? LauncherServer()
+        /// <summary>
+        /// i-luncher 가 쓰는 API 서버: 마스터가 관리자 메뉴 → 서버에서 바꾼 주소(런처 설정 settings.json 의 ApiServer),
+        /// 없으면 설치된 i-luncher 의 launcher.env 의 API_SERVER
+        /// </summary>
+        internal static string? LauncherServer() =>
+            NormalizeServer(LauncherSetting("ApiServer")) ?? NormalizeServer((LauncherEnv("API_SERVER") ?? "").Trim('"'));
+
+        /// <summary>
+        /// http(s)://호스트[:포트] 로 정리. IP · 이름만 쓰면 http 와 포트 2003 (192.168.0.10 → http://192.168.0.10:2003). 비었거나 틀리면 null.
+        /// i-luncher LauncherSettings.NormalizeServer 와 같은 규칙
+        /// </summary>
+        internal static string? NormalizeServer(string? text)
         {
-            string value = (LauncherEnv("API_SERVER") ?? "").Trim('"').TrimEnd('/');
-            return Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https") ? value : null;
+            string value = (text ?? "").Trim().Trim('"');
+            if (value.Length == 0) return null;
+            int scheme = value.IndexOf("://", StringComparison.Ordinal);
+            bool bare = scheme < 0;
+            Uri? uri;
+            if (!Uri.TryCreate(bare ? "http://" + value : value, UriKind.Absolute, out uri) || uri == null
+                || (uri.Scheme != "http" && uri.Scheme != "https") || uri.Host.Length == 0) return null;
+            string authority = value.Substring(bare ? 0 : scheme + 3).Split('/', '?', '#')[0];
+            if (bare && !Regex.IsMatch(authority, @":\d+$")) uri = new UriBuilder(uri) { Port = 2003 }.Uri;
+            return uri.GetLeftPart(UriPartial.Authority);
+        }
+
+        /// <summary>i-luncher 설정(C:\i-luncher\settings.json, 없으면 %LOCALAPPDATA%\i-luncher\settings.json)의 문자열 값 하나 (없으면 null)</summary>
+        private static string? LauncherSetting(string name)
+        {
+            string? folder = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR");
+            string[] folders = !string.IsNullOrWhiteSpace(folder) ? new[] { folder!.Trim() }
+                : new[] { @"C:\i-luncher", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-luncher") };
+            foreach (string data in folders)
+            {
+                try
+                {
+                    string path = Path.Combine(data, "settings.json");
+                    if (!File.Exists(path)) continue;
+                    var match = Regex.Match(File.ReadAllText(path), "\"" + Regex.Escape(name) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+                    return match.Success ? Regex.Unescape(match.Groups[1].Value) : null;
+                }
+                catch { }
+            }
+            return null;
         }
 
         /// <summary>이 PC 의 Windows 계정이 설치된 i-luncher 의 마스터(launcher.env 의 MASTER_USERS, 쉼표 · 세미콜론 · 빈칸)인지</summary>

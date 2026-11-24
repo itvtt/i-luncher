@@ -390,6 +390,35 @@ try
         settings.User.CatalogMode = LauncherSettings.ModeLocal;
         Equal(LauncherSettings.ModeLocal, settings.CatalogMode, "user choice wins");
     });
+    await CheckSync("settings: a master can point the launcher at another API server; apps' usage records follow it", () =>
+    {
+        foreach (var (input, expected) in new (string, string?)[]
+                 {
+                     ("192.168.0.10", "http://192.168.0.10:2003"), (" 192.168.0.10:2004 ", "http://192.168.0.10:2004"), ("server01", "http://server01:2003"),
+                     ("192.168.0.10:80", "http://192.168.0.10"), ("http://10.0.0.5:2003/", "http://10.0.0.5:2003"), ("https://api.example.com", "https://api.example.com"),
+                     ("http://10.0.0.5", "http://10.0.0.5"), ("", null), ("ftp://10.0.0.5", null), ("not an address", null),
+                 })
+        {
+            Equal(expected, LauncherSettings.NormalizeServer(input), "launcher: " + input);
+            Equal(expected, ILuncher.AppKit.AppUsage.NormalizeServer(input), "AppKit AppUsage: " + input);
+        }
+        string buildDir = Path.Combine(root, "api-server-change");
+        Directory.CreateDirectory(buildDir);
+        File.WriteAllText(Path.Combine(buildDir, BuildSettings.FileName), "API_SERVER=http://10.0.0.5:2003\nMASTER_USERS=boss\n");
+        string data = Path.Combine(root, "api-server-change-data");
+        var settings = LauncherSettings.Load(data, buildDir);
+        Equal("http://10.0.0.5:2003", settings.ApiServerUrl, "build setting by default");
+        settings.User.ApiServer = "192.168.0.10";
+        settings.SaveUser();
+        Equal("http://192.168.0.10:2003", LauncherSettings.Load(data, buildDir).ApiServerUrl, "the master's address wins and is kept");
+        Equal("http://10.0.0.5:2003", settings.BuildApiServerUrl, "build address kept for 'empty = default'");
+        string? before = Environment.GetEnvironmentVariable("ILUNCHER_DATA_DIR");
+        Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", data);
+        try { Equal("http://192.168.0.10:2003", ILuncher.AppKit.AppUsage.LauncherServer(), "apps read the same address from settings.json"); }
+        finally { Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", before); }
+        Assert(ApiManager.ManagerHost.IsThisPc("http://127.0.0.1:2003") && ApiManager.ManagerHost.IsThisPc($"http://{Environment.MachineName}:2003"), "this PC");
+        Assert(!ApiManager.ManagerHost.IsThisPc("http://203.0.113.9:2003") && !ApiManager.ManagerHost.IsThisPc("https://api.example.com"), "another PC");
+    });
 
     Console.WriteLine("GitHub client");
     await Check("latest release, missing release and inaccessible repository", async () =>

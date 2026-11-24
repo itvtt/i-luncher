@@ -14,7 +14,7 @@ internal sealed class AdminException(string message, HttpStatusCode status) : Ex
 }
 
 /// <summary>
-/// 이 PC 서버의 관리 기능을 부름: /admin/api/* (상태·문제 보고·스킬·공지, relay 2.14+) 와 /launcher/* (i-luncher 앱 목록·런처 공지).
+/// API 서버(이 PC, 또는 런처가 쓰는 다른 PC 의 서버)의 관리 기능을 부름: /admin/api/* (상태·문제 보고·스킬·공지, relay 2.14+) 와 /launcher/* (i-luncher 앱 목록·런처 공지).
 /// 관리자 비밀번호는 서버 설정(relay.py SETTINGS 의 RELAY_ADMIN_PASSWORD)에서 읽으므로 따로 묻지 않음.
 /// </summary>
 internal sealed class AdminClient : IDisposable
@@ -67,7 +67,9 @@ internal sealed class AdminClient : IDisposable
     private static string ErrorText(HttpStatusCode status, string body)
     {
         if (status == HttpStatusCode.Unauthorized)
-            return "관리자 비밀번호가 맞지 않습니다. 설정 파일(relay.py 맨 위 SETTINGS)의 RELAY_ADMIN_PASSWORD 를 확인하세요.";
+            return ManagerHost.IsLocalServer
+                ? "관리자 비밀번호가 맞지 않습니다. 설정 파일(relay.py 맨 위 SETTINGS)의 RELAY_ADMIN_PASSWORD 를 확인하세요."
+                : "관리자 비밀번호가 맞지 않습니다. 이 PC 의 API_ADMIN_PASSWORD(환경 변수 또는 프로필 i-luncher.env)를 그 서버의 RELAY_ADMIN_PASSWORD 와 같게 넣으세요.";
         if (status == HttpStatusCode.NotFound && body.Contains("찾을 수 없는 주소", StringComparison.Ordinal))
             return "서버가 이 기능을 모릅니다(서버 2.14 이상 필요). [다시 시작]으로 서버를 새 버전으로 바꾸세요.";
         string message = body.Trim();

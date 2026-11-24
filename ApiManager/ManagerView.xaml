@@ -46,6 +46,13 @@
             <!-- 서버 -->
             <ScrollViewer x:Name="ServerSection" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
+                    <!-- 연결할 서버: 런처의 서버 목록 · 관리자 메뉴 · 앱 사용 기록이 모두 이 주소 (비우면 빌드 설정의 주소) -->
+                    <DockPanel Margin="0,0,0,6">
+                        <Button x:Name="ConnectButton" DockPanel.Dock="Right" Content="연결" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0" Click="ConnectButton_Click" />
+                        <TextBlock Text="서버 주소" Style="{StaticResource SubheadingStyle}" Margin="0,0,14,0" VerticalAlignment="Center" />
+                        <TextBox x:Name="ServerAddressBox" MaxWidth="360" HorizontalAlignment="Left" Width="360" KeyDown="ServerAddressBox_KeyDown" />
+                    </DockPanel>
+                    <TextBlock x:Name="ServerAddressHint" Style="{StaticResource HintStyle}" Margin="0,0,0,20" />
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="RestartButton" Content="다시 시작" Click="RestartButton_Click" />
@@ -54,9 +61,9 @@
                                     Click="MoreButton_Click">
                                 <Button.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="설정 파일 열기" Click="SettingsFileButton_Click" />
-                                        <MenuItem Header="로그 열기" Click="LogButton_Click" />
-                                        <MenuItem Header="데이터 폴더 열기" Click="DataFolderButton_Click" />
+                                        <MenuItem x:Name="SettingsFileItem" Header="설정 파일 열기" Click="SettingsFileButton_Click" />
+                                        <MenuItem x:Name="LogItem" Header="로그 열기" Click="LogButton_Click" />
+                                        <MenuItem x:Name="DataFolderItem" Header="데이터 폴더 열기" Click="DataFolderButton_Click" />
                                         <MenuItem Header="브라우저로 열기" Click="BrowserButton_Click" />
                                     </ContextMenu>
                                 </Button.ContextMenu>

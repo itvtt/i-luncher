@@ -59,13 +59,13 @@ internal static partial class ServerManager
     public static string ReadAdminPassword(string script) => Setting(SettingsBlock(script), "RELAY_ADMIN_PASSWORD");
 
     /// <summary>
-    /// 관리자 메뉴가 서버에 쓰는 비밀번호: 이 PC 에 설치된 relay.py 의 SETTINGS, 없으면(서버가 배포 환경 C-DEP 등에 있을 때)
+    /// 관리자 메뉴가 서버에 쓰는 비밀번호: 이 PC 의 서버면 설치된 relay.py 의 SETTINGS, 다른 PC 의 서버면(또는 SETTINGS 가 비면)
     /// 관리자 PC 의 환경 변수 API_ADMIN_PASSWORD 또는 프로필 폴더(APPS_ENV_DIR)의 i-luncher.env 의 API_ADMIN_PASSWORD.
     /// 런처 화면에서 묻거나 저장하지 않음
     /// </summary>
     public static string AdminPassword()
     {
-        string local = ReadAdminPassword(DeployedScript);
+        string local = ManagerHost.IsLocalServer ? ReadAdminPassword(DeployedScript) : "";
         if (local.Length > 0) return local;
         if (Environment.GetEnvironmentVariable("API_ADMIN_PASSWORD") is { Length: > 0 } variable) return variable.Trim();
         if (Environment.GetEnvironmentVariable("APPS_ENV_DIR") is { Length: > 0 } folder)
@@ -83,7 +83,8 @@ internal static partial class ServerManager
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
-        return "";
+        // 다른 PC 의 서버인데 따로 넣은 비밀번호가 없으면: 이 PC 에도 서버가 있으면 그 비밀번호 (두 서버를 같은 비밀번호로 둔 경우)
+        return ManagerHost.IsLocalServer ? "" : ReadAdminPassword(DeployedScript);
     }
 
     /// <summary>SETTINGS 의 RELAY_HOST·RELAY_PORT·RELAY_BIND 로 정한 주소 (relay.py 의 listen_address·health_url 과 같은 규칙)</summary>
@@ -100,8 +101,8 @@ internal static partial class ServerManager
         if (dataRoot.Length == 0) dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TerminalNotesRelayData");
         string log = Setting(block, "RELAY_LOG_FILE");
         log = log.Length == 0 ? Path.Combine(dataRoot, "relay.log") : Path.IsPathRooted(log) ? log : Path.Combine(dataRoot, log);
-        // .env API_SERVER: 서버를 다른 주소로 부를 때 (예: 다른 망의 주소·https). 상태 확인과 관리 기능이 그 주소로 감
-        if (ManagerHost.ApiServer.Length > 0)
+        // 다른 PC 의 서버 (런처의 API 서버 주소): 상태 확인과 관리 기능이 그 주소로 감
+        if (!ManagerHost.IsLocalServer)
             return new ServerAddress(ManagerHost.ApiServer + "/health", ManagerHost.ApiServer + "/", dataRoot, log, ManagerHost.ApiServer);
         return new ServerAddress($"{scheme}://{healthHost}:{port}/health", $"{scheme}://{adminHost}:{port}/", dataRoot, log, $"{scheme}://{healthHost}:{port}");
     }

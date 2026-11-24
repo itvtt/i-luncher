@@ -122,6 +122,8 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
 - GitHub 중계(`/api/v3/…`)는 예전에 빌드한 앱을 위해 남아 있을 뿐, 지금 런처 · 앱은 쓰지 않습니다.
 - EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다 (포트 **2004**). 포트는 어디서나 API 서버 **2003** · 설비 상태 **2004** 입니다 (설비 DB 를 넣은 API 서버는 `EQUIPMENT_PORT` 2004 에서도 설비 상태를 내려 줌).
+- **서버 주소**: 런처 빌드 설정 `API_SERVER` 가 기본이고, 마스터는 관리자 메뉴 → 서버 → **서버 주소**에서 바꿉니다 (IP 만 쓰면 포트 2003, 비우고 연결하면 기본값, `C:\i-luncher\settings.json` 의 `ApiServer`). 그 PC 의 서버 목록 · 관리자 메뉴 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다. 주소를 바꾸려고 런처를 다시 릴리스하지 않아도 됩니다.
+- 서버 주소가 다른 PC 면 관리자 메뉴는 이 PC 에 서버를 설치 · 시작하지 않고 그 서버에 연결만 합니다 (다시 시작 · 멈추기 숨김). 관리자 비밀번호는 이 PC 의 `API_ADMIN_PASSWORD` (환경 변수 또는 프로필 `i-luncher.env`).
 - 배포 방법: [`CDEP\README.md`](../CDEP/README.md).
 
 ## 6. 설정 키
@@ -130,7 +132,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 
 | 키 | 값 |
 |---|---|
-| `API_SERVER` | API 서버 주소 (마스터만 씀) |
+| `API_SERVER` | API 서버 기본 주소 (마스터만 씀). 마스터는 관리자 메뉴 → 서버 → 서버 주소에서 바꿀 수 있음 |
 | `MASTER_USERS` | 마스터 Windows 계정 (쉼표). 비우면 모두 일반 |
 | `GENERAL_APPS` | 일반 화면(홈)에 늘 보이는 기본 앱 id (쉼표, `basic-apps.json` 의 id). 비우면 `deskcal` |
 | `LAUNCHER_REPOSITORY` | 런처 저장소 `https://<호스트>/<소유자>/i-luncher` (기본 목록의 호스트 · 소유자도 여기서) |
@@ -152,7 +154,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 
 | 파일 | 내용 |
 |---|---|
-| `settings.json` | 자동 업데이트, 프로젝트마다의 토큰 `RepositoryTokens`(암호화), 마스터 PC 의 git 로그인 토큰 `Tokens` · `AutoTokenHosts`, `GeneralView`(마스터의 일반 화면) |
+| `settings.json` | 자동 업데이트, 마스터가 바꾼 API 서버 주소 `ApiServer`, 프로젝트마다의 토큰 `RepositoryTokens`(암호화), 마스터 PC 의 git 로그인 토큰 `Tokens` · `AutoTokenHosts`, `GeneralView`(마스터의 일반 화면) |
 | `my-apps.json` | 내 앱 |
 | `removed-apps.json` | 목록에서 삭제한 기본 · 서버 목록 앱 |
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |

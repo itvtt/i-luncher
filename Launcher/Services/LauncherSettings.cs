@@ -13,7 +13,7 @@ public sealed class BuildSettings
 {
     public const string FileName = "launcher.env";
 
-    /// <summary>API 서버 (예: http://<서버 IP>:2003): 앱 목록·공지와 GitHub 중계</summary>
+    /// <summary>API 서버의 기본 주소 (예: http://<서버 IP>:2003): 마스터의 서버 목록 · 관리자 메뉴. 마스터가 관리자 메뉴 → 서버에서 바꿀 수 있음</summary>
     public string ApiServer { get; init; } = "";
     public string LauncherRepository { get; init; } = "";
     public string CatalogRepository { get; init; } = "";
@@ -98,6 +98,11 @@ public sealed class UserSettings
     /// <summary>앱 목록 위치: api(API 서버) · github(GitHub 저장소 파일) · local(이 PC). 비우면 빌드 설정에 따라</summary>
     public string? CatalogMode { get; set; }
     public bool AutoUpdateLauncher { get; set; } = true;
+    /// <summary>
+    /// 마스터가 관리자 메뉴 → 서버에서 정한 API 서버 주소. 비우면 빌드 설정(launcher.env)의 API_SERVER.
+    /// 설치된 앱의 사용 기록(AppKit AppUsage)도 이 값을 읽음 (이름을 바꾸지 않음)
+    /// </summary>
+    public string? ApiServer { get; set; }
     /// <summary>마스터 계정이 제목 표시줄의 일반/마스터 전환으로 일반 화면을 고름 (일반 사용자와 똑같이: 기본 목록만, 서버에 묻지 않음)</summary>
     public bool GeneralView { get; set; }
     /// <summary>호스트 → DPAPI 로 보호한 토큰(base64)</summary>
@@ -221,15 +226,28 @@ public sealed class LauncherSettings
 
     public const string ModeApi = "api", ModeGitHub = "github", ModeLocal = "local";
 
-    /// <summary>API 서버 주소 (끝의 / 없음): 빌드 설정(launcher.env)의 API_SERVER 만. 사용자가 바꾸지 않음</summary>
-    public string? ApiServerUrl
+    /// <summary>API 서버 주소 (끝의 / 없음): 마스터가 관리자 메뉴 → 서버에서 바꾼 주소, 없으면 빌드 설정(launcher.env)의 API_SERVER</summary>
+    public string? ApiServerUrl => NormalizeServer(User.ApiServer) ?? BuildApiServerUrl;
+
+    /// <summary>빌드 설정의 API_SERVER (마스터가 주소 칸을 비우면 이것)</summary>
+    public string? BuildApiServerUrl => NormalizeServer(Build.ApiServer);
+
+    public const int DefaultApiPort = 2003;
+
+    /// <summary>
+    /// API 서버 주소를 http(s)://호스트[:포트] 로 정리. IP · 이름만 쓰면 http 와 포트 2003 (192.168.0.10 → http://192.168.0.10:2003).
+    /// 비었거나 틀리면 null. AppKit AppUsage 의 NormalizeServer 와 같은 규칙
+    /// </summary>
+    public static string? NormalizeServer(string? text)
     {
-        get
-        {
-            string text = Build.ApiServer;
-            return Uri.TryCreate(text.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-                ? uri.GetLeftPart(UriPartial.Authority) : null;
-        }
+        string value = (text ?? "").Trim().Trim('"');
+        if (value.Length == 0) return null;
+        bool bare = !value.Contains("://", StringComparison.Ordinal);
+        if (!Uri.TryCreate(bare ? "http://" + value : value, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps || uri.Host.Length == 0) return null;
+        string authority = value[(bare ? 0 : value.IndexOf("://", StringComparison.Ordinal) + 3)..].Split('/', '?', '#')[0];
+        if (bare && !System.Text.RegularExpressions.Regex.IsMatch(authority, @":\d+$")) uri = new UriBuilder(uri) { Port = DefaultApiPort }.Uri;
+        return uri.GetLeftPart(UriPartial.Authority);
     }
 
     /// <summary>앱 목록 위치. 정하지 않았으면 API 서버가 있으면 api, 저장소가 있으면 github, 아니면 local</summary>

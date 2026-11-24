@@ -103,7 +103,18 @@ public partial class ManagerView : UserControl
 
     private async Task InitializeAsync()
     {
+        ShowServerMode();
         UpdateVersions();
+        // 다른 PC 의 서버: 이 PC 에 서버를 두거나 켜지 않고 그 서버에 연결만
+        if (!ManagerHost.IsLocalServer)
+        {
+            _python = null;
+            SetBusy(false);
+            ConnectAdmin();
+            await RefreshHealthAsync();  // 응답하면 지금 화면을 읽음 (응답하지 않으면 서버가 살아날 때)
+            if (IsVisible) _timer.Start();
+            return;
+        }
         _python = ServerManager.FindPython();
         if (_python is null)
         {
@@ -145,9 +156,61 @@ public partial class ManagerView : UserControl
         _admin = new AdminClient(_address.ApiBase, ServerManager.AdminPassword());
     }
 
+    /// <summary>주소 칸 · 안내, 그리고 이 PC 의 서버일 때만 다시 시작 · 멈추기 · 설정 파일 · 로그 · 데이터 폴더</summary>
+    private void ShowServerMode()
+    {
+        bool local = ManagerHost.IsLocalServer;
+        ServerAddressBox.Text = ManagerHost.ApiServer;
+        ServerAddressBox.Tag = ManagerHost.DefaultApiServer.Length > 0 ? ManagerHost.DefaultApiServer : "예: 192.168.0.10";
+        ServerAddressHint.Text = "IP 만 쓰면 포트 2003 · 비우고 연결하면 기본값" + (ManagerHost.DefaultApiServer.Length > 0 ? $" ({ManagerHost.DefaultApiServer})" : " (이 PC)")
+            + (local ? "" : " · 다른 PC 의 서버라 이 PC 에서 켜거나 멈추지 않음");
+        ConnectButton.IsEnabled = ManagerHost.ChangeApiServer is not null;
+        var visibility = local ? Visibility.Visible : Visibility.Collapsed;
+        RestartButton.Visibility = StopButton.Visibility = SettingsFileItem.Visibility = LogItem.Visibility = DataFolderItem.Visibility = visibility;
+    }
+
+    private void ServerAddressBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        e.Handled = true;
+        ConnectButton_Click(sender, e);
+    }
+
+    /// <summary>주소를 바꿔 그 서버에 연결 (런처가 저장하고 서버 목록을 다시 읽음). 저장하지 않은 편집이 있으면 먼저 물음</summary>
+    private async void ConnectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || ManagerHost.ChangeApiServer is not { } change) return;
+        bool dirty = _appsDirty || RunnerEnvDirty || NoticeKindLauncher.IsChecked != true && NoticeDirty();
+        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 다른 서버에 연결할까요?", "관리자 메뉴",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        if (change(ServerAddressBox.Text) is null)
+        {
+            SetMessage("주소가 올바르지 않습니다. 예: 192.168.0.10 · 192.168.0.10:2003 · https://서버", warning: true);
+            ServerAddressBox.Focus();
+            return;
+        }
+        _timer.Stop();
+        _loaded.Clear();
+        _healthy = false;
+        // 앞 서버의 숫자 · 접속한 PC · 설정이 남지 않게
+        CountReports.Text = CountNew.Text = CountSkills.Text = "—";
+        ClientsList.ItemsSource = null;
+        SettingsList.ItemsSource = null;
+        ServerFootText.Text = "";
+        FirewallText.Visibility = NoClientsText.Visibility = Visibility.Collapsed;
+        await InitializeAsync();
+        SetMessage(_healthy ? "연결했습니다: " + _address.ApiBase : "서버가 응답하지 않습니다: " + _address.ApiBase, warning: !_healthy);
+    }
+
     private void UpdateVersions()
     {
         string app = ManagerHost.LauncherVersion;
+        if (!ManagerHost.IsLocalServer)
+        {
+            _versionText = $"i-luncher v{app}";
+            VersionsText.Text = _versionText;
+            return;
+        }
         string bundled = ServerManager.ReadVersion(ServerManager.BundledScript)?.ToString() ?? "없음";
         string deployed = ServerManager.ReadVersion(ServerManager.DeployedScript)?.ToString() ?? "설치 안 됨";
         _versionText = $"i-luncher v{app} · 서버 {deployed}" + (bundled != deployed ? $" (포함된 서버 {bundled})" : "");
@@ -266,7 +329,7 @@ public partial class ManagerView : UserControl
         SettingsList.ItemsSource = status["settings"]!.AsArray().Select(line => Str(line)).Append(firewall).Select(SettingRow.From).ToList();
         int uptime = (int?)status["uptimeSeconds"] ?? 0;
         string running = uptime >= 86400 ? $"{uptime / 86400}일 {uptime % 86400 / 3600}시간" : uptime >= 3600 ? $"{uptime / 3600}시간 {uptime % 3600 / 60}분" : $"{uptime / 60}분";
-        VersionsText.Text = $"{_versionText} · 실행 {running}";
+        VersionsText.Text = ManagerHost.IsLocalServer ? $"{_versionText} · 실행 {running}" : $"{_versionText} · 서버 {Str(status["version"])} · 실행 {running}";
         string size = (((double?)counts["reportsBytes"] ?? 0) / 1048576).ToString("0.0", CultureInfo.InvariantCulture);
         ServerFootText.Text = $"Python {Str(status["python"])} · 보고서 {size} MB · GitHub 중계로 여는 저장소: 앱 목록 {status["githubRepositories"]!.AsArray().Count}개" +
             (status["githubProxyRepositories"]!.AsArray().Count > 0 ? $", LAUNCHER_GITHUB_REPOS {status["githubProxyRepositories"]!.AsArray().Count}개" : "");

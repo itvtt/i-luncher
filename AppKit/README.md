@@ -72,7 +72,7 @@ using (ILuncher.AppKit.AppUsage.Measure("copy-time")) { /* … */ }   // 작업 
 | 그 밖 | 앱이 `Count`·`Measure` 로 남기는 작업 (영문 소문자·숫자·`.-_`, 40자까지) |
 
 - 5분마다 보내고, 못 보내면 `%LOCALAPPDATA%\<설치이름>\usage-pending.json` 에 두었다가 다시 보냅니다 (90일까지).
-- 서버 주소: 설치된 i-luncher 의 `launcher.env` 의 `API_SERVER` (런처가 없으면 보내지 않음).
+- 서버 주소: i-luncher 가 쓰는 주소 = 마스터가 관리자 메뉴 → 서버에서 바꾼 주소(`C:\i-luncher\settings.json` 의 `ApiServer`), 없으면 설치된 i-luncher 의 `launcher.env` 의 `API_SERVER` (런처가 없으면 보내지 않음).
 - 사용자는 PC 이름·계정의 해시(12자리)로만 구분합니다. `bin\Debug`·`bin\Release` 에서 도는 개발 빌드는 보내지도, `usage-pending.json` 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 - 업데이트는 GitHub 에 바로 묻으므로 API 서버는 앱의 시작 · 설치 수를 따로 알지 못합니다 (예전 빌드가 중계를 쓸 때만 `check` · `download` 로 잡힘).
 
