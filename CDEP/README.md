@@ -18,10 +18,10 @@ i-luncher와 앱들이 쓰는 API를 `relay.py` 하나로 제공합니다 (Pytho
 
 ## 서버 PC 에서 실행
 
-1. 서버 PC 에서 런처(마스터 계정)의 **관리자 메뉴**를 엽니다. 처음 열면 그 PC 에 서버를 설치하고 켭니다 (`%LOCALAPPDATA%\TerminalNotesRelay\relay.py`, 로그인하면 다시 시작).
+1. 서버 PC 에서 런처(마스터 계정)의 **관리자 메뉴**를 엽니다. 처음 열면 그 PC 에 서버 **i-api** 를 설치하고 켭니다 (`%LOCALAPPDATA%\i-api\relay.py`, 로그인하면 시작 폴더의 `i-api.vbs` 가 다시 시작). 예전 이름(`%LOCALAPPDATA%\TerminalNotesRelay`)으로 깔린 서버는 이때 저절로 옮겨집니다 (설정 · 데이터 · 자동 시작 · 러너 로그온 작업).
 2. 설정은 그 `relay.py` 맨 위 SETTINGS 입니다 (관리자 메뉴 → 서버 → ⋯ → 설정 파일 열기): `RELAY_ADMIN_PASSWORD`, GitHub Enterprise 면 `RELAY_GITHUB_API=https://<Enterprise 호스트>/api/v3` · `RELAY_GITHUB_TOKEN`(읽기 전용). `EQUIPMENT_DB_*` 는 비워 둡니다. 고친 뒤 [다시 시작].
 3. 방화벽에서 포트 2003 을 엽니다 (관리자 메뉴 → 서버에 "규칙 없음"이 보이면. 자세한 것은 [`ApiManager\server\README.md`](../ApiManager/server/README.md)).
-4. 데이터(앱 목록 · 스크린샷 · 공지 · 스킬 · 보고서 · 백업)는 `C:\ProgramData\TerminalNotesRelayData` 에 따로 있습니다. 서버 PC 를 옮길 때는 이 폴더를 새 서버 PC 에 그대로 복사합니다.
+4. 데이터(앱 목록 · 스크린샷 · 사용 기록 · 공지 · 스킬 · 보고서 · 백업)는 `C:\ProgramData\i-api-data` 에 따로 있습니다 (예전 `TerminalNotesRelayData` 는 새 서버가 처음 시작할 때 이름을 바꿔 옮김). 서버 PC 를 옮길 때는 이 폴더를 새 서버 PC 에 그대로 복사합니다.
 5. 런처를 새로 릴리스하면 서버 PC 의 런처가 켜질 때 서버를 새 버전으로 바꿉니다 (SETTINGS 는 그대로 옮김).
 
 서버 PC 를 정한 뒤 **쓰는 쪽의 주소**를 그 PC 로 바꿉니다 (코드는 고치지 않음):

@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title Terminal Notes 중계 서버 중지
+title API 서버 i-api 중지
 rem Stops the relay running from this folder and removes its start at Windows login.
 call :python || goto end
 %PY% relay.py --stop

@@ -64,7 +64,7 @@ public static class ManagerHost
     {
         try
         {
-            if (!IsLocalServer || !File.Exists(ServerManager.DeployedScript) || !File.Exists(ServerManager.BundledScript)) return;
+            if (!IsLocalServer || !ServerManager.IsDeployed || !File.Exists(ServerManager.BundledScript)) return;
             string? python = ServerManager.FindPython();
             if (python is null) return;
             string? deployed = await ServerManager.DeployIfNewerAsync(python);

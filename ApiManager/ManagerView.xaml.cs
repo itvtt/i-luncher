@@ -259,7 +259,7 @@ public partial class ManagerView : UserControl
         try
         {
             var (_, output) = await ServerManager.HaltAsync(_python);
-            SetMessage(LastLine(output) + " · 로그인하면 다시 시작합니다 (시작 폴더의 Terminal Notes Relay.vbs).");
+            SetMessage(LastLine(output) + " · 로그인하면 다시 시작합니다 (시작 폴더의 i-api.vbs).");
         }
         catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or Win32Exception)
         {

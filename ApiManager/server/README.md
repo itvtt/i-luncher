@@ -1,19 +1,20 @@
-# Terminal Notes 중계 서버
+# i-api (API 서버)
 
-`relay.py` 하나가 앱의 세 기능을 한 서비스로 맡습니다. Python 3.8 이상만 있으면 되고 설치할 패키지는 없습니다.
+`relay.py` 하나가 i-luncher 와 앱들이 쓰는 API 를 한 서비스로 맡습니다 (예전 이름 Terminal Notes 중계 서버). Python 3.8 이상만 있으면 되고 설치할 패키지는 없습니다.
 
-- **문제 보내기**: 앱의 **설정 → 문제가 생겼을 때 → 문제 보내기…**가 보낸 보고서와 최근 7일 로그 ZIP을 받아 저장합니다.
-- **스킬 스토어**: 누구나 지침을 스킬로 공유합니다. 공유한 사람은 계속 고쳐 올리고 버전마다 기록이 남으며, 스토어에는 최신 버전만 보입니다.
-- **공지**: 공지 작성 계정이 앱에서 저장한 공지를 모든 사용자가 봅니다.
+- **i-luncher (마스터)**: 서버 목록 · 스크린샷, 관리자 메뉴 (앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬)
+- **앱 사용 기록**: 모든 앱이 보내는 사용 기록 (마스터 계정만), 재무성과(ImPerformance)가 읽음
+- **Terminal Notes**: 문제 보내기 · 스킬 스토어 · 공지
 
-## 서버 PC에서 실행 (폴더 하나 복사)
+## 서버 PC에서 실행
 
-1. 프로젝트에서 `build\Publish-Release.ps1`(또는 `build\Make-RelayFolder.ps1`)을 실행하면 `out\TerminalNotesRelay` 폴더가 만들어집니다. 안에는 `relay.py`, `서버 시작.cmd`, `서버 중지.cmd`, 이 설명이 있습니다. 이 `relay` 폴더를 그대로 복사해도 됩니다. 중계 서버는 `.env`를 쓰지 않습니다: 설정은 `relay.py` 맨 위 **SETTINGS**에서 고칩니다(아무것도 안 고치면 이 PC의 모든 IP, 포트 2003, 키·비밀번호 없이 받습니다).
-2. 이 폴더를 통째로 서버 PC(앱의 `RELAY_HOST` IP를 가진 PC)에 복사합니다. 서버 PC에는 Python 3.8 이상만 있으면 됩니다.
-3. **`서버 시작.cmd`**를 실행합니다. 로그인 때 창 없이 자동 실행되게 등록하고, 방화벽에 포트를 열고(Windows 확인 창에서 "예" 한 번), 지금 바로 시작한 뒤 응답을 확인해 주소를 보여 줍니다. 이미 실행 중이면 다시 시작합니다. 새 `relay.py`로 바꿀 때는 먼저 `python 새relay.py --settings-from 예전relay.py`로 예전 설정을 옮긴 뒤 바꿔 넣고 이것을 실행합니다.
-4. 끄려면 **`서버 중지.cmd`**: 이 폴더의 중계 서버를 멈추고 자동 실행을 해제합니다(다른 폴더의 중계 서버 자동 실행은 그대로).
+보통은 서버 PC 에서 i-luncher 의 **관리자 메뉴**를 열면 이 폴더의 파일이 `%LOCALAPPDATA%\i-api` 에 들어가고 서버가 켜집니다. 아래는 런처 없이 손으로 둘 때입니다.
 
-보고서·스킬·공지·로그·백업은 이 폴더가 아니라 **데이터 폴더**(`C:\ProgramData\TerminalNotesRelayData`, 이 PC의 모든 계정 공용, 설정 `RELAY_DATA_ROOT`로 변경)의 `reports`·`skills`·`plugins`·`announcements`·`backups`·`relay.log`에 쌓입니다(2.12부터). 데이터 폴더는 이 폴더(`TerminalNotesRelay`)와 이름도 위치도 달라서, 이 폴더를 새로 복사하거나 지우고 다시 만들어도, 다른 위치로 옮겨도, 서버를 다른 Windows 계정이나 다른 Python(Microsoft Store Python은 `%LOCALAPPDATA%`를 버전마다 따로 둡니다)으로 돌려도 스토어는 그대로입니다. 예전 위치에 데이터가 남아 있으면 시작할 때 데이터 폴더로 복사만 합니다: 2.10–2.11의 기본 위치 `%LOCALAPPDATA%\TerminalNotesRelay`, `--settings-from`으로 준 예전 relay.py의 폴더, 2.10 이전처럼 relay.py 옆. 데이터 폴더에 이미 내용이 있으면 건드리지 않고, 원본은 지우지 않으며 그 자리에 `DATA-MOVED.txt`(옮겨 간 곳)를 남깁니다. 데이터 폴더가 relay.py 폴더 안에 있으면 `--check`·로그·상태 페이지에 "주의"로 알립니다.
+1. 이 폴더(런처 설치 폴더의 `server\`: `relay.py`, `서버 시작.cmd`, `서버 중지.cmd`, 이 설명)를 서버 PC 에 복사합니다 (`%LOCALAPPDATA%\i-api` 를 권장). 서버는 `.env`를 쓰지 않습니다: 설정은 `relay.py` 맨 위 **SETTINGS**에서 고칩니다(아무것도 안 고치면 이 PC의 모든 IP, 포트 2003, 키·비밀번호 없이 받습니다). 서버 PC에는 Python 3.8 이상만 있으면 됩니다.
+2. **`서버 시작.cmd`**를 실행합니다. 로그인 때 창 없이 자동 실행되게 등록하고(시작 폴더의 `i-api.vbs`), 방화벽에 포트를 열고(Windows 확인 창에서 "예" 한 번), 지금 바로 시작한 뒤 응답을 확인해 주소를 보여 줍니다. 이미 실행 중이면 다시 시작합니다. 새 `relay.py`로 바꿀 때는 먼저 `python 새relay.py --settings-from 예전relay.py`로 예전 설정을 옮긴 뒤 바꿔 넣고 이것을 실행합니다.
+3. 끄려면 **`서버 중지.cmd`**: 이 폴더의 서버를 멈추고 자동 실행을 해제합니다(다른 폴더의 서버 자동 실행은 그대로).
+
+보고서·스킬·공지·앱 목록·사용 기록·로그·백업은 이 폴더가 아니라 **데이터 폴더**(`C:\ProgramData\i-api-data`, 이 PC의 모든 계정 공용, 설정 `RELAY_DATA_ROOT`로 변경)에 쌓입니다. 데이터 폴더는 이 폴더(`i-api`)와 이름도 위치도 달라서, 이 폴더를 새로 복사하거나 지우고 다시 만들어도, 다른 위치로 옮겨도, 서버를 다른 Windows 계정이나 다른 Python(Microsoft Store Python은 `%LOCALAPPDATA%`를 버전마다 따로 둡니다)으로 돌려도 스토어는 그대로입니다. 2.12–2.22 의 데이터 폴더 `C:\ProgramData\TerminalNotesRelayData` 는 2.23 이 처음 시작할 때 이름만 바꿔 옮깁니다(`RELAY_DATA_ROOT` 를 따로 정했으면 그대로). 그보다 예전 위치에 데이터가 남아 있으면 시작할 때 데이터 폴더로 복사만 합니다: 2.10–2.11의 기본 위치 `%LOCALAPPDATA%\TerminalNotesRelay`, `--settings-from`으로 준 예전 relay.py의 폴더, 2.10 이전처럼 relay.py 옆. 데이터 폴더에 이미 내용이 있으면 건드리지 않고, 원본은 지우지 않으며 그 자리에 `DATA-MOVED.txt`(옮겨 간 곳)를 남깁니다. 데이터 폴더가 relay.py 폴더 안에 있으면 `--check`·로그·상태 페이지에 "주의"로 알립니다.
 
 **자동 백업**: 스킬·플러그인·공지를 시작할 때와 하루에 한 번, 바뀐 것이 있을 때만 `backups\store-날짜-시각.zip`으로 남깁니다(`RELAY_BACKUP_KEEP`개 보관, 기본 30, 빈 스토어는 백업하지 않아 좋은 백업을 밀어내지 않음). 데이터 폴더째 지워질 때를 대비하려면 `RELAY_BACKUP_DIR`에 다른 드라이브의 절대 경로를 씁니다. 지금 바로 백업은 `python relay.py --backup`, 되살리기는 서버를 멈춘 뒤 `python relay.py --restore-backup`(가장 최근 백업) 또는 `--restore-backup <ZIP>`: 비어 있거나 없는 폴더만 되살리고 내용이 있는 폴더는 그대로 둡니다. **다른 서버 PC로 옮길 때**는 백업 ZIP 하나를 새 서버로 복사해 `--restore-backup <ZIP>`을 실행하면 됩니다(앱의 `RELAY_HOST`가 바뀌면 그 서버의 스토어를 봅니다). 같은 일을 명령으로 하려면 `python relay.py --start` / `--stop`.
 
@@ -42,7 +43,7 @@ python relay\relay.py --uninstall-startup
 | `RELAY_BIND` | (선택) 받을 IP를 따로 정할 때. `0.0.0.0`이면 이 PC의 모든 IP |
 | `RELAY_INGEST_KEY` | (선택) 앱 키. 비우면 IP만 맞으면 받고, 쓰면 앱 .env의 RELAY_INGEST_KEY와 같아야 합니다(다르면 "키가 맞지 않습니다") |
 | `RELAY_ADMIN_PASSWORD` | (선택) 관리 페이지 비밀번호(사용자 이름은 아무거나). 비우면 비밀번호 없이 열립니다. 10분에 10번 틀리면 10분 잠깁니다 |
-| `RELAY_DATA_ROOT` | 데이터 폴더(기본 `C:\ProgramData\TerminalNotesRelayData`, 2.11까지는 `%LOCALAPPDATA%\TerminalNotesRelay`). 아래 폴더의 상대 경로가 이곳 기준입니다. relay.py 폴더 안은 피합니다 |
+| `RELAY_DATA_ROOT` | 데이터 폴더(기본 `C:\ProgramData\i-api-data`, 2.12–2.22 는 `C:\ProgramData\TerminalNotesRelayData`, 2.11까지는 `%LOCALAPPDATA%\TerminalNotesRelay`). 아래 폴더의 상대 경로가 이곳 기준입니다. relay.py 폴더 안은 피합니다 |
 | `RELAY_BACKUP_DIR` · `RELAY_BACKUP_KEEP` | 스킬·플러그인·공지 자동 백업 폴더(기본 `backups`, 다른 드라이브의 절대 경로 권장)와 보관 수(기본 30) |
 | `RELAY_DATA_DIR` · `RELAY_SKILLS_DIR` · `RELAY_PLUGINS_DIR` · `RELAY_ANNOUNCEMENTS_DIR` | 보고서·스킬·플러그인·공지 저장 폴더(기본 `reports`·`skills`·`plugins`·`announcements`) |
 | `RELAY_REPORT_RETENTION_DAYS` · `RELAY_REPORTS_MAX_MB` | 보고서 보관 일수(0이면 무제한)와 최대 용량. 넘으면 오래된 것부터 지우고 "확인 중" 보고서는 남깁니다 |
@@ -105,11 +106,11 @@ i-luncher 스토어 줄을 누르면 열리는 앱 페이지의 상세 설명과
 
 ## 다른 PC에서 쓰기
 
-Windows 방화벽은 프로그램마다 받기를 허용합니다. `python.exe`를 허용했어도 로그인 자동 실행이 쓰는 `pythonw.exe`나 예전 .NET 중계 서버의 허용은 해당되지 않아, 방화벽을 열지 않으면 **서버 PC 자신만 접속되고 다른 PC는 막힙니다**(공지·스킬·문제 보내기가 다른 PC에서 안 됨). 서버 PC에서 한 번 실행하세요. 관리자 확인 창에서 "예"를 누르면 포트(기본 2003)를 모든 네트워크에서 엽니다(규칙 이름 `TerminalNotesRelay-2003`).
+Windows 방화벽은 프로그램마다 받기를 허용합니다. `python.exe`를 허용했어도 로그인 자동 실행이 쓰는 `pythonw.exe`나 예전 .NET 중계 서버의 허용은 해당되지 않아, 방화벽을 열지 않으면 **서버 PC 자신만 접속되고 다른 PC는 막힙니다**(공지·스킬·문제 보내기가 다른 PC에서 안 됨). 서버 PC에서 한 번 실행하세요. 관리자 확인 창에서 "예"를 누르면 포트(기본 2003)를 모든 네트워크에서 엽니다(규칙 이름 `i-api-2003`, 2.22 까지 만든 `TerminalNotesRelay-2003` 도 그대로 인정).
 
 ```powershell
 python relay\relay.py --allow-firewall
-# 관리자 PowerShell에서 직접: netsh advfirewall firewall add rule name=TerminalNotesRelay-2003 dir=in action=allow protocol=TCP localport=2003 profile=any
+# 관리자 PowerShell에서 직접: netsh advfirewall firewall add rule name=i-api-2003 dir=in action=allow protocol=TCP localport=2003 profile=any
 ```
 
 그룹 정책이 로컬 방화벽 규칙을 막으면 PC 관리자에게 TCP 2003 받기 허용을 요청하세요. 시작할 때 규칙이 없으면 `relay.log`에 경고가 남고, `--check`와 상태 페이지에도 보입니다.

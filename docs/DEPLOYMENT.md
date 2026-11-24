@@ -120,6 +120,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 문제 보고 · 스킬 · 공지 (`/api/…`) | Terminal Notes |
 
 - **사내 서버 PC 한 대**에서 돌립니다 (C-DEP 에는 올리지 않음). 그 PC 에서 런처의 관리자 메뉴를 열면 서버를 설치하고 켭니다.
+- 이름은 **i-api**: 서버 `%LOCALAPPDATA%\i-api\relay.py`, 데이터 `C:\ProgramData\i-api-data`, 로그인 자동 시작 `i-api.vbs`. 예전 이름(`TerminalNotesRelay`)으로 깔린 서버는 서버 PC 에서 새 런처가 켜질 때 저절로 옮겨집니다.
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
 - GitHub 중계(`/api/v3/…`)는 예전에 빌드한 앱을 위해 남아 있을 뿐, 지금 런처 · 앱은 쓰지 않습니다.
 - EQ Status 의 설비 상태 API 는 이 서버가 아니라 따로 둔 설비 API 서버입니다 (포트 **2004**). 포트는 어디서나 API 서버 **2003** · 설비 상태 **2004** 입니다 (설비 DB 를 넣은 API 서버는 `EQUIPMENT_PORT` 2004 에서도 설비 상태를 내려 줌).

@@ -10,15 +10,22 @@ namespace ApiManager;
 internal sealed record ServerAddress(string HealthUrl, string AdminUrl, string DataFolder, string LogFile, string ApiBase);
 
 /// <summary>
-/// 이 PC의 API 서버(relay.py)를 다룸. 서버는 %LOCALAPPDATA%\TerminalNotesRelay\relay.py 에서 pythonw 로 창 없이 돌고
-/// (로그인 때는 시작 폴더의 "Terminal Notes Relay.vbs"), 설정·비밀값은 그 파일 맨 위 SETTINGS 에 있음 (.env 를 쓰지 않음).
+/// 이 PC의 API 서버 i-api (relay.py)를 다룸. 서버는 %LOCALAPPDATA%\i-api\relay.py 에서 pythonw 로 창 없이 돌고
+/// (로그인 때는 시작 폴더의 "i-api.vbs"), 설정·비밀값은 그 파일 맨 위 SETTINGS 에 있음 (.env 를 쓰지 않음).
 /// 이 프로그램에 든 relay.py 가 더 새 버전이면: 예전 파일을 backup\ 에 두고, 새 파일에 예전 SETTINGS 를 옮긴 뒤 바꾸고 다시 시작.
-/// 데이터(스킬·공지·보고·앱 목록)는 C:\ProgramData\TerminalNotesRelayData 에 따로 있어 바꿔도 남음.
+/// 데이터(스킬·공지·보고·앱 목록·사용 기록)는 C:\ProgramData\i-api-data 에 따로 있어 바꿔도 남음.
+/// 예전 이름(%LOCALAPPDATA%\TerminalNotesRelay, 데이터 TerminalNotesRelayData)의 서버는 MoveOldDeploymentAsync 가 한 번 옮김.
 /// </summary>
 internal static partial class ServerManager
 {
-    public static string DeployFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TerminalNotesRelay");
+    public static string DeployFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "i-api");
     public static string DeployedScript => Path.Combine(DeployFolder, "relay.py");
+    /// <summary>relay 2.22 까지의 서버 폴더 (이름이 Terminal Notes 중계 서버였을 때)</summary>
+    public static string OldDeployFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TerminalNotesRelay");
+    public static string OldDeployedScript => Path.Combine(OldDeployFolder, "relay.py");
+    private const string OldStartupScript = "Terminal Notes Relay.vbs";
+    /// <summary>이 PC 에 서버가 있음 (새 이름 또는 아직 옮기지 않은 예전 이름)</summary>
+    public static bool IsDeployed => File.Exists(DeployedScript) || File.Exists(OldDeployedScript);
     public static string BundledFolder => Path.Combine(AppContext.BaseDirectory, "server");
     public static string BundledScript => Path.Combine(BundledFolder, "relay.py");
 
@@ -98,7 +105,7 @@ internal static partial class ServerManager
         string healthHost = listen is "0.0.0.0" or "" ? "127.0.0.1" : listen;
         string adminHost = host.Length > 0 ? host : healthHost;
         string dataRoot = Setting(block, "RELAY_DATA_ROOT");
-        if (dataRoot.Length == 0) dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "TerminalNotesRelayData");
+        if (dataRoot.Length == 0) dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "i-api-data");
         string log = Setting(block, "RELAY_LOG_FILE");
         log = log.Length == 0 ? Path.Combine(dataRoot, "relay.log") : Path.IsPathRooted(log) ? log : Path.Combine(dataRoot, log);
         // 다른 PC 의 서버 (런처의 API 서버 주소): 상태 확인과 관리 기능이 그 주소로 감
@@ -183,6 +190,7 @@ internal static partial class ServerManager
     public static async Task<string?> DeployIfNewerAsync(string python)
     {
         Version bundled = ReadVersion(BundledScript) ?? throw new FileNotFoundException("이 프로그램 폴더에 server\\relay.py가 없습니다. 다시 설치하세요.");
+        if (!File.Exists(DeployedScript) && File.Exists(OldDeployedScript)) return await MoveOldDeploymentAsync(python);
         Directory.CreateDirectory(DeployFolder);
         if (!File.Exists(DeployedScript))
         {
@@ -209,6 +217,39 @@ internal static partial class ServerManager
         File.Move(staged, DeployedScript, overwrite: true);
         CopyCompanions();
         return $"서버를 {deployed?.ToString() ?? "이전 버전"} → {bundled}(으)로 바꿨습니다 (예전 파일: backup\\{Path.GetFileName(backup)}).";
+    }
+
+    /// <summary>
+    /// 예전 이름의 서버(%LOCALAPPDATA%\TerminalNotesRelay)를 i-api 로 한 번 옮김: 예전 서버를 멈추고 그 로그인 자동 실행을 지운 뒤,
+    /// 이 프로그램에 든 relay.py 에 예전 SETTINGS 를 옮겨 %LOCALAPPDATA%\i-api 에 두고, 예전에 로그인 자동 실행이 있었으면 새 이름으로 등록.
+    /// 데이터 폴더(TerminalNotesRelayData → i-api-data)와 러너 로그온 작업은 새 서버가 처음 시작할 때 옮김. 예전 폴더는 지우지 않고 안내 파일을 남김.
+    /// 호출한 쪽이 서버를 시작함 (DeployIfNewerAsync 처럼 설명을 돌려줌)
+    /// </summary>
+    private static async Task<string> MoveOldDeploymentAsync(string python)
+    {
+        bool atLogon = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), OldStartupScript));
+        await RunPythonAsync(python, OldDeployedScript, "--stop");
+        Directory.CreateDirectory(DeployFolder);
+        string staged = Path.Combine(DeployFolder, "relay.new.py");
+        File.Copy(BundledScript, staged, overwrite: true);
+        var (exitCode, output) = await RunPythonAsync(python, staged, "--settings-from", OldDeployedScript);
+        if (exitCode != 0)
+        {
+            File.Delete(staged);
+            throw new InvalidOperationException("예전 relay.py의 설정을 옮기지 못했습니다: " + output);
+        }
+        File.Move(staged, DeployedScript, overwrite: true);
+        CopyCompanions();
+        // 방화벽은 그대로 (예전 이름의 규칙도 서버가 인정함): 런처가 켜질 때 Windows 확인 창이 뜨지 않게
+        if (atLogon) await RunPythonAsync(python, DeployedScript, "--install-startup", "--no-firewall");
+        try
+        {
+            File.WriteAllText(Path.Combine(OldDeployFolder, "MOVED-TO-i-api.txt"),
+                $"API 서버를 {DeployFolder} 로 옮겼습니다 ({DateTime.Now:yyyy-MM-dd HH:mm}). 설정(SETTINGS)도 옮겼으므로 이 폴더는 쓰지 않습니다.\r\n" +
+                "데이터 C:\\ProgramData\\TerminalNotesRelayData 는 새 서버가 처음 시작할 때 C:\\ProgramData\\i-api-data 로 옮깁니다.\r\n", new UTF8Encoding(true));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return $"서버를 새 이름으로 옮겼습니다: {DeployFolder} (예전 폴더 {OldDeployFolder} 는 그대로 둠).";
     }
 
     // 시작·중지 스크립트와 README 도 같은 버전으로

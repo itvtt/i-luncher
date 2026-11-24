@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title Terminal Notes 중계 서버 시작
+title API 서버 i-api 시작
 rem Starts the relay on every IP of this PC (port 2003) with nothing to fill in, registers its hidden start at Windows
 rem login and opens the firewall port (one Windows prompt). Run it again after copying in a new relay.py: it restarts.
 rem Settings are the SETTINGS at the top of relay.py (no .env). A new relay.py takes the old one's with --settings-from.

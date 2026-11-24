@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""API 서버(예전 이름 Terminal Notes 중계 서버) — 이 PC의 앱들이 쓰는 API를 한 곳에서 제공합니다.
+"""i-api: API 서버(예전 이름 Terminal Notes 중계 서버) — 이 PC의 앱들이 쓰는 API를 한 곳에서 제공합니다.
 Terminal Notes 문제 보고 · 스킬 스토어 · 공지, i-luncher 앱 목록 · 공지, 비공개 GitHub 저장소의 릴리스 중계.
 
 표준 라이브러리만 씁니다(Python 3.8 이상, pip 설치 없음). 설정은 이 파일 맨 위 SETTINGS에서 고칩니다.
-컨테이너 · 배포 환경(C-DEP 등)에서는 SETTINGS 와 같은 이름의 환경 변수가 그 값을 대신합니다 (예: RELAY_PORT=2003,
+컨테이너로 돌릴 때는 SETTINGS 와 같은 이름의 환경 변수가 그 값을 대신합니다 (예: RELAY_PORT=2003,
 RELAY_BIND=0.0.0.0, RELAY_DATA_ROOT=/data, RELAY_GITHUB_TOKEN=…). 순서: SETTINGS < 환경 변수 < --set. Dockerfile · env.sample 참고.
 
     python relay.py                     SETTINGS대로 실행
@@ -13,7 +13,9 @@ RELAY_BIND=0.0.0.0, RELAY_DATA_ROOT=/data, RELAY_GITHUB_TOKEN=…). 순서: SETT
     python relay.py --backup            스킬·플러그인·공지를 지금 백업(ZIP, 데이터 폴더의 backups)
     python relay.py --restore-backup [ZIP]  서버를 멈춘 뒤 비어 있거나 없는 스킬·플러그인·공지 폴더를 백업에서 되살림
 
-데이터(보고서·스킬·공지·로그·백업)는 relay.py 폴더가 아니라 C:\\ProgramData\\TerminalNotesRelayData(SETTINGS의 RELAY_DATA_ROOT)에 둡니다.
+서버는 %LOCALAPPDATA%\\i-api\\relay.py 에 둡니다 (2.22 까지 %LOCALAPPDATA%\\TerminalNotesRelay, i-luncher 관리자 메뉴가 옮김).
+데이터(보고서·스킬·공지·로그·백업)는 relay.py 폴더가 아니라 C:\\ProgramData\\i-api-data(SETTINGS의 RELAY_DATA_ROOT)에 둡니다
+(2.22 까지의 C:\\ProgramData\\TerminalNotesRelayData 는 2.23 이 처음 시작할 때 이름을 바꿔 옮김).
 relay.py 폴더를 새로 복사하거나 지워도, 실행 계정이나 Python이 바뀌어도 스토어는 그대로이며, 예전 위치에 남은 데이터는 시작할 때 복사해 옵니다.
     python relay.py --allow-firewall    다른 PC가 접속하도록 Windows 방화벽에 포트를 엶(관리자 확인 창)
     python relay.py --install-startup   Windows 로그인 때 창 없이 자동 실행(방화벽도 엶)
@@ -157,7 +159,7 @@ SETTINGS = {
 }
 # ── 설정 끝 ──
 
-VERSION = "2.22.0"
+VERSION = "2.23.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 MAX_BODY = 25 * 1024 * 1024
 REPORT_MAX_CHARS = 200_000
@@ -172,7 +174,8 @@ SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 STAMP = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{6}(?:-[A-F0-9]{8})?$")
 VERSION_NUMBER = re.compile(r"^[1-9][0-9]{0,5}$")
 STATUSES = {"new": "새 보고", "checking": "확인 중", "resolved": "해결"}
-STARTUP_SCRIPT = "Terminal Notes Relay.vbs"
+STARTUP_SCRIPT = "i-api.vbs"
+OLD_STARTUP_SCRIPTS = ("Terminal Notes Relay.vbs",)  # the start at login before 2.23, when the relay was named Terminal Notes Relay
 OLD_STARTUP_SHORTCUT = "Terminal Notes Relay.lnk"  # the earlier .NET relay's launcher
 CLIENTS_KEEP = 2000
 APP_AGENT = re.compile(r"TerminalNotes/([0-9][0-9.]*)")
@@ -287,14 +290,15 @@ def account_list(value: str) -> list:
     return [user.rsplit("\\", 1)[-1].strip() for user in re.split(r"[,; ]+", value or "") if user.strip()]
 
 
-DATA_FOLDER = "TerminalNotesRelayData"
+DATA_FOLDER = "i-api-data"
+RENAMED_DATA_FOLDER = "TerminalNotesRelayData"  # 2.12–2.22 default, renamed to DATA_FOLDER on the first start of 2.23
 OLD_DATA_FOLDER = "TerminalNotesRelay"  # 2.10–2.11 default, the same name as the relay's own folder
 STORE_FOLDERS = ("skills", "plugins", "announcements")
 MOVED_NOTE = "DATA-MOVED.txt"
 
 
 def default_data_root() -> Path:
-    """One folder for the whole PC, apart from wherever relay.py is copied (that folder is named TerminalNotesRelay).
+    """One folder for the whole PC, apart from wherever relay.py is copied (that folder is named i-api, TerminalNotesRelay before 2.23).
     %LOCALAPPDATA% was the default before 2.12: it differs per Windows account, Microsoft Store Python keeps it per Python
     version, and the home server had relay.py itself in it, so replacing that folder took the store along."""
     if os.name == "nt" and (os.environ.get("ProgramData") or os.environ.get("ALLUSERSPROFILE")):
@@ -672,7 +676,7 @@ def github_request(link: str, token: str = "", plugin: bool = False) -> urllib.r
     api = "https://api.github.com" if host.lower() in ("github.com", "www.github.com") else f"{parsed.scheme}://{host}/api/v3"
     quote = urllib.parse.quote
     url = f"{api}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/contents/{quote(path)}" + (f"?ref={quote(ref, safe='')}" if ref else "")
-    headers = {"Accept": "application/vnd.github.raw", "User-Agent": f"TerminalNotesRelay/{VERSION}"}
+    headers = {"Accept": "application/vnd.github.raw", "User-Agent": f"i-api/{VERSION}"}
     if token:
         headers["Authorization"] = "token " + token
     return urllib.request.Request(url, headers=headers)
@@ -3592,7 +3596,7 @@ class EquipmentServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     server: RelayServer
-    server_version = "TerminalNotesRelay/" + VERSION
+    server_version = "i-api/" + VERSION
     sys_version = ""
     timeout = 30
 
@@ -4478,6 +4482,10 @@ def install_startup(set_args: list | None = None) -> None:
     if old.is_file():
         old.unlink()
         print("이전 중계 서버(.NET) 자동 실행 바로 가기를 지웠습니다.")
+    for name in OLD_STARTUP_SCRIPTS:
+        if (folder / name).is_file():
+            (folder / name).unlink()
+            print(f"예전 이름의 자동 실행({name})을 지웠습니다.")
     print(f"로그인 때 창 없이 자동 실행합니다: {folder / STARTUP_SCRIPT}")
 
 
@@ -4609,7 +4617,26 @@ def restart_relay(config: Config) -> int:
 # runner) or the earlier .NET relay's exe. The relay's own rule opens its port for any program instead.
 
 def firewall_rule_name(port: int) -> str:
+    return f"i-api-{port}"
+
+
+def old_firewall_rule_name(port: int) -> str:
+    """The rule made before 2.23. It still counts: renaming it would need administrator rights (a Windows prompt)."""
     return f"TerminalNotesRelay-{port}"
+
+
+def firewall_rule(port: int) -> str | None:
+    """The name of the relay's inbound rule for the port (this name, else the one before 2.23); "" when neither exists,
+    None off Windows or when netsh could not be asked."""
+    if os.name != "nt":
+        return None
+    for name in (firewall_rule_name(port), old_firewall_rule_name(port)):
+        code = run_hidden(["netsh", "advfirewall", "firewall", "show", "rule", f"name={name}"], 20)
+        if code is None:
+            return None
+        if code == 0:
+            return name
+    return ""
 
 
 def is_loopback(bind: str) -> bool:
@@ -4627,19 +4654,17 @@ def run_hidden(command: list, timeout: int = 60) -> int | None:
 
 def firewall_allowed(port: int) -> bool | None:
     """Whether the relay's inbound rule exists; None off Windows or when netsh could not be asked."""
-    if os.name != "nt":
-        return None
-    code = run_hidden(["netsh", "advfirewall", "firewall", "show", "rule", f"name={firewall_rule_name(port)}"], 20)
-    return None if code is None else code == 0
+    rule = firewall_rule(port)
+    return None if rule is None else rule != ""
 
 
 def firewall_text(config: Config) -> str:
     if is_loopback(config.bind):
         return "방화벽: 이 PC 안에서만 받습니다(RELAY_BIND)."
-    allowed = firewall_allowed(config.port)
-    if allowed:
-        return f"방화벽: 다른 PC의 TCP {config.port} 접속 허용({firewall_rule_name(config.port)})"
-    if allowed is None:
+    rule = firewall_rule(config.port)
+    if rule:
+        return f"방화벽: 다른 PC의 TCP {config.port} 접속 허용({rule})"
+    if rule is None:
         return "방화벽: 확인하지 못했습니다(Windows가 아니면 운영체제 방화벽을 직접 확인하세요)."
     return f"방화벽: TCP {config.port} 허용 규칙 없음 — 다른 PC가 접속하지 못할 수 있습니다(python relay.py --allow-firewall)"
 
@@ -4659,8 +4684,8 @@ def allow_firewall(port: int) -> bool:
         print(f"Windows가 아니므로 운영체제 방화벽에서 TCP {port}를 직접 여세요(예: sudo ufw allow {port}/tcp).")
         return False
     name = firewall_rule_name(port)
-    if firewall_allowed(port):
-        print(f"방화벽: 이미 다른 PC의 TCP {port} 접속을 허용했습니다({name}).")
+    if rule := firewall_rule(port):
+        print(f"방화벽: 이미 다른 PC의 TCP {port} 접속을 허용했습니다({rule}).")
         return True
     arguments = ["advfirewall", "firewall", "add", "rule", f"name={name}", "dir=in", "action=allow", "protocol=TCP",
                  f"localport={port}", "profile=any"]
@@ -4699,10 +4724,80 @@ def setup_logging(config: Config, quiet: bool) -> None:
         log.addHandler(console)
 
 
+def move_renamed_data(config: Config) -> str | None:
+    """2.23 renamed the default data folder (TerminalNotesRelayData → i-api-data). While RELAY_DATA_ROOT is not set and the new
+    folder is missing or empty, the old one is renamed to it in one step (copied when Windows refuses, the original then kept
+    with a note). Runs before the log opens, which would create the new folder. Returns what was done, or None."""
+    default = default_data_root().expanduser().resolve()
+    if config.data_root != default:
+        return None
+    old = default.with_name(RENAMED_DATA_FOLDER)
+    # Empty folders do not count (a store makes its folder when it opens), files do.
+    if not old.is_dir() or not has_files(old) or default.is_dir() and has_files(default):
+        return None
+    try:
+        if default.is_dir():
+            shutil.rmtree(default)
+        old.rename(default)
+        return f"데이터 폴더를 옮겼습니다: {old} → {default}"
+    except OSError:
+        pass
+    staging = default.with_name(default.name + ".copying")
+    try:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.copytree(old, staging)
+        staging.rename(default)
+    except OSError as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        return f"데이터 폴더 {old} 를 {default} 로 옮기지 못했습니다({error}). 다음 시작 때 다시 합니다."
+    try:
+        (old / MOVED_NOTE).write_text(f"이 폴더의 데이터는 {now().astimezone():%Y-%m-%d %H:%M}에 {default}(으)로 복사되었습니다.\n"
+                                      "API 서버(i-api)는 이제 그 폴더를 씁니다. 이 폴더에 남은 것은 예전 사본입니다.\n", encoding="utf-8")
+    except OSError:
+        pass
+    return f"데이터 폴더를 복사했습니다(원본은 그대로): {old} → {default}"
+
+
+def has_files(folder: Path) -> bool:
+    """Whether a file is anywhere under the folder (True when it cannot be read, so it is left alone)."""
+    try:
+        return any(item.is_file() for item in folder.rglob("*"))
+    except OSError:
+        return True
+
+
+def renamed_data_waiting(config: Config) -> bool:
+    """The default data folder still has its name from before 2.23 (move_renamed_data moves it when the server starts):
+    nothing older may be copied into the new one meanwhile, or the move would find it taken."""
+    default = default_data_root().expanduser().resolve()
+    old = default.with_name(RENAMED_DATA_FOLDER)
+    return config.data_root == default and old.is_dir() and has_files(old)
+
+
+def repoint_runners_task(server: RelayServer) -> None:
+    """2.23 moved relay.py (…\\TerminalNotesRelay → …\\i-api): a logon task that still starts the runners through the old
+    relay.py is pointed at this one (the 러너 page's [정리] does the same)."""
+    try:
+        if os.name != "nt" or not server.config.runners_root:
+            return
+        info = server.runners.task_info(fresh=True)
+        if not info["exists"] or info["current"]:
+            return
+        if "\\terminalnotesrelay\\relay.py" not in xml_value(task_definition(RUNNERS_TASK), "Arguments").lower():
+            return
+        server.runners.install_task()
+        log.info("logon task %s now starts the runners through %s", RUNNERS_TASK, Path(__file__).resolve())
+    except Exception:
+        log.exception("could not point the logon task %s at this relay.py", RUNNERS_TASK)
+
+
 def adopt_old_data(config: Config, extra_sources: list | None = None, include_defaults: bool = True) -> list:
     """Copies (never moves) a store left in an earlier place into the data folder, folder by folder, while the data folder has
     none of its own. Places, newest layout first: the 2.10–2.11 default folder (%LOCALAPPDATA%\\TerminalNotesRelay), the folder
-    of the relay.py given to --settings-from, and beside this relay.py (before 2.10). Returns what was copied."""
+    of the relay.py given to --settings-from, and beside this relay.py (before 2.10). Returns what was copied.
+    Nothing while the data folder from before 2.23 waits to be renamed (it holds the real store)."""
+    if renamed_data_waiting(config):
+        return []
     messages = []
     sources = (legacy_data_roots() if include_defaults else []) + [Path(path) for path in (extra_sources or [])] + [SCRIPT_DIR]
     for target in (config.reports_dir, config.skills_dir, config.plugins_dir, config.announcements_dir):
@@ -4889,7 +4984,7 @@ def start_equipment_port(server: RelayServer) -> EquipmentServer | None:
 
 
 def parse_args(argv: list | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Terminal Notes 중계 서버(문제 보고 · 스킬 스토어 · 공지)")
+    parser = argparse.ArgumentParser(description="i-api: i-luncher API 서버(서버 목록 · 사용 기록 · 관리 · Terminal Notes 문제 보고 · 스킬 · 공지)")
     parser.add_argument("--set", action="append", metavar="키=값", help="이번 실행만 SETTINGS 값을 바꿈(여러 번 쓸 수 있음)")
     parser.add_argument("--settings-from", metavar="relay.py", help="예전 relay.py의 SETTINGS를 이 파일로 옮기고 끝냄")
     parser.add_argument("--port", type=int, help="포트(기본: RELAY_PORT 또는 2003)")
@@ -4900,6 +4995,7 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
     parser.add_argument("--quiet", action="store_true", help="화면 로그 없이 파일에만 기록")
     parser.add_argument("--allow-firewall", action="store_true", help="다른 PC가 접속하도록 Windows 방화벽에 포트를 엶")
     parser.add_argument("--install-startup", action="store_true", help="Windows 로그인 때 자동 실행(방화벽도 엶)")
+    parser.add_argument("--no-firewall", action="store_true", help="--install-startup 때 방화벽은 건드리지 않음(관리자 메뉴가 서버를 옮길 때, Windows 확인 창 없이)")
     parser.add_argument("--uninstall-startup", action="store_true", help="자동 실행 해제")
     parser.add_argument("--start", action="store_true", help="자동 실행 등록·방화벽 후 지금 창 없이 시작(실행 중이면 다시 시작, 서버 시작.cmd)")
     parser.add_argument("--stop", action="store_true", help="실행 중인 이 중계 서버를 멈추고 자동 실행 해제(서버 중지.cmd)")
@@ -4975,7 +5071,7 @@ def main(argv: list | None = None) -> int:
     if args.install_startup:
         install_startup(config.set_args)
         # The startup runner is pythonw.exe, which no earlier "allow python" answer covers.
-        if not is_loopback(config.bind):
+        if not is_loopback(config.bind) and not args.no_firewall:
             allow_firewall(config.port)
             if config.uses_equipment_port():
                 allow_firewall(config.equipment_port)
@@ -4983,7 +5079,11 @@ def main(argv: list | None = None) -> int:
     if args.check:
         print("\n".join(config.summary() + [firewall_text(config)]))
         return 0
+    # Before the log opens (it would create the new data folder); not while another server still answers on the port.
+    moved = None if answers(config, wait=0) else move_renamed_data(config)
     setup_logging(config, args.quiet or sys.stdout is None)
+    if moved:
+        log.info("%s", moved)
     try:
         server = make_server(config)
     except ssl.SSLError as error:
@@ -4995,6 +5095,7 @@ def main(argv: list | None = None) -> int:
     stop = threading.Event()
     threading.Thread(target=housekeeping, args=(server, stop), name="housekeeping", daemon=True).start()
     threading.Thread(target=github_sync, args=(server, stop), name="github-sync", daemon=True).start()
+    threading.Thread(target=repoint_runners_task, args=(server,), name="runners-task", daemon=True).start()
     equipment = start_equipment_port(server)
     for line in config.summary():
         log.info(line)
@@ -5003,7 +5104,7 @@ def main(argv: list | None = None) -> int:
     if equipment and not is_loopback(config.bind) and firewall_allowed(config.equipment_port) is False:
         log.warning("방화벽: 설비 상태 TCP %s 허용 규칙 없음 — 다른 PC의 EQ Status가 접속하지 못할 수 있습니다(python relay.py --allow-firewall)",
                     config.equipment_port)
-    log.info("Terminal Notes 중계 서버 %s 시작", VERSION)
+    log.info("API 서버 i-api %s 시작", VERSION)
     try:
         server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:

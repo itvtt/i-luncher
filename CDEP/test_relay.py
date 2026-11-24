@@ -57,13 +57,16 @@ def sets(*lines: str) -> list:
 class RelayTest(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="relay test "))
-        # The PC's real older data folders are never read or copied by a test.
-        legacy = mock.patch.object(relay, "legacy_data_roots", return_value=[])
-        legacy.start()
-        self.addCleanup(legacy.stop)
+        # The PC's real data folders (the running server's) are never read, written or moved by a test: the default data
+        # folder is one of the test's own, and the older ones are none.
+        self.real_default_data_root = relay.default_data_root
+        for name, value in (("legacy_data_roots", []), ("default_data_root", self.root / "default-data")):
+            patcher = mock.patch.object(relay, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.port = free_port()
         self.config = relay.Config(relay.parse_args(sets(
-            f"RELAY_PORT={self.port}", f"RELAY_INGEST_KEY={KEY}", f"RELAY_ADMIN_PASSWORD={ADMIN}",
+            f"RELAY_PORT={self.port}", f"RELAY_INGEST_KEY={KEY}", f"RELAY_ADMIN_PASSWORD={ADMIN}", f"RELAY_DATA_ROOT={self.root}",
             f"RELAY_DATA_DIR={self.root / 'reports'}", f"RELAY_SKILLS_DIR={self.root / 'skills'}", f"RELAY_PLUGINS_DIR={self.root / 'plugins'}",
             f"RELAY_ANNOUNCEMENTS_DIR={self.root / 'announcements'}", f"RELAY_LOG_FILE={self.root / 'relay.log'}",
             f"RELAY_BACKUP_DIR={self.root / 'backups'}", "RELAY_REPORT_RETENTION_DAYS=90", "RELAY_UPLOADS_PER_HOUR=5", "MASTER_USERS=editor_one, DOMAIN\\editor_two") + ["--bind", "127.0.0.1"]))
@@ -391,7 +394,7 @@ class RelayTest(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows firewall")
     def test_firewall_rule_for_the_port(self):
-        commands, answers = [], iter([1, 0, 0])
+        commands, answers = [], iter([1, 1, 0, 0])
         original = relay.run_hidden, relay.is_admin
         self.addCleanup(lambda: (setattr(relay, "run_hidden", original[0]), setattr(relay, "is_admin", original[1])))
         relay.run_hidden = lambda command, timeout=60: commands.append(command) or next(answers)
@@ -400,24 +403,33 @@ class RelayTest(unittest.TestCase):
         with contextlib.redirect_stdout(printed):
             self.assertTrue(relay.allow_firewall(2003))
         self.assertIn("관리자 승인", printed.getvalue())
-        self.assertEqual(commands[0], ["netsh", "advfirewall", "firewall", "show", "rule", "name=TerminalNotesRelay-2003"])
-        elevated = " ".join(commands[1])
-        for expected in ("-Verb RunAs", "name=TerminalNotesRelay-2003", "dir=in", "action=allow", "protocol=TCP", "localport=2003", "profile=any"):
+        self.assertEqual(commands[0], ["netsh", "advfirewall", "firewall", "show", "rule", "name=i-api-2003"])
+        self.assertEqual(commands[1], ["netsh", "advfirewall", "firewall", "show", "rule", "name=TerminalNotesRelay-2003"])
+        elevated = " ".join(commands[2])
+        for expected in ("-Verb RunAs", "name=i-api-2003", "dir=in", "action=allow", "protocol=TCP", "localport=2003", "profile=any"):
             self.assertIn(expected, elevated)
         commands.clear()
-        answers = iter([1, 0, 0])
+        answers = iter([1, 1, 0, 0])
         relay.is_admin = lambda: True
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertTrue(relay.allow_firewall(2003))
-        self.assertEqual(commands[1][:5], ["netsh", "advfirewall", "firewall", "add", "rule"])
+        self.assertEqual(commands[2][:5], ["netsh", "advfirewall", "firewall", "add", "rule"])
         # Nobody answered the prompt (Windows cancels it after about two minutes): say so, with the manual command.
-        answers = iter([1, 1223, 1])
+        answers = iter([1, 1, 1223, 1, 1])
         relay.is_admin = lambda: False
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             self.assertFalse(relay.allow_firewall(2003))
         self.assertIn("'예'를 누르지 않았습니다", printed.getvalue())
-        self.assertIn("netsh advfirewall firewall add rule name=TerminalNotesRelay-2003", printed.getvalue())
+        self.assertIn("netsh advfirewall firewall add rule name=i-api-2003", printed.getvalue())
+        # The rule made before 2.23 (TerminalNotesRelay-<port>) still counts: no new rule, no Windows prompt.
+        commands.clear()
+        answers = iter([1, 0])
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            self.assertTrue(relay.allow_firewall(2003))
+        self.assertEqual(len(commands), 2)
+        self.assertIn("TerminalNotesRelay-2003", printed.getvalue())
         self.assertIn("이 PC 안에서만", relay.firewall_text(self.config))  # the tests bind 127.0.0.1
 
     def admin_json(self, method, path, value=None, content_type="application/json"):
@@ -701,8 +713,8 @@ class RelayTest(unittest.TestCase):
         # 2.12: one machine-wide data folder with its own name, never the relay's folder or a per-account one.
         with mock.patch.dict(os.environ, {"ProgramData": str(self.root / "ProgramData"), "LOCALAPPDATA": str(self.root / "Local")}):
             if os.name == "nt":
-                self.assertEqual(relay.default_data_root(), self.root / "ProgramData" / "TerminalNotesRelayData")
-            self.assertNotEqual(relay.default_data_root().name, relay.OLD_DATA_FOLDER)
+                self.assertEqual(self.real_default_data_root(), self.root / "ProgramData" / "i-api-data")
+            self.assertNotEqual(self.real_default_data_root().name, relay.OLD_DATA_FOLDER)
         # The 2.10–2.11 default folder (the home server also had relay.py in it) is copied forward, never moved or overwritten.
         legacy, data = self.root / "Local" / "TerminalNotesRelay", self.root / "data"
         (legacy / "skills" / "kept-skill").mkdir(parents=True)
@@ -727,6 +739,43 @@ class RelayTest(unittest.TestCase):
         relay.SCRIPT_DIR = self.root / "code"
         self.assertFalse(config.data_beside_code())
         self.assertFalse(any("주의" in line for line in config.summary()))
+
+    def test_renamed_data_folder_moves_once(self):
+        # 2.23: the default data folder TerminalNotesRelayData became i-api-data; the whole folder moves on the first start.
+        machine = self.root / "ProgramData"
+        old, new = machine / relay.RENAMED_DATA_FOLDER, machine / relay.DATA_FOLDER
+        (old / "launcher").mkdir(parents=True)
+        (old / "launcher" / "catalog.json").write_text('{"apps": []}', encoding="utf-8")
+        (old / "usage").mkdir()
+        (new / "launcher").mkdir(parents=True)  # an empty folder some store made does not stop the move
+        legacy = self.root / "Local" / "TerminalNotesRelay"
+        (legacy / "skills" / "stale").mkdir(parents=True)
+        (legacy / "skills" / "stale" / "SKILL.md").write_text("2.11", encoding="utf-8")
+        with mock.patch.object(relay, "default_data_root", return_value=new), \
+                mock.patch.object(relay, "legacy_data_roots", return_value=[legacy]):
+            config = relay.Config(relay.parse_args([]))
+            self.assertEqual(config.data_root, new.resolve())
+            self.assertEqual(relay.adopt_old_data(config), [], "no older copy while the real store waits to be renamed")
+            self.assertIn("옮겼습니다", relay.move_renamed_data(config) or "")
+            self.assertEqual((new / "launcher" / "catalog.json").read_text(encoding="utf-8"), '{"apps": []}')
+            self.assertTrue((new / "usage").is_dir())
+            self.assertFalse(old.exists(), "renamed, not copied")
+            self.assertIsNone(relay.move_renamed_data(config), "only once")
+            # A data folder of its own (RELAY_DATA_ROOT) is never touched, and an old folder never overwrites a filled new one.
+            (old / "skills").mkdir(parents=True)
+            own = relay.Config(relay.parse_args(sets(f"RELAY_DATA_ROOT={self.root / 'own'}")))
+            self.assertIsNone(relay.move_renamed_data(own))
+            self.assertIsNone(relay.move_renamed_data(config))
+            self.assertTrue((old / "skills").is_dir())
+
+    @unittest.skipUnless(os.name == "nt", "Windows start at login")
+    def test_start_at_login_replaces_the_old_name(self):
+        startup = self.root / "Startup"
+        startup.mkdir()
+        (startup / "Terminal Notes Relay.vbs").write_bytes("old".encode("utf-16"))
+        with mock.patch.object(relay, "startup_folder", return_value=startup), contextlib.redirect_stdout(io.StringIO()):
+            relay.install_startup([])
+        self.assertEqual(sorted(item.name for item in startup.iterdir()), ["i-api.vbs"])
 
     def test_settings_from_brings_the_old_store(self):
         # A relay from before 2.10 kept its store beside itself; --settings-from copies it to where its settings now point.
@@ -919,7 +968,8 @@ class RelayTest(unittest.TestCase):
         old, new = self.root / "old" / "relay.py", self.root / "new" / "relay.py"
         for path in (old, new):
             path.parent.mkdir()
-        old.write_text(source.replace('"RELAY_PORT": 2003,', '"RELAY_PORT": 6123,').replace('"RELAY_ADMIN_PASSWORD": "",', '"RELAY_ADMIN_PASSWORD": "secret",'),
+        old.write_text(source.replace('"RELAY_PORT": 2003,', '"RELAY_PORT": 6123,').replace('"RELAY_ADMIN_PASSWORD": "",', '"RELAY_ADMIN_PASSWORD": "secret",')
+                       .replace('"RELAY_DATA_ROOT": "",', f'"RELAY_DATA_ROOT": "{(self.root / "data").as_posix()}",'),
                        encoding="utf-8", newline="")
         new.write_text(source.replace("VERSION = ", "# newer\nVERSION = "), encoding="utf-8", newline="")
         result = subprocess.run([sys.executable, "-B", str(new), "--settings-from", str(old)], capture_output=True, timeout=60)
@@ -960,7 +1010,7 @@ class RelayTest(unittest.TestCase):
             f"RELAY_PORT={port}", "RELAY_BIND=127.0.0.1", f"RELAY_INGEST_KEY={KEY}", f"RELAY_ADMIN_PASSWORD={ADMIN}",
             f"RELAY_DATA_DIR={self.root / 'started-reports'}", f"RELAY_SKILLS_DIR={self.root / 'started-skills'}", f"RELAY_PLUGINS_DIR={self.root / 'started-plugins'}",
             f"RELAY_ANNOUNCEMENTS_DIR={self.root / 'started-announcements'}", f"RELAY_LOG_FILE={self.root / 'started.log'}",
-            f"RELAY_BACKUP_DIR={self.root / 'started-backups'}")))
+            f"RELAY_BACKUP_DIR={self.root / 'started-backups'}", f"RELAY_DATA_ROOT={self.root / 'started-data'}")))
         other = "Set shell = CreateObject(\"WScript.Shell\")\r\nshell.Run \"\"\"C:\\Elsewhere\\relay.py\"\"\", 0, False\r\n"
         with mock.patch.object(relay, "startup_folder", return_value=folder):
             try:
@@ -1100,6 +1150,9 @@ class LauncherApiTest(unittest.TestCase):
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="relay launcher test "))
+        default = mock.patch.object(relay, "default_data_root", return_value=self.root / "default-data")
+        default.start()
+        self.addCleanup(default.stop)
         legacy = mock.patch.object(relay, "legacy_data_roots", return_value=[])
         legacy.start()
         self.addCleanup(legacy.stop)

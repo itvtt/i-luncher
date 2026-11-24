@@ -97,7 +97,7 @@ GitHub
 **관리자 메뉴 → 앱 목록**에서 합니다: [+]로 추가, 이름 · **분류**(직접 쓰거나 아래의 지금 있는 분류를 눌러 고름) · 저장소 · 설명 · id · 설치 폴더 이름 · 설치 방식 · 마스터만, [−]로 빼기, ↑↓로 순서. [저장]하면 런처가 목록을 바로 다시 읽습니다. 그 사이 다른 곳에서 목록이 바뀌었으면 저장하지 않고 다시 읽으라고 알립니다 (덮어쓰지 않음).
 제작자 · 상세 설명 · 스크린샷은 스토어 줄을 누르면 열리는 앱 페이지에 보입니다 (스크린샷은 [+] 또는 Ctrl+V). 내 앱은 설치됨 탭에만 있어 앱 페이지가 없습니다.
 
-서버 목록과 그 스크린샷은 **API 서버의 데이터 폴더**(`C:\ProgramData\TerminalNotesRelayData\launcher`)에 있고 저장소에는 없습니다. 그래서 소스를 다른 곳으로 옮겨도 앱 목록은 따라가지 않으며, 그곳 API 서버의 관리자 메뉴 → 앱 목록에서 따로 등록합니다.
+서버 목록과 그 스크린샷은 **API 서버의 데이터 폴더**(`C:\ProgramData\i-api-data\launcher`)에 있고 저장소에는 없습니다. 그래서 소스를 다른 곳으로 옮겨도 앱 목록은 따라가지 않으며, 그곳 API 서버의 관리자 메뉴 → 앱 목록에서 따로 등록합니다.
 
 받는 주소: `https://github.example.com/team/App`, `…/App.git`, `…/App/releases/tag/v1.0.0`, `git@github.example.com:team/App.git`, `team/App`(기본 호스트) 등.
 
@@ -184,7 +184,8 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `C:\i-luncher\c
 | `/`, `/apps`, `/status` … | 관리 페이지 (관리자 비밀번호) |
 
 **관리자 메뉴** 는 런처 창 전체에 열립니다 (‹ 전체 앱 · Esc · 로고로 홈). 제목 표시줄의 **관리자 메뉴** 버튼은 빌드 설정 `MASTER_USERS` 에 적은 계정에만 보입니다 (비우면 아무에게도 안 보임, 비밀번호 없이 계정 이름으로). 서버 PC에서 쓰면 서버의 관리자 비밀번호를 SETTINGS에서 알아서 읽습니다. API 서버 주소가 다른 PC 면 그 서버에 연결만 하고 이 PC 에 서버를 두거나 켜지 않습니다 (다시 시작 · 멈추기가 숨고, 비밀번호는 이 PC 의 `API_ADMIN_PASSWORD`: 환경 변수 또는 프로필 `i-luncher.env`). 서버·앱 목록·릴리스·러너(이 PC의 Actions 러너, 서버 SETTINGS `RUNNERS_ROOT`)·공지·문제 보고·스킬을 관리합니다.
-런처 설치 폴더의 `server\relay.py` 가 배포된 서버(`%LOCALAPPDATA%\TerminalNotesRelay\relay.py`)보다 새 버전이면, 서버 PC의 마스터가 런처를 켤 때(또는 관리자 메뉴를 열 때) 서버를 바꾸고 SETTINGS(비밀값)는 그대로 옮긴 뒤 다시 시작합니다. 처음 설치는 서버 PC 에서 관리자 메뉴를 열면 됩니다 (서버 주소가 이 PC 일 때만). 데이터는 `C:\ProgramData\TerminalNotesRelayData`에 따로 있습니다.
+API 서버 이름은 **i-api** 입니다. 런처 설치 폴더의 `server\relay.py` 가 배포된 서버(`%LOCALAPPDATA%\i-api\relay.py`)보다 새 버전이면, 서버 PC의 마스터가 런처를 켤 때(또는 관리자 메뉴를 열 때) 서버를 바꾸고 SETTINGS(비밀값)는 그대로 옮긴 뒤 다시 시작합니다. 처음 설치는 서버 PC 에서 관리자 메뉴를 열면 됩니다 (서버 주소가 이 PC 일 때만). 데이터는 `C:\ProgramData\i-api-data`에 따로 있고, 로그인 자동 시작은 시작 폴더의 `i-api.vbs` 입니다.
+예전 이름(서버 `%LOCALAPPDATA%\TerminalNotesRelay`, 데이터 `C:\ProgramData\TerminalNotesRelayData`, `Terminal Notes Relay.vbs`)의 서버는 같은 때 한 번 저절로 옮깁니다: 예전 서버를 멈추고, SETTINGS 를 옮기고, 자동 시작을 새 이름으로 바꾸고, 새 서버가 처음 시작할 때 데이터 폴더 이름을 바꾸고 러너 로그온 작업(`GitHub Runners`)도 새 relay.py 를 가리키게 합니다. 방화벽 규칙은 예전 이름(`TerminalNotesRelay-2003`)도 그대로 인정합니다 (Windows 확인 창 없음). 예전 서버 폴더는 `MOVED-TO-i-api.txt` 와 함께 남깁니다.
 
 런처는 빌드 설정 `API_SERVER`로 서버를 압니다 (마스터만 씀). 마스터는 **관리자 메뉴 → 서버 → 서버 주소**에서 바로 바꿀 수 있습니다: IP 만 쓰면 포트 2003, 비우고 연결하면 빌드 설정의 주소. 바꾼 주소는 `C:\i-luncher\settings.json` 의 `ApiServer` 에 남고, 그 PC 의 서버 목록 · 관리자 메뉴 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다 (런처를 다시 릴리스하지 않음). 앱의 업데이트는 서버를 거치지 않고 GitHub에 바로 묻습니다 (빌드할 때 `UPDATE_GITHUB_API=https://api.github.com` 또는 `https://<호스트>/api/v3`).
 
