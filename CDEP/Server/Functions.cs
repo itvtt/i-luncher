@@ -3,14 +3,14 @@ using System.Text.Json.Nodes;
 namespace IApi;
 
 /// <summary>
-/// 서버의 모든 API (관리자 메뉴 → API 의 목록). 새 API 는 여기에 한 줄 더하고 처리기를 씀:
-/// id(바꾸지 않음) · 묶음 · 방법 · 주소 · 이름 · 설명. 끄지 못하는 것(Switchable=false)은 관리자 메뉴가 쓰는 API 와 상태 확인뿐
+/// 서버의 모든 API (관리 창 → API 의 목록). 새 API 는 여기에 한 줄 더하고 처리기를 씀:
+/// id(바꾸지 않음) · 묶음 · 방법 · 주소 · 이름 · 설명. 끄지 못하는 것(Switchable=false)은 관리 창이 쓰는 API 와 상태 확인뿐
 /// </summary>
 internal sealed partial class RelayServer
 {
     private const string GroupServer = "서버", GroupLauncher = "i-luncher", GroupUsage = "앱 사용 기록", GroupReports = "Terminal Notes 문제 보고",
         GroupSkills = "Terminal Notes 스킬", GroupPlugins = "Terminal Notes 플러그인", GroupAnnouncements = "Terminal Notes 공지", GroupGitHub = "GitHub 중계",
-        GroupEquipment = "EQ Status", GroupPages = "관리 페이지", GroupAdmin = "관리자 메뉴";
+        GroupEquipment = "EQ Status", GroupPages = "관리 페이지", GroupAdmin = "관리 창";
 
     private List<ApiFunction> BuildFunctions()
     {
@@ -19,18 +19,18 @@ internal sealed partial class RelayServer
 
         return
         [
-            Make("health", "health", GroupServer, "GET", "/health", "상태 확인", "서버가 살아 있는지 (ok). 관리자 메뉴 · 시작 스크립트가 씀", request => request.Text(200, "ok"), switchable: false),
+            Make("health", "health", GroupServer, "GET", "/health", "상태 확인", "서버가 살아 있는지 (ok). 관리 창 · 시작 스크립트가 씀", request => request.Text(200, "ok"), switchable: false),
 
-            // i-luncher (마스터 계정의 런처, 관리자 메뉴)
+            // i-luncher (마스터 계정의 런처, 관리 창)
             Make("launcher.catalog.read", "launcher", GroupLauncher, "GET", "/launcher/catalog", "서버 앱 목록 읽기",
                 "마스터 계정의 런처가 스토어에 보이는 서버 목록을 읽음 (ETag 가 같으면 304)", LauncherCatalog),
             Make("launcher.catalog.save", "launcher", GroupLauncher, "PUT", "/launcher/catalog", "서버 앱 목록 저장",
-                "관리자 메뉴 → 앱 목록의 [저장] (관리자 비밀번호, 다른 곳에서 먼저 바꿨으면 409)", LauncherSave),
+                "관리 창 → 앱 목록의 [저장] (관리자 비밀번호, 다른 곳에서 먼저 바꿨으면 409)", LauncherSave),
             Make("launcher.notices.read", "launcher", GroupLauncher, "GET", "/launcher/notices", "런처 공지 읽기 (예전)", "예전 런처의 공지. 지금 런처는 GitHub 공지 저장소를 읽음",
                 request => request.Json(200, Launcher.Notices())),
             Make("launcher.notices.save", "launcher", GroupLauncher, "PUT", "/launcher/notices", "런처 공지 저장 (예전)", "예전 런처의 공지 저장 (관리자 비밀번호)", LauncherSave),
             Make("launcher.media.read", "launcher", GroupLauncher, "GET", "/launcher/media/{name}", "스크린샷 읽기", "앱 페이지의 스크린샷 (PNG · JPG, 이름 = 내용의 해시)", LauncherMedia),
-            Make("launcher.media.upload", "launcher", GroupLauncher, "POST", "/launcher/media", "스크린샷 올리기", "관리자 메뉴 → 앱 목록의 스크린샷 추가 (관리자 비밀번호, 8 MB 까지)", LauncherUpload),
+            Make("launcher.media.upload", "launcher", GroupLauncher, "POST", "/launcher/media", "스크린샷 올리기", "관리 창 → 앱 목록의 스크린샷 추가 (관리자 비밀번호, 8 MB 까지)", LauncherUpload),
             Make("usage.report", "launcher", GroupUsage, "POST", "/launcher/usage", "사용 기록 보내기",
                 "마스터 PC 의 런처 · 앱(AppKit AppUsage)이 사용 시간 · 실행 · 작업 수를 보냄", UsageReport),
             Make("usage.summary", "launcher", GroupUsage, "GET", "/launcher/usage", "사용 기록 읽기", "재무성과(ImPerformance)가 앱별 합계를 읽음 (from · to)", UsageSummary),
@@ -62,9 +62,9 @@ internal sealed partial class RelayServer
             Make("github.repos", "github", GroupGitHub, "GET", "/api/v3/repos/**", "저장소 읽기",
                 "예전에 빌드한 앱 · 런처가 토큰 없이 비공개 저장소의 릴리스 · 파일을 받음 (열어 준 저장소만)", GitHubRelay),
             Make("eqstatus.status", "equipment", GroupEquipment, "GET", "/api/v1/equipment-status", "설비 상태", "EQ Status 의 설비 표 (설정의 EQUIPMENT_DB_*, 포트 2003 · 2004)", EquipmentRead),
-            Make("pages", "page", GroupPages, "GET|POST", "/**", "브라우저 관리 페이지", "관리자 메뉴 → 서버 → ⋯ → 브라우저로 열기 (관리자 비밀번호)", AdminPage),
+            Make("pages", "page", GroupPages, "GET|POST", "/**", "브라우저 관리 페이지", "관리 창 → 서버 → ⋯ → 브라우저로 열기 (관리자 비밀번호)", AdminPage),
 
-            // 관리자 메뉴 (관리자 비밀번호, 끄지 않음)
+            // 관리 창 (관리자 비밀번호, 끄지 않음)
             Make("admin.status", "admin", GroupAdmin, "GET", "/admin/api/status", "서버 상태", "버전 · 실행 시간 · 설정 · 접속한 PC",
                 request => request.Json(200, StatusData()), switchable: false),
             Make("admin.functions", "admin", GroupAdmin, "GET", "/admin/api/functions", "API 목록", "이 화면: API 마다 켜짐 · 호출 · 실패 · 걸린 시간", FunctionsList, switchable: false),
@@ -102,7 +102,7 @@ internal sealed partial class RelayServer
 
     private List<string> Masters => Config.SkillAdmins.Select(user => user.ToLowerInvariant()).ToList();
 
-    // ── 관리자 메뉴 → API ──────────────────────────────────────────────────────────────────────────
+    // ── 관리 창 → API ──────────────────────────────────────────────────────────────────────────
 
     private JsonObject FunctionJson(ApiFunction function, List<(string Day, long Calls, long Failures, double Milliseconds)>? days, string today)
     {
@@ -146,7 +146,7 @@ internal sealed partial class RelayServer
         var function = Functions.FirstOrDefault(item => item.Id == request.Value("id")) ?? throw new RelayError(404, "그 API를 찾지 못했습니다.");
         var body = request.JsonObjectBody();
         if (!Util.IsBool(body["on"])) throw new RelayError(400, "on 은 true 나 false 입니다.");
-        if (!function.Switchable) throw new RelayError(409, $"{function.Title}은(는) 끌 수 없습니다 (관리자 메뉴가 씀).");
+        if (!function.Switchable) throw new RelayError(409, $"{function.Title}은(는) 끌 수 없습니다 (관리 창이 씀).");
         bool on = Util.IsTrue(body["on"]);
         Switches.Set(function.Id, on);
         Log.Info($"API {function.Id} {(on ? "켬" : "끔")} ({request.RemoteAddress})");

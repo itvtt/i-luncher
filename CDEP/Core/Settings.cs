@@ -21,15 +21,17 @@ internal static partial class Settings
     public static readonly SettingDefault[] Defaults =
     [
         new("RELAY_HOST", "", "이 서버 PC의 IP(앱 .env 의 RELAY_HOST 와 같게). 비우면 이 PC의 모든 IP에서 받습니다."),
-        new("RELAY_PORT", "", "(필수) 이 서버가 받을 포트. 기본값은 없습니다: i-api.exe 를 실행하면 묻고 여기에 씁니다 (또는 i-api.exe --port <포트>)."),
+        new("RELAY_PORT", "", "(필수) 이 서버가 받을 포트. 기본값은 없습니다: i-api.exe 를 실행해 관리 창에서 정하면 여기에 씁니다 (또는 i-api.exe --port <포트>)."),
         new("RELAY_BIND", "", "(선택) 받을 주소를 따로 정할 때. 0.0.0.0 = 이 PC의 모든 IP"),
         new("RELAY_INGEST_KEY", "", "(선택) 앱 키. 쓰면 앱 .env 의 RELAY_INGEST_KEY 와 같아야 받습니다."),
-        new("RELAY_ADMIN_PASSWORD", "", "(선택) 관리자 비밀번호 (관리자 메뉴 · 관리 페이지). 비우면 누구나 고칩니다."),
+        new("RELAY_ADMIN_PASSWORD", "", "(선택) 관리자 비밀번호 (관리 API · 브라우저 관리 페이지. 이 PC 의 i-api 관리 창은 여기서 읽어 씀). 비우면 누구나 고칩니다."),
         new("MASTER_USERS", "", "(선택) 마스터 계정(쉼표로, 앱 .env 의 MASTER_USERS 와 같게): 공지 작성, 모든 스킬 수정·삭제.",
             "비우면 앱이 정한 계정을 믿습니다. 작성자는 늘 자기 스킬을 고치고 지웁니다."),
         new("RELAY_GITHUB_TOKEN", "", "(선택) 비공개·내부 GitHub 저장소의 스킬 링크와 GitHub 중계(/api/v3)에 쓰는 토큰.",
             "비우면 GitHub 중계는 이 PC의 git 자격 증명(git credential)을 씁니다"),
         new("RELAY_GITHUB_SYNC_MINUTES", "10", "깃허브 링크 스킬을 다시 읽는 간격(분)"),
+        new("RELAY_UPDATE_REPOSITORY", "", "(선택) i-api 관리 창의 [업데이트]가 새 버전(i-api-win-x64.zip)을 받을 저장소 주소 (https://<호스트>/<소유자>/<저장소>).",
+            "비우면 이 i-api 를 릴리스한 저장소"),
         new("LAUNCHER_GITHUB_REPOS", "", "(선택) GitHub 중계로 열어 줄 저장소(쉼표, 소유자/저장소 또는 소유자/*).",
             "비우면 런처 앱 목록에 있는 저장소와 토큰 계정의 저장소만"),
         new("LAUNCHER_DIR", "launcher", "i-luncher 앱 목록·공지 폴더(RELAY_DATA_ROOT 기준)"),
@@ -58,7 +60,7 @@ internal static partial class Settings
         new("EQUIPMENT_API_KEY", "", "(선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다"),
         new("EQUIPMENT_REFRESH_SECONDS", "10", "설비 상태 DB를 다시 읽는 간격(초)"),
         new("EQUIPMENT_PORT", "2004", "설비 상태를 내려 주는 포트(여기 · 사내 모두 2004, 이 포트는 설비 상태만). RELAY_PORT 에서도 계속 받음. 0 = 끔"),
-        new("RUNNERS_ROOT", "", "(선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-luncher 관리자 메뉴의 러너 화면에서",
+        new("RUNNERS_ROOT", "", "(선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-api 관리 창의 러너 화면에서",
             "추가·편집·시작·중지·삭제하고, 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다"),
         new("RUNNERS_ENV_DIR", "", "새 러너가 빌드에 쓰는 설정 파일(<저장소>.env) 폴더. 비우면 환경 변수 APPS_ENV_DIR, 없으면 RUNNERS_ROOT\\env"),
         new("RUNNER_PACKAGE", "", "새 러너 파일(actions-runner-win-x64-*.zip). 비우면 RUNNERS_ROOT 의 다른 러너 파일을 씁니다"),
@@ -73,7 +75,7 @@ internal static partial class Settings
     private static readonly string[] Header =
     [
         "# i-api(API 서버) 설정. 이 파일만 고칩니다. 비운 값(이름=)은 쓰지 않거나 기본값입니다.",
-        "# 고친 뒤 i-luncher 관리자 메뉴 → 서버 → [다시 시작] (또는 서버 시작.cmd).",
+        "# 고친 뒤 i-api 관리 창 → 서버 → [다시 시작] (또는 서버 시작.cmd).",
         "# 순서: 이 파일 < 같은 이름의 환경 변수 < --set. 새 버전이 더한 설정은 서버가 시작할 때 기본값으로 덧붙입니다.",
     ];
 

@@ -17,7 +17,9 @@ ProcessTable.Source = () => [];
 RelayServer.IsThisPc = address => address is "127.0.0.1" or "::1";
 
 int passed = 0, failed = 0;
-var only = args.Length > 0 ? args : null;
+// 이름 일부로 골라 돌림 (dotnet run 이 넘기는 -m:1 같은 빌드 옵션은 고르기가 아님: 그것 때문에 하나도 돌지 않으면 안 됨)
+var picked = args.Where(argument => !argument.StartsWith('-')).ToArray();
+var only = picked.Length > 0 ? picked : null;
 
 void Check(string name, Action action)
 {
@@ -1260,7 +1262,113 @@ Check("a release workflow without a version input takes only the next version", 
     Equal("{\"ref\":\"main\"}", github.Dispatched[^1].Body!.ToJsonString(), "started without inputs");
 });
 
-// ── API 마다 켜고 끄기 · 호출 수 (관리자 메뉴 → API) ──────────────────────────────────────────────────────
+// ── 관리 창 (i-api.exe 를 손으로 실행하면 뜨는 창) ──────────────────────────────────────────────────────
+
+Check("management window: changing an app's id or install folder name keeps the old value for the launcher", () =>
+{
+    var data = new JsonObject { ["id"] = "fastcopy", ["name"] = "FastCopy" };
+    Equal("FastCopy", IApi.Manager.AppRow.EffectiveInstallName(data), "install name falls back to the name");
+    IApi.Manager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
+    IApi.Manager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
+    Equal("[\"swiftcopy\"]", data["formerIds"]!.ToJsonString(), "old id kept once");
+    IApi.Manager.ManagerView.KeepFormer(data, "formerInstallNames", "FastCopy", "FastCopy");
+    True(data["formerInstallNames"] is null, "an unchanged name adds nothing");
+    IApi.Manager.ManagerView.KeepFormer(data, "formerIds", "fastcopy", "swiftcopy");
+    Equal("[\"fastcopy\"]", data["formerIds"]!.ToJsonString(), "renamed back: the current id leaves the list, the other one stays");
+});
+
+Check("management window: the update source is the repository that released this i-api (GitHub or Enterprise)", () =>
+{
+    Equal(("https://api.github.com", "o/i-luncher", "github.com"), IApi.Manager.Updater.Parse("https://github.com/o/i-luncher")!.Value, "github.com");
+    Equal(("https://ghe.example.com/api/v3", "team/i-luncher", "ghe.example.com"), IApi.Manager.Updater.Parse("https://ghe.example.com/team/i-luncher.git/")!.Value, "Enterprise");
+    True(IApi.Manager.Updater.Parse("") is null && IApi.Manager.Updater.Parse("https://github.com/only-owner") is null, "no repository");
+});
+
+Check("management window: an update replaces the program files, keeps settings.txt and the old files in backup", () =>
+{
+    string folder = Path.Combine(Path.GetTempPath(), "i-api-checks-update-" + Guid.NewGuid().ToString("N")[..8]);
+    Directory.CreateDirectory(folder);
+    string zip = Path.Combine(folder, "..", Path.GetFileName(folder) + ".zip");
+    try
+    {
+        File.WriteAllText(Path.Combine(folder, "i-api.exe"), "old exe");
+        File.WriteAllText(Path.Combine(folder, "i-api.dll"), "old dll");
+        File.WriteAllText(Path.Combine(folder, "settings.txt"), "RELAY_PORT=5081\r\n");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            foreach (var (name, text) in new[] { ("i-api.exe", "new exe"), ("i-api.dll", "new dll"), ("서버 시작.cmd", "new cmd"), ("settings.txt", "RELAY_PORT=1"), ("../outside.txt", "no") })
+                using (var writer = new StreamWriter(archive.CreateEntry(name).Open())) writer.Write(text);
+        }
+        IApi.Manager.ServerManager.FolderOverride = folder;
+        string backup = IApi.Manager.Updater.Apply(new IApi.Manager.Updater.Found(new Version(99, 0, 0), zip));
+        Equal("new exe|new dll|new cmd", string.Join("|", new[] { "i-api.exe", "i-api.dll", "서버 시작.cmd" }.Select(name => File.ReadAllText(Path.Combine(folder, name)))), "new files in place");
+        Equal("RELAY_PORT=5081\r\n", File.ReadAllText(Path.Combine(folder, "settings.txt")), "settings.txt untouched");
+        Equal("old exe|old dll", File.ReadAllText(Path.Combine(backup, "i-api.exe")) + "|" + File.ReadAllText(Path.Combine(backup, "i-api.dll")), "old files kept in " + backup);
+        True(!File.Exists(Path.Combine(folder, "..", "outside.txt")) && !File.Exists(zip), "nothing written outside, the download is removed");
+    }
+    finally
+    {
+        IApi.Manager.ServerManager.FolderOverride = null;
+        try { Directory.Delete(folder, true); File.Delete(zip); } catch (IOException) { }
+    }
+});
+
+Check("management window: an old Python relay moves into this i-api (settings, start at login), which then starts, answers and stops", () =>
+{
+    // 이 PC 의 실제 서버 · 시작 폴더 · 데이터를 건드리지 않게 모두 임시 폴더로 (서버 프로그램은 따로 도는 프로세스라 환경 변수로)
+    string sandbox = Path.Combine(Path.GetTempPath(), "i-api-checks-move-" + Guid.NewGuid().ToString("N")[..8]);
+    string app = Path.Combine(sandbox, "app"), local = Path.Combine(sandbox, "Local"), roaming = Path.Combine(sandbox, "Roaming"), machine = Path.Combine(sandbox, "ProgramData");
+    string startup = Path.Combine(roaming, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+    string data = Path.Combine(sandbox, "data");
+    Directory.CreateDirectory(startup);
+    Directory.CreateDirectory(app);
+    foreach (string file in Directory.EnumerateFiles(AppContext.BaseDirectory))
+        if (Path.GetFileName(file).StartsWith("i-api.", StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(file).StartsWith("i-api.Checks", StringComparison.OrdinalIgnoreCase))
+            File.Copy(file, Path.Combine(app, Path.GetFileName(file)));
+    int port;
+    using (var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)) { probe.Start(); port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port; }
+    IApi.Manager.ServerManager.FolderOverride = app;
+    IApi.Manager.ServerManager.LocalRoot = local;
+    IApi.Manager.ServerManager.StartupOverride = startup;
+    IApi.Manager.ServerManager.ChildEnvironment = new() { ["APPDATA"] = roaming, ["LOCALAPPDATA"] = local, ["ProgramData"] = machine };
+    try
+    {
+        string old = Path.Combine(local, "TerminalNotesRelay", "relay.py");
+        Directory.CreateDirectory(Path.GetDirectoryName(old)!);
+        File.WriteAllText(old,
+            "# ── 설정 시작 ──\nSETTINGS = {\n    \"RELAY_HOST\": \"\",\n    \"RELAY_PORT\": " + port + ",\n    \"RELAY_BIND\": \"127.0.0.1\",\n" +
+            "    \"RELAY_ADMIN_PASSWORD\": \"pw\\\"x\",\n    \"RELAY_DATA_ROOT\": \"" + data.Replace("\\", "\\\\") + "\",\n}\n# ── 설정 끝 ──\nVERSION = \"2.22.0\"\n", new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(startup, "Terminal Notes Relay.vbs"), "old", Encoding.Unicode);
+        Equal(old, IApi.Manager.ServerManager.PythonScript, "an old Python relay is found");
+        string? moved = IApi.Manager.ServerManager.MoveFromPythonAsync().GetAwaiter().GetResult();
+        True(moved?.Contains("옮겼습니다") == true, "moved: " + moved);
+        Equal<string?>(null, IApi.Manager.ServerManager.PythonScript, "nothing left to move");
+        Equal("pw\"x", IApi.Manager.ServerManager.AdminPassword(), "the password moved to settings.txt");
+        Equal(port, IApi.Manager.ServerManager.Port, "the port moved");
+        Equal("i-api.vbs", string.Join(",", Directory.GetFiles(startup).Select(Path.GetFileName)), "the start at login now starts i-api.exe");
+        True(File.ReadAllText(Path.Combine(startup, "i-api.vbs"), Encoding.Unicode).Contains(IApi.Manager.ServerManager.Exe, StringComparison.OrdinalIgnoreCase), "pointing at this i-api.exe");
+        True(IApi.Manager.ServerManager.StartsAtLogon, "the window sees the start at login");
+        True(File.Exists(Path.Combine(local, "TerminalNotesRelay", "MOVED-TO-i-api.txt")) && File.Exists(old), "the old folder stays, with a note");
+        Equal<string?>(null, IApi.Manager.ServerManager.MoveFromPythonAsync().GetAwaiter().GetResult(), "moved once (the note marks the old folder)");
+        var (code, output) = IApi.Manager.ServerManager.RestartAsync().GetAwaiter().GetResult();
+        Equal(0, code, "started: " + output);
+        var address = IApi.Manager.ServerManager.ReadAddress();
+        True(IApi.Manager.ServerManager.IsHealthyAsync(address).GetAwaiter().GetResult(), "it answers at " + address.HealthUrl);
+        IApi.Manager.ServerManager.HaltAsync().GetAwaiter().GetResult();
+        True(!IApi.Manager.ServerManager.IsHealthyAsync(address).GetAwaiter().GetResult(), "stopped");
+    }
+    finally
+    {
+        try { IApi.Manager.ServerManager.HaltAsync().GetAwaiter().GetResult(); } catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+        IApi.Manager.ServerManager.FolderOverride = null;
+        IApi.Manager.ServerManager.LocalRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        IApi.Manager.ServerManager.StartupOverride = null;
+        IApi.Manager.ServerManager.ChildEnvironment = [];
+        try { Directory.Delete(sandbox, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+});
+
+// ── API 마다 켜고 끄기 · 호출 수 (관리 창 → API) ──────────────────────────────────────────────────────
 
 Check("each API can be turned off and counts its calls", () =>
 {
@@ -1301,6 +1409,11 @@ Check("each API can be turned off and counts its calls", () =>
 });
 
 Console.WriteLine();
+if (passed + failed == 0)
+{
+    Console.WriteLine("No check ran (nothing matched: " + string.Join(" ", args) + ").");
+    return 1;
+}
 Console.WriteLine(failed == 0 ? $"All {passed} checks passed." : $"{failed} of {passed + failed} checks FAILED.");
 try { Directory.Delete(sandbox, true); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
 return failed == 0 ? 0 : 1;

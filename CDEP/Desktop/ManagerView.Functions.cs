@@ -7,13 +7,13 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace ApiManager;
+namespace IApi.Manager;
 
 /// <summary>
 /// API 화면: 서버의 API 하나하나 (서버 3.0 의 /admin/api/functions). 켜고 끄기 (끈 API 는 503 으로 거절), 오늘 · 30일 호출, 실패, 평균 시간,
-/// 고른 API 의 설명 · 날짜별 막대 · 마지막 실패. 관리자 메뉴가 쓰는 API 와 상태 확인은 끄지 못함
+/// 고른 API 의 설명 · 날짜별 막대 · 마지막 실패. 관리 창이 쓰는 API 와 상태 확인은 끄지 못함
 /// </summary>
-public partial class ManagerView
+internal partial class ManagerView
 {
     private List<FunctionRow> _functions = [];
 
@@ -27,7 +27,7 @@ public partial class ManagerView
             _functions = [];
             FunctionsList.ItemsSource = null;
             ShowFunction(null);
-            FunctionsSummaryText.Text = "이 서버는 API 관리를 모릅니다 (예전 Python 서버). 서버를 C# 판(3.0 이상)으로 바꾸면 보입니다: 서버 PC 에서 새 런처를 켜면 저절로 바뀝니다.";
+            FunctionsSummaryText.Text = "돌고 있는 서버가 API 관리를 모릅니다 (예전 버전). [다시 시작]으로 이 버전의 서버를 켜세요.";
             return;
         }
         string? selected = (FunctionsList.SelectedItem as FunctionRow)?.Id;
@@ -61,7 +61,7 @@ public partial class ManagerView
         FunctionRouteText.Text = row.Route;
         FunctionDescriptionText.Text = row.Description;
         FunctionDescriptionText.Visibility = row.Description.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        FunctionStateText.Text = !row.Switchable ? "관리자 메뉴가 쓰는 API 라 늘 켜져 있습니다." : row.On ? "켜짐" : "꺼짐: 이 API 를 부르는 앱은 503 오류를 받습니다.";
+        FunctionStateText.Text = !row.Switchable ? "관리 창이 쓰는 API 라 늘 켜져 있습니다." : row.On ? "켜짐" : "꺼짐: 이 API 를 부르는 앱은 503 오류를 받습니다.";
         FunctionStateText.Foreground = row.Switchable && !row.On ? (Brush)FindResource("WarnBrush") : (Brush)FindResource("MutedTextBrush");
         FunctionTodayText.Text = row.TodayCalls.ToString("N0", CultureInfo.InvariantCulture);
         FunctionPeriodText.Text = row.PeriodCalls.ToString("N0", CultureInfo.InvariantCulture);

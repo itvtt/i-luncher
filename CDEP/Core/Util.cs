@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 
 namespace IApi;
 
-/// <summary>요청을 거절하는 이유 (상태 코드 + 앱 · 관리자 메뉴가 그대로 보여 주는 한국어 문장)</summary>
+/// <summary>요청을 거절하는 이유 (상태 코드 + 앱 · 관리 창이 그대로 보여 주는 한국어 문장)</summary>
 internal sealed class RelayError(int status, string message) : Exception(message)
 {
     public int Status { get; } = status;

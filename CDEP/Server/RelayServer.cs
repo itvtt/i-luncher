@@ -143,12 +143,12 @@ internal sealed partial class RelayServer : IDisposable
         }
     }
 
-    /// <summary>API 를 부름: 꺼 둔 API 면 503 (관리자 메뉴 → API 에서 켬)</summary>
+    /// <summary>API 를 부름: 꺼 둔 API 면 503 (관리 창 → API 에서 켬)</summary>
     private void Invoke(Request request, ApiFunction function, Dictionary<string, string>? values = null)
     {
         request.Function = function;
         request.Values = values ?? [];
-        if (function.Switchable && !Switches.IsOn(function.Id)) throw new RelayError(503, $"이 API는 꺼져 있습니다: {function.Title} (관리자 메뉴 → API)");
+        if (function.Switchable && !Switches.IsOn(function.Id)) throw new RelayError(503, $"이 API는 꺼져 있습니다: {function.Title} (관리 창 → API)");
         function.Handle(request);
     }
 

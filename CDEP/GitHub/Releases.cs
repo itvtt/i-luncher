@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace IApi;
 
 /// <summary>
-/// 관리자 메뉴의 릴리스 화면. 프로젝트: 앱 목록의 GitHub 저장소, 그다음 LAUNCHER_GITHUB_REPOS 의 소유자/이름 (예: 런처 자신).
+/// 관리 창의 릴리스 화면. 프로젝트: 앱 목록의 GitHub 저장소, 그다음 LAUNCHER_GITHUB_REPOS 의 소유자/이름 (예: 런처 자신).
 /// 프로젝트마다 마지막 릴리스, 다음 버전, .github/workflows/release.yml 의 최근 실행. 릴리스는 고른 버전으로 그 워크플로를 실행(workflow_dispatch)
 /// </summary>
 internal sealed partial class Releases

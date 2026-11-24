@@ -60,15 +60,6 @@ public partial class MainWindow : Window
         CreateServices();
         TitleVersionText.Text = "v" + LauncherVersion;
         ApplyViewMode();
-        // 관리자 메뉴 → 공지 → i-luncher: GitHub 공지 파일을 보여 주고 GitHub 에서 고치게 함
-        ApiManager.ManagerHost.LoadLauncherNotices = async () =>
-        {
-            try { return await FetchNoticesAsync(CancellationToken.None) ?? ""; }
-            catch (Exception error) when (error is GitHubApiException or IOException) { throw new InvalidOperationException(error.Message, error); }
-        };
-        ApiManager.ManagerHost.LauncherNoticesEditUrl = NoticesEditUrlAsync;
-        // 관리자 메뉴에서 앱 목록을 저장하면 바로 다시 읽음 (분류·이름·순서, 새로 넣은 앱의 릴리스도 확인)
-        ApiManager.ManagerHost.CatalogSaved += () => Dispatcher.InvokeAsync(async () => await RefreshAsync(checkReleases: true));
         PreviewMouseUp += Window_PreviewMouseUp;
         _periodic = new DispatcherTimer(PeriodicRefresh, DispatcherPriority.Background, async (_, _) => await PeriodicRefreshAsync(), Dispatcher);
         _periodic.Stop();
@@ -82,23 +73,15 @@ public partial class MainWindow : Window
 
     public static string LauncherVersion => AppUpdater.CurrentVersion;
 
-    /// <summary>관리자 메뉴 (앱 목록 · 릴리스 · 러너 · 공지 · 서버): MASTER_USERS 에 이름이 있는 계정만, 비밀번호 없이</summary>
-    private bool IsApiManager => IsMaster;
-
-    private void ApiManagerButton_Click(object sender, RoutedEventArgs e) => OpenAdminMenu();
-
-    // 오른쪽 화면 전체를 쓰는 화면: 관리자 메뉴 (한 번 만들어 다시 씀, 고치던 내용이 남음), 설정 (열 때마다 새로)
-    private ApiManager.ManagerView? _managerView;
+    // 오른쪽 화면 전체를 쓰는 화면: 설정 (열 때마다 새로). API 서버의 관리(앱 목록 · 릴리스 · 러너 · 공지 · API)는 서버 PC 의 i-api.exe 관리 창에서
     private SettingsView? _settingsView;
-    private bool OnPage => _filter is "manager" or "settings";
+    private bool OnPage => _filter is "settings";
 
-    /// <summary>앱 목록 또는 오른쪽 화면 (관리자 메뉴 · 설정)</summary>
+    /// <summary>앱 목록 또는 오른쪽 화면 (설정)</summary>
     private void ShowPage()
     {
-        if (_filter == "manager" && !IsApiManager) _filter = "all";
         FrameworkElement? page = _filter switch
         {
-            "manager" => _managerView ??= ApiManager.ManagerHost.CreateView(),
             "settings" => _settingsView ??= CreateSettingsView(),
             _ => null
         };
@@ -122,10 +105,6 @@ public partial class MainWindow : Window
         _store = CreateStore();
         _notices = new NoticeService(FetchNoticesAsync, _settings.CacheDirectory);
         _icons = new AppIconService(_github, IconCacheDirectory, () => _settings.DefaultHost);
-        // 관리자 메뉴의 서버 = 런처가 쓰는 API 서버 (이 PC 가 아니면 관리자 메뉴는 이 PC 에 서버를 두지 않고 그 서버를 고침)
-        ApiManager.ManagerHost.ApiServer = _settings.ApiServerUrl ?? "";
-        ApiManager.ManagerHost.DefaultApiServer = _settings.BuildApiServerUrl ?? "";
-        ApiManager.ManagerHost.ChangeApiServer = ChangeApiServer;
         ShowRole();
     }
 
@@ -139,7 +118,7 @@ public partial class MainWindow : Window
     };
 
     /// <summary>
-    /// 마스터가 관리자 메뉴 → 서버에서 API 서버 주소를 바꿈 (비우면 빌드 설정의 주소). C:\i-luncher\settings.json 에 두고 서버 목록을 새 주소에서 다시 읽음.
+    /// 마스터가 설정 → API 서버에서 주소를 바꿈 (비우면 빌드 설정의 주소). C:\i-luncher\settings.json 에 두고 서버 목록을 새 주소에서 다시 읽음.
     /// 설치된 앱의 사용 기록도 이 주소로 감 (AppKit AppUsage 가 같은 파일을 읽음). 틀린 주소면 null, 아니면 지금 쓰는 주소 (없으면 "")
     /// </summary>
     private string? ChangeApiServer(string text)
@@ -148,9 +127,8 @@ public partial class MainWindow : Window
         if (url is null && text.Trim().Length > 0) return null;
         _settings.User.ApiServer = url is null || url == _settings.BuildApiServerUrl ? null : url;
         _settings.SaveUser();
-        ApiManager.ManagerHost.ApiServer = _settings.ApiServerUrl ?? "";
         _ = SwitchStoreAsync();
-        return ApiManager.ManagerHost.ApiServer;
+        return _settings.ApiServerUrl ?? "";
     }
 
     /// <summary>읽던 목록이 끝난 뒤 새 주소의 목록으로 바꾸고 다시 읽음 (새 서버 목록의 릴리스도 확인)</summary>
@@ -175,7 +153,7 @@ public partial class MainWindow : Window
         return File.Exists(local) ? await File.ReadAllTextAsync(local, cancellationToken) : null;
     }
 
-    /// <summary>공지 파일을 GitHub 에서 고치는 페이지 (공지 저장소의 기본 브랜치). 관리자 메뉴 → 공지 → i-luncher 에서 엶</summary>
+    /// <summary>공지 파일을 GitHub 에서 고치는 페이지 (공지 저장소의 기본 브랜치). 마스터의 설정 → 런처 공지에서 엶</summary>
     private async Task<string?> NoticesEditUrlAsync()
     {
         if (_settings.NoticesRepository is not { } repository) return null;
@@ -194,8 +172,6 @@ public partial class MainWindow : Window
         // 런처가 스스로 파일을 바꾸므로 Windows "앱" 목록의 버전을 실행 중인 버전과 맞춤
         if (AppUpdater.IsInstalledCopy("i-luncher")) AppUpdater.SyncInstalledVersion("i-luncher");
         ShowNotices(_notices.CachedNotices);
-        // 서버 PC 의 마스터: 런처에 든 relay.py 가 더 새 버전이면 서버를 바꾸고, 꺼져 있으면 켬 (앱 목록을 읽기 전에)
-        if (IsMasterAccount) await ApiManager.ManagerHost.ApplyAsync();
         // 마스터 PC: 토큰을 따로 넣지 않아도 이 PC 의 git 로그인(저장소 주인 계정)으로 비공개 저장소의 버전 · 업데이트를 읽음 (앱들도 같은 토큰)
         if (IsMasterAccount)
         {
@@ -275,7 +251,7 @@ public partial class MainWindow : Window
     private bool IsMasterAccount => _settings.Build.IsListedMaster(Environment.UserName);
 
     /// <summary>
-    /// 마스터 화면: 마스터 계정이고 일반 화면으로 바꾸지 않았음. 기본 목록 + 서버 목록 · 공지 · 관리자 메뉴.
+    /// 마스터 화면: 마스터 계정이고 일반 화면으로 바꾸지 않았음. 기본 목록 + 서버 목록 · 공지, 설정의 API 서버 주소.
     /// 그 밖(일반)은 로컬 앱: API 서버에 아무것도 묻지 않고 기본 목록만 (릴리스는 GitHub 에 바로)
     /// </summary>
     private bool IsMaster => IsMasterAccount && !_settings.User.GeneralView;
@@ -330,7 +306,7 @@ public partial class MainWindow : Window
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ShowError("일반 화면을 초기화하지 못했습니다: " + error.Message); }
     }
 
-    /// <summary>일반/마스터 화면에 맞춤: 전환 단추, 관리자 메뉴 단추, 카드의 관리자 메뉴 항목, 공지 단추 · 목록 출처, 홈 화면 모양</summary>
+    /// <summary>일반/마스터 화면에 맞춤: 전환 단추, 공지 단추 · 목록 출처, 홈 화면 모양</summary>
     private void ApplyViewMode()
     {
         // 일반 = 홈 화면 (왼쪽 메뉴 칸 · 화면 이름 없음, 위쪽 빛), 마스터 = 왼쪽 메뉴의 스토어 · 설치됨
@@ -349,9 +325,6 @@ public partial class MainWindow : Window
         ViewModeSwitch.Visibility = IsMasterAccount ? Visibility.Visible : Visibility.Collapsed;
         SetSegment(GeneralViewButton, !IsMaster);
         SetSegment(MasterViewButton, IsMaster);
-        ApiManagerButton.Visibility = IsApiManager ? Visibility.Visible : Visibility.Collapsed;
-        AppCard.AdminMenus = IsApiManager;
-        foreach (var card in _cards) card.RefreshAdminMenu();
         ShowRole();
     }
 
@@ -841,9 +814,9 @@ public partial class MainWindow : Window
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{installed.Directory}\"") { UseShellExecute = true })?.Dispose();
     }
 
-    // ───────────────────────── 앱 목록 고치기 = 관리자 메뉴 ─────────────────────────
+    // ───────────────────────── 앱 목록 고치기 = 서버 PC 의 i-api 관리 창 ─────────────────────────
 
-    /// <summary>독 끝의 + (프로그램 추가). 앱 추가는 관리자 메뉴 → 앱 목록</summary>
+    /// <summary>독 끝의 + (프로그램 추가). 서버 목록의 앱 추가는 i-api 관리 창 → 앱 목록</summary>
     /// <summary>
     /// GitHub 프로젝트 추가: 저장소를 확인해 내 앱으로 (이 PC 에만). 추가하면 홈 화면에 넣고 그 앱 페이지를 엶 (받기는 거기서)
     /// </summary>
@@ -1057,22 +1030,6 @@ public partial class MainWindow : Window
         StatusText.Text = $"{card.Name} 다시 추가함";
         await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
         UpdateCounts();
-    }
-
-    /// <summary>카드 메뉴의 "관리자 메뉴에서 편집" (마스터만): 관리자 메뉴 → 앱 목록에서 그 앱을 엶</summary>
-    private void EditMenu_Click(object sender, RoutedEventArgs e)
-    {
-        if (CardOf(sender) is not { } card || !IsApiManager) return;
-        OpenAdminMenu();
-        _managerView?.ShowApp(card.App.Id);
-    }
-
-    private void OpenAdminMenu()
-    {
-        if (!IsApiManager) return;
-        CloseDetail();
-        _filter = "manager";
-        Render();
     }
 
     // ───────────────────────── 런처 자체 업데이트 ─────────────────────────
@@ -1318,11 +1275,11 @@ public partial class MainWindow : Window
         }
         else if (store && !_cards.Any(card => !card.App.Personal) && search.Length == 0)
         {
-            // 앱은 관리자가 관리자 메뉴 → 앱 목록에서 넣음 (버튼은 마스터에게만)
+            // 서버 목록의 앱은 서버 PC 의 i-api 관리 창 → 앱 목록에서 넣음
             EmptyStateTitle.Text = "아직 등록된 앱이 없습니다";
-            EmptyStateText.Text = IsApiManager ? "관리자 메뉴 → 앱 목록에서 추가하세요." : "관리자가 앱을 추가하면 여기에 보입니다.";
-            EmptyStateButton.Content = "관리자 메뉴";
-            EmptyStateButton.Tag = "admin";
+            EmptyStateText.Text = IsMaster ? "서버 PC 의 i-api 관리 창 → 앱 목록에서 추가하세요." : "관리자가 앱을 추가하면 여기에 보입니다.";
+            EmptyStateButton.Content = "";
+            EmptyStateButton.Tag = "none";
         }
         else
         {
@@ -1331,7 +1288,7 @@ public partial class MainWindow : Window
             EmptyStateButton.Content = "전체 보기";
             EmptyStateButton.Tag = "clear";
         }
-        EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "none" || EmptyStateButton.Tag as string == "admin" && !IsApiManager ? Visibility.Collapsed : Visibility.Visible;
+        EmptyStateButton.Visibility = EmptyStateButton.Tag as string == "none" ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private const double HomeHeaderWidth = 360;
@@ -1414,7 +1371,7 @@ public partial class MainWindow : Window
     /// </summary>
     /// <summary>
     /// 왼쪽 메뉴 (앱스토어처럼): 스토어 · 분류마다 | 설치됨 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판.
-    /// 누르면 그 화면으로 (검색은 지움). 설정 · 관리자 메뉴에서는 메뉴를 숨김
+    /// 누르면 그 화면으로 (검색은 지움). 설정에서는 메뉴를 숨김
     /// </summary>
     private void RenderCategories()
     {
@@ -1572,7 +1529,6 @@ public partial class MainWindow : Window
     private void EmptyStateButton_Click(object sender, RoutedEventArgs e)
     {
         if (EmptyStateButton.Tag as string == "favorite-add") EditFavorite(null);
-        else if (EmptyStateButton.Tag as string == "admin") OpenAdminMenu();
         else if (EmptyStateButton.Tag as string == "store") ShowTab("store");
         else if (EmptyStateButton.Tag as string == "installed") ShowTab("installed");
         else
@@ -1598,7 +1554,9 @@ public partial class MainWindow : Window
         Render();
     }
 
-    private SettingsView CreateSettingsView() => new(_settings, _settings.SaveUser, RestartWithReset);
+    // 마스터: API 서버 주소 (서버 목록 · 앱 사용 기록이 가는 곳)와 런처 공지 편집 (GitHub)
+    private SettingsView CreateSettingsView() =>
+        new(_settings, _settings.SaveUser, RestartWithReset, IsMaster ? ChangeApiServer : null, IsMaster ? NoticesEditUrlAsync : null);
 
     /// <summary>
     /// 설정 → 재설정: 새 런처를 띄우고 이 런처는 끝냄. 새 런처가 이 런처가 끝나길 기다렸다가 지우고 시작
@@ -1654,7 +1612,7 @@ public partial class MainWindow : Window
         UpdateCounts();
     }
 
-    // 설정 · 관리자 메뉴의 뒤로 (Esc): 앱 목록 (전체 앱)
+    // 설정의 뒤로 (Esc): 앱 목록 (전체 앱)
     private void PageBack_Click(object sender, RoutedEventArgs e)
     {
         _filter = "all";
@@ -1792,7 +1750,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // 설정 · 관리자 메뉴에서 Esc: 뒤로. 펼친 목록 등이 Esc 를 먼저 쓰면 (Handled) 여기까지 오지 않음
+    // 설정에서 Esc: 뒤로. 펼친 목록 등이 Esc 를 먼저 쓰면 (Handled) 여기까지 오지 않음
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape || !OnPage) return;

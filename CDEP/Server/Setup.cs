@@ -28,6 +28,8 @@ internal static class Setup
 
     public static string StopEventName(string executable) => @"Local\i-api-stop-" + Key(executable);
     public static string RunningMutexName(string executable) => @"Local\i-api-run-" + Key(executable);
+    /// <summary>관리 창 (손으로 실행한 i-api.exe) 하나만: 두 번째로 실행하면 이 신호로 떠 있는 창을 앞으로</summary>
+    public static string WindowEventName(string executable) => @"Local\i-api-window-" + Key(executable);
     private static string PidFile(string executable) => Path.Combine(Path.GetDirectoryName(executable)!, "i-api.pid");
 
     /// <summary>서버로 도는 동안 잡아 두는 것: 멈추라는 신호 · 돌고 있다는 표시 · pid 파일</summary>
@@ -228,7 +230,7 @@ internal static class Setup
         return 1;
     }
 
-    /// <summary>관리자 메뉴가 씀: 돌고 있으면 멈추고 창 없이 다시 시작 (로그인 자동 실행 · 방화벽은 그대로, Windows 확인 창 없음). 답하면 0</summary>
+    /// <summary>관리 창이 씀: 돌고 있으면 멈추고 창 없이 다시 시작 (로그인 자동 실행 · 방화벽은 그대로, Windows 확인 창 없음). 답하면 0</summary>
     public static int RestartServer(Config config)
     {
         if (!OperatingSystem.IsWindows()) throw new ConfigError("--restart는 Windows에서 씁니다.");

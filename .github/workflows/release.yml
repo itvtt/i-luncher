@@ -73,9 +73,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_PREVIOUS: ${{ steps.version.outputs.previous }}
-          RELEASE_ASSETS: ${{ steps.build.outputs.zip }};${{ steps.build.outputs.setup }}
+          RELEASE_ASSETS: ${{ steps.build.outputs.zip }};${{ steps.build.outputs.setup }};${{ steps.build.outputs.api }}
           RELEASE_TITLE: i-luncher
-          RELEASE_FOOTER: '처음 설치: i-luncher-Setup.exe 를 실행하세요. 설치된 런처는 시작할 때 스스로 업데이트합니다.'
+          RELEASE_FOOTER: '처음 설치: i-luncher-Setup.exe 를 실행하세요. 설치된 런처는 시작할 때 스스로 업데이트합니다. API 서버(서버 PC): i-api-win-x64.zip 을 풀고 i-api.exe 를 실행 (새 버전은 i-api 창의 [업데이트]).'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File build\New-GitHubRelease.ps1
 
       # 빌드가 끝나면 컴파일러 서버(VBCSCompiler · MSBuild 서버)를 끔: 끝난 뒤에도 몇 분씩 수백 MB 를 잡고 있음 (빌드 속도는 그대로).

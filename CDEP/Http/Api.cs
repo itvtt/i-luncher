@@ -5,7 +5,7 @@ namespace IApi;
 
 /// <summary>
 /// API 하나 (함수 하나): 주소 · 방법 · 이름 · 설명과 처리기. 서버의 모든 API 는 ApiCatalog 에 이것으로 등록되고,
-/// 관리자 메뉴 → API 가 이 목록으로 API 마다 켜고 끄며 호출 수 · 실패 · 걸린 시간을 봄.
+/// 관리 창 → API 가 이 목록으로 API 마다 켜고 끄며 호출 수 · 실패 · 걸린 시간을 봄.
 /// 주소 조각: 글자는 그대로, {이름} 은 조각 하나, 마지막 ** 는 나머지 모두
 /// </summary>
 internal sealed class ApiFunction
@@ -18,7 +18,7 @@ internal sealed class ApiFunction
     public required string Pattern { get; init; }
     public required string Title { get; init; }
     public string Description { get; init; } = "";
-    /// <summary>끌 수 있음 (관리자 메뉴가 쓰는 API · 상태 확인은 끄지 못함)</summary>
+    /// <summary>끌 수 있음 (관리 창이 쓰는 API · 상태 확인은 끄지 못함)</summary>
     public bool Switchable { get; init; } = true;
     public required Action<Request> Handle { get; init; }
 

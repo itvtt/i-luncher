@@ -1,21 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- API 서버 i-api (C#, 예전 relay.py 를 옮김). .NET 10 실행 환경만 있으면 되고 설치할 것이 없음 (NuGet 패키지 없음).
-       런처의 관리자 메뉴(ApiManager)가 이 프로그램을 런처 설치 폴더의 server\ 로 넣고, 서버 PC 에서는 %LOCALAPPDATA%\i-api 에 두고 돌림.
+       i-luncher 릴리스에 i-api-win-x64.zip 으로 따로 올라가고 (build\Publish-Release.ps1), 서버 PC 에서는 %LOCALAPPDATA%\i-api 에 풀어 i-api.exe 를 실행.
        설정은 그 폴더의 settings.txt, 데이터는 C:\ProgramData\i-api-data (CDEP\README.md) -->
   <PropertyGroup>
     <!-- 창 없이 도는 서버: 명령 줄(서버 시작.cmd 등)에서는 부른 쪽 콘솔에 씀 (Program.AttachConsole) -->
     <OutputType>WinExe</OutputType>
-    <!-- Windows: 손으로 실행하면 포트를 묻는 작은 창(WinForms). 컨테이너(Linux)는 -p:ApiServerContainer=true 로 창 없이 net10.0 -->
+    <!-- Windows: 손으로 실행하면 관리 창 (WPF, Desktop\). 컨테이너(Linux)는 -p:ApiServerContainer=true 로 창 없이 net10.0 -->
     <TargetFramework Condition="'$(ApiServerContainer)' != 'true'">net10.0-windows</TargetFramework>
     <TargetFramework Condition="'$(ApiServerContainer)' == 'true'">net10.0</TargetFramework>
-    <UseWindowsForms Condition="'$(ApiServerContainer)' != 'true'">true</UseWindowsForms>
+    <UseWPF Condition="'$(ApiServerContainer)' != 'true'">true</UseWPF>
+    <ApplicationIcon Condition="'$(ApiServerContainer)' != 'true'">Desktop\Assets\i-api.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>IApi</RootNamespace>
     <AssemblyName>i-api</AssemblyName>
-    <!-- 서버 버전 (관리자 메뉴가 서버 PC 의 것과 견줘 새 버전이면 바꿈). relay.py 의 마지막 버전은 2.23.0 -->
-    <Version>3.0.2</Version>
+    <!-- 서버 버전 (관리 창의 [업데이트]가 릴리스의 것과 견줘 새 버전이면 바꿈: 서버를 고치면 올림). relay.py 의 마지막 버전은 2.23.0 -->
+    <Version>3.1.0</Version>
     <Product>i-api</Product>
     <Description>i-luncher API 서버</Description>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -31,10 +32,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- WinForms 이름(Timer · Application …)이 서버 코드와 겹치지 않게 -->
-    <Using Remove="System.Windows.Forms" />
-    <Using Remove="System.Drawing" />
+    <!-- WPF 프로젝트의 기본 using 에서 빠지는 것 (서버 코드가 씀) -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
     <InternalsVisibleTo Include="i-api.Checks" />
     <None Remove="*.py;Dockerfile;env.sample;README.md" />
+  </ItemGroup>
+
+  <!-- 관리 창 (Desktop\): 아이콘, 그리고 i-api-win-x64.zip 에 같이 드는 서버 PC 용 파일 (README · 서버 시작 · 중지.cmd) -->
+  <ItemGroup Condition="'$(ApiServerContainer)' != 'true'">
+    <Resource Include="Desktop\Assets\i-api.ico" />
+    <None Include="package\**" Link="%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- [업데이트]가 새 버전을 받을 저장소: 릴리스 러너(GitHub Actions)에서 빌드하면 그 저장소 (settings.txt 의 RELAY_UPDATE_REPOSITORY 가 먼저) -->
+  <ItemGroup Condition="'$(GITHUB_SERVER_URL)' != '' and '$(GITHUB_REPOSITORY)' != ''">
+    <AssemblyMetadata Include="UpdateRepository" Value="$(GITHUB_SERVER_URL)/$(GITHUB_REPOSITORY)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(ApiServerContainer)' == 'true'">
+    <Compile Remove="Desktop\**" />
+    <Page Remove="Desktop\**" />
   </ItemGroup>
 </Project>

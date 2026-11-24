@@ -201,39 +201,6 @@ static class UiSnapshot
                     window.HomeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Pump(TimeSpan.FromMilliseconds(500));
                     Console.WriteLine($"home from settings: {window.ViewTitle} · list {window.StorePane.Visibility} · page {window.PagePane.Visibility}");
-                    // 관리자 메뉴 (마스터 계정만 제목 표시줄에 보임, 창 전체). ILUNCHER_SNAPSHOT_MANAGER=1 이면 그 화면도 그림 (이 PC 서버에 연결함)
-                    Console.WriteLine($"api manager: {window.ApiManagerButton.Visibility}");
-                    if (Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_MANAGER") == "1" && window.ApiManagerButton.Visibility == Visibility.Visible)
-                    {
-                        window.ApiManagerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                        Pump(TimeSpan.FromSeconds(6));
-                        Save((FrameworkElement)window.Content, Suffix(output, "-manager"));
-                        if (window.PageContent.Content is ApiManager.ManagerView view)
-                        {
-                            foreach (var (tab, name) in new[] { (2, "-manager-releases"), (3, "-manager-runners"), (1, "-manager-apps") })
-                            {
-                                view.Nav.SelectedIndex = tab;
-                                Pump(TimeSpan.FromSeconds(tab == 3 ? 8 : 3));
-                                Save((FrameworkElement)window.Content, Suffix(output, name));
-                                if (tab != 3) continue;
-                                // 러너 추가 칸 (저장소를 고르면 서버가 폴더·이름·.env 를 채움)
-                                view.AddRunnerButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                                view.NewRunnerRepositoryBox.Text = Environment.GetEnvironmentVariable("ILUNCHER_SNAPSHOT_RUNNER_REPOSITORY") ?? "";
-                                view.NewRunnerRepositoryBox.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
-                                    PresentationSource.FromVisual(view)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = UIElement.KeyDownEvent });
-                                Pump(TimeSpan.FromSeconds(4));
-                                Save((FrameworkElement)window.Content, Suffix(output, "-manager-runner-add"));
-                            }
-                            // 카드의 "관리자 메뉴에서 편집": 앱 목록에서 그 앱 (분류 칸과 고를 수 있는 분류)
-                            if (window.VisibleCards.LastOrDefault() is { } editCard)
-                            {
-                                view.ShowApp(editCard.App.Id);
-                                Pump(TimeSpan.FromSeconds(2));
-                                Save((FrameworkElement)window.Content, Suffix(output, "-manager-app"));
-                                Console.WriteLine($"admin menu app: {(view.AppsList.SelectedItem as ApiManager.AppRow)?.Title} · chips {view.CategoryChips.Children.Count}");
-                            }
-                        }
-                    }
                     result = 0;
                 }
                 catch (Exception error)

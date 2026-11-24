@@ -13,7 +13,7 @@ public sealed class BuildSettings
 {
     public const string FileName = "launcher.env";
 
-    /// <summary>API 서버의 기본 주소 (예: http://<서버 IP>:2003): 마스터의 서버 목록 · 관리자 메뉴. 마스터가 관리자 메뉴 → 서버에서 바꿀 수 있음</summary>
+    /// <summary>API 서버의 기본 주소 (예: http://<서버 IP>:2003): 마스터의 서버 목록 · 앱 사용 기록. 마스터가 설정 → API 서버에서 바꿀 수 있음</summary>
     public string ApiServer { get; init; } = "";
     public string LauncherRepository { get; init; } = "";
     public string CatalogRepository { get; init; } = "";
@@ -39,7 +39,7 @@ public sealed class BuildSettings
         return MasterUsers.Count == 0 || MasterUsers.Any(master => string.Equals(master, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>MASTER_USERS 에 이름이 있는 계정만 (목록이 비면 아무도 아님): 관리자 메뉴</summary>
+    /// <summary>MASTER_USERS 에 이름이 있는 계정만 (목록이 비면 아무도 아님): 마스터 화면 (서버 목록)</summary>
     public bool IsListedMaster(string account)
     {
         string name = account[(account.LastIndexOf('\\') + 1)..];
@@ -99,7 +99,7 @@ public sealed class UserSettings
     public string? CatalogMode { get; set; }
     public bool AutoUpdateLauncher { get; set; } = true;
     /// <summary>
-    /// 마스터가 관리자 메뉴 → 서버에서 정한 API 서버 주소. 비우면 빌드 설정(launcher.env)의 API_SERVER.
+    /// 마스터가 설정 → API 서버에서 정한 API 서버 주소. 비우면 빌드 설정(launcher.env)의 API_SERVER.
     /// 설치된 앱의 사용 기록(AppKit AppUsage)도 이 값을 읽음 (이름을 바꾸지 않음)
     /// </summary>
     public string? ApiServer { get; set; }
@@ -226,7 +226,7 @@ public sealed class LauncherSettings
 
     public const string ModeApi = "api", ModeGitHub = "github", ModeLocal = "local";
 
-    /// <summary>API 서버 주소 (끝의 / 없음): 마스터가 관리자 메뉴 → 서버에서 바꾼 주소, 없으면 빌드 설정(launcher.env)의 API_SERVER</summary>
+    /// <summary>API 서버 주소 (끝의 / 없음): 마스터가 설정 → API 서버에서 바꾼 주소, 없으면 빌드 설정(launcher.env)의 API_SERVER</summary>
     public string? ApiServerUrl => NormalizeServer(User.ApiServer) ?? BuildApiServerUrl;
 
     /// <summary>빌드 설정의 API_SERVER (마스터가 주소 칸을 비우면 이것)</summary>

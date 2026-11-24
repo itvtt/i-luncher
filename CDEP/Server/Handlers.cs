@@ -247,7 +247,7 @@ internal sealed partial class RelayServer
         request.Json(200, new JsonObject { ["items"] = snapshot.Items.DeepClone(), ["updatedAt"] = Util.Iso(snapshot.At) }, [new("ETag", snapshot.ETag)]);
     }
 
-    // ── 관리자 메뉴 ─────────────────────────────────────────────────────────────────────────────
+    // ── 관리 창 ─────────────────────────────────────────────────────────────────────────────
 
     public JsonObject StatusData()
     {
@@ -368,7 +368,7 @@ internal sealed partial class RelayServer
         request.Json(202, Releases.Release(body["repository"], body["version"]));
     }
 
-    // 러너: 서버 PC 에서 프로그램을 시작하고 작업 스케줄러를 바꿈 → 그 PC(그 PC 의 관리자 메뉴)에서만
+    // 러너: 서버 PC 에서 프로그램을 시작하고 작업 스케줄러를 바꿈 → 그 PC(그 PC 의 관리 창)에서만
 
     private void RunnerAdd(Request request)
     {

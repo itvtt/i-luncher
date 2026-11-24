@@ -6,7 +6,7 @@ namespace IApi;
 /// <summary>보고서 하나 (목록 · 화면에 보이는 것)</summary>
 internal sealed record ReportInfo(string Id, DateTimeOffset ReceivedAt, string RemoteAddress, string AppVersion, string Summary, bool HasLogs, string Status, string Note)
 {
-    /// <summary>관리자 메뉴에 (시간은 ISO 8601)</summary>
+    /// <summary>관리 창에 (시간은 ISO 8601)</summary>
     public JsonObject ToJson() => new()
     {
         ["id"] = Id, ["receivedAt"] = Util.Iso(ReceivedAt), ["remoteAddress"] = RemoteAddress, ["appVersion"] = AppVersion,
@@ -194,7 +194,7 @@ internal sealed partial class Reports
     }
 
     /// <summary>
-    /// 최근 days 일 보고를 모아 셈 (관리자 메뉴 → 문제 보고): 자동 · 직접, 자동 보고가 센 문제(Terminal Notes 의 "문제:" · "문제 이벤트:" 줄), 앱 버전, PC, 날짜별
+    /// 최근 days 일 보고를 모아 셈 (관리 창 → 문제 보고): 자동 · 직접, 자동 보고가 센 문제(Terminal Notes 의 "문제:" · "문제 이벤트:" 줄), 앱 버전, PC, 날짜별
     /// </summary>
     public JsonObject Analysis(int days)
     {

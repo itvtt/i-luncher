@@ -67,7 +67,7 @@ internal sealed class ProcessTable
 
 /// <summary>
 /// 이 PC 의 GitHub Actions self-hosted 러너: RUNNERS_ROOT 아래 폴더마다 하나 (러너의 원래 모양: .runner, bin, externals, run.cmd 와 작업에 넘기는 .env).
-/// i-luncher 관리자 메뉴의 러너 화면이 보고, 더하고(저장소에 등록), .env 를 고치고, 시작 · 멈추기 · 지우기. 로그온 작업 하나(TaskName)가 켜 둔 러너를 모두 시작;
+/// i-api 관리 창의 러너 화면이 보고, 더하고(저장소에 등록), .env 를 고치고, 시작 · 멈추기 · 지우기. 로그온 작업 하나(TaskName)가 켜 둔 러너를 모두 시작;
 /// 여기서 멈춘 러너는 여기서 다시 시작할 때까지 꺼져 있음.
 /// 러너는 자기 콘솔에서 숨어서 돎. 멈추기는 그 콘솔에 Ctrl+Break: 러너가 GitHub 세션을 닫고 끝남. 대신 강제로 끝내면 GitHub 에 세션이 2분쯤 남아
 /// 그동안의 시작은 바로 끝남 ("A session for this runner already exists")
@@ -772,7 +772,7 @@ internal sealed partial class Runners
             <?xml version="1.0" encoding="UTF-16"?>
             <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
               <RegistrationInfo>
-                <Description>{Escape("켜 둔 GitHub Actions 러너를 시작합니다 (i-luncher 관리자 메뉴의 러너 화면에서 관리)")}</Description>
+                <Description>{Escape("켜 둔 GitHub Actions 러너를 시작합니다 (i-api 관리 창의 러너 화면에서 관리)")}</Description>
               </RegistrationInfo>
               <Triggers>
                 <LogonTrigger>

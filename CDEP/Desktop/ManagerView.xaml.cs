@@ -8,14 +8,13 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-namespace ApiManager;
+namespace IApi.Manager;
 
 /// <summary>
-/// 관리자 메뉴 (i-luncher 오른쪽 화면, MASTER_USERS 계정만). 서버(relay.py)를 배포·시작·중지하고, 예전 브라우저 관리 페이지의 일을 함:
-/// i-luncher 앱 목록·런처 공지, Terminal Notes 공지, 문제 보고, 스킬. 관리자 비밀번호는 서버 설정에서 읽어 자동으로 씀.
-/// 런처가 한 번 만들어 두고 다시 씀 (다른 화면으로 가도 고치던 내용이 남음). 보이는 동안만 서버 상태를 확인함.
+/// i-api 관리 창의 화면 (i-api.exe 를 손으로 실행하면 뜸): 이 exe 의 서버를 포트로 시작 · 다시 시작 · 멈추기 · 업데이트하고, API 마다 켜고 끄며,
+/// 서버 앱 목록 · 릴리스 · 러너 · Terminal Notes 공지 · 문제 보고 · 스킬을 고침. 관리자 비밀번호는 settings.txt 에서 읽어 자동으로 씀.
 /// </summary>
-public partial class ManagerView : UserControl
+internal partial class ManagerView : UserControl
 {
     private static readonly Brush Good = Brush("#FF3DD68C"), Warn = Brush("#FFE6C07A"), Muted = Brush("#FFA1A1A6"), Text1 = Brush("#FFF5F5F7");
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(5) };
@@ -28,8 +27,7 @@ public partial class ManagerView : UserControl
     private readonly List<AppRow> _apps = [];
     private string _catalogRevision = "";
     private bool _appsDirty, _fillingAppForm;
-    // 런처 공지 · 공지
-    private string _launcherNoticesError = "";
+    // 공지 (Terminal Notes)
     private string _announcementRevision = "", _announcementSaved = "";
     private bool _announcementExists;
     // 문제 보고
@@ -75,7 +73,7 @@ public partial class ManagerView : UserControl
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
     }
 
-    /// <summary>알림 창의 주인: 런처 창</summary>
+    /// <summary>알림 창의 주인: 관리 창</summary>
     private Window OwnerWindow => Window.GetWindow(this) ?? Application.Current.MainWindow;
 
     private static SolidColorBrush Brush(string color) => (SolidColorBrush)new BrushConverter().ConvertFromString(color)!;
@@ -94,7 +92,7 @@ public partial class ManagerView : UserControl
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        RestartButton.IsEnabled = StopButton.IsEnabled = !busy && ServerManager.CanControl && ManagerHost.IsLocalServer;
+        RestartButton.IsEnabled = StopButton.IsEnabled = PortButton.IsEnabled = UpdateButton.IsEnabled = !busy;
         Cursor = busy ? System.Windows.Input.Cursors.Wait : null;
     }
 
@@ -102,41 +100,28 @@ public partial class ManagerView : UserControl
 
     private async Task InitializeAsync()
     {
-        ShowServerMode();
+        HeaderText.Text = "API 서버 i-api";
         UpdateVersions();
-        // 다른 PC 의 서버: 이 PC 에 서버를 두거나 켜지 않고 그 서버에 연결만
-        if (!ManagerHost.IsLocalServer)
-        {
-            SetBusy(false);
-            ConnectAdmin();
-            await RefreshHealthAsync();  // 응답하면 지금 화면을 읽음 (응답하지 않으면 서버가 살아날 때)
-            if (IsVisible) _timer.Start();
-            return;
-        }
-        if (!ServerManager.CanControl)
-        {
-            SetBusy(false);
-            SetMessage(@"이 런처에 서버 프로그램(server\i-api.exe)이 없습니다. 런처를 다시 설치하세요.", warning: true);
-            await RefreshHealthAsync();
-            return;
-        }
+        ShowPort();
         SetBusy(true);
         try
         {
-            string? deployed = await ServerManager.DeployIfNewerAsync();
+            // 예전 Python 서버(relay.py)가 있으면 한 번 옮김 (설정 · 자동 실행). 그다음 포트가 있으면 이 PC 에서 서버를 켬
+            string? moved = await ServerManager.MoveFromPythonAsync();
+            string before = moved is null ? "" : moved + " ";
             _address = ServerManager.ReadAddress();
-            UpdateVersions();
+            ShowPort();
             if (!ServerManager.HasPort)
             {
-                if (deployed is null) ServerManager.OpenSetupWindow();
-                SetMessage(deployed ?? "서버의 포트가 정해지지 않았습니다. 열린 창에서 포트를 정하고 [실행]하세요.", warning: deployed is null);
+                SetMessage(before + "포트를 정하고 [실행]하세요 (기본 포트 없음).", warning: moved is null);
+                PortBox.Focus();
             }
-            else if (deployed is not null || !await ServerManager.IsHealthyAsync(_address))
+            else if (moved is not null || !await ServerManager.IsHealthyAsync(_address))
             {
-                SetMessage((deployed ?? "서버가 응답하지 않아 시작합니다.") + " 시작하는 중…");
-                var (exitCode, output) = await ServerManager.RestartAsync();
-                SetMessage((deployed is null ? "" : deployed + " ") + (exitCode == 0 ? "서버를 시작했습니다." : "서버가 시작되지 않았습니다: " + LastLine(output)),
-                    warning: exitCode != 0);
+                // i-api.exe 를 실행함 = 이 PC 에서 서버를 켬: 정한 포트로 시작하고 로그인 자동 실행 · 방화벽도 (i-api.exe --port)
+                SetMessage(before + $"서버를 포트 {ServerManager.Port}(으)로 시작하는 중…");
+                var (exitCode, output) = await ServerManager.ConfigureAsync(ServerManager.Port);
+                SetMessage(before + OneLine(output), warning: exitCode != 0);
             }
             else SetMessage("");
         }
@@ -144,10 +129,61 @@ public partial class ManagerView : UserControl
         {
             SetMessage(error.Message, warning: true);
         }
-        finally { SetBusy(false); }
+        finally { SetBusy(false); ShowPort(); }
         ConnectAdmin();
         await RefreshHealthAsync();
         if (IsVisible) _timer.Start();
+        await LoadSectionAsync(CurrentSection, force: true);
+    }
+
+    private static string OneLine(string text) => string.Join(" ", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    /// <summary>포트 칸: 지금 정한 포트와 로그인 자동 실행</summary>
+    private void ShowPort()
+    {
+        int port = ServerManager.Port;
+        if (PortBox.Text.Length == 0) PortBox.Text = port > 0 ? port.ToString(CultureInfo.InvariantCulture) : "";
+        PortHint.Text = port == 0
+            ? "기본 포트가 없습니다. 포트를 넣고 [실행]하면 이 PC 에서 서버가 켜지고, 로그인할 때마다 다시 켜집니다."
+            : (ServerManager.StartsAtLogon ? "로그인 자동 실행 켜짐" : "로그인 자동 실행 꺼짐 ([실행]하면 켬)") + " · 포트를 바꾸고 [실행]하면 그 포트로 다시 시작 · 방화벽 규칙이 없으면 Windows 확인 창에서 \"예\"";
+    }
+
+    private void PortBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        e.Handled = true;
+        PortButton_Click(sender, e);
+    }
+
+    /// <summary>[실행]: 이 포트로 i-api.exe --port (설정 파일에 쓰고 로그인 자동 실행 · 방화벽 · 서버 다시 시작)</summary>
+    private async void PortButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        if (!int.TryParse(PortBox.Text.Trim(), out int port) || port is < 1 or > 65535)
+        {
+            SetMessage("포트는 1~65535 의 숫자로 씁니다.", warning: true);
+            PortBox.Focus();
+            return;
+        }
+        SetBusy(true);
+        SetMessage($"포트 {port}(으)로 시작하는 중… (방화벽을 열 때 Windows 확인 창이 뜨면 \"예\")");
+        bool ok = false;
+        try
+        {
+            var (exitCode, output) = await ServerManager.ConfigureAsync(port);
+            ok = exitCode == 0;
+            SetMessage(OneLine(output), warning: !ok);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or Win32Exception)
+        {
+            SetMessage(error.Message, warning: true);
+        }
+        finally { SetBusy(false); UpdateVersions(); }
+        if (ok) PortBox.Text = "";  // 안 됐으면 넣은 포트를 그대로 둠
+        ShowPort();
+        ConnectAdmin();
+        _loaded.Clear();
+        await RefreshHealthAsync();
         await LoadSectionAsync(CurrentSection, force: true);
     }
 
@@ -158,65 +194,55 @@ public partial class ManagerView : UserControl
         _admin = new AdminClient(_address.ApiBase, ServerManager.AdminPassword());
     }
 
-    /// <summary>주소 칸 · 안내, 그리고 이 PC 의 서버일 때만 다시 시작 · 멈추기 · 설정 파일 · 로그 · 데이터 폴더</summary>
-    private void ShowServerMode()
-    {
-        bool local = ManagerHost.IsLocalServer;
-        ServerAddressBox.Text = ManagerHost.ApiServer;
-        ServerAddressBox.Tag = ManagerHost.DefaultApiServer.Length > 0 ? ManagerHost.DefaultApiServer : "예: 192.168.0.10:2003";
-        ServerAddressHint.Text = "IP:포트 (서버 PC 에서 i-api.exe 로 정한 포트) · 비우고 연결하면 기본값" + (ManagerHost.DefaultApiServer.Length > 0 ? $" ({ManagerHost.DefaultApiServer})" : " (이 PC)")
-            + (local ? "" : " · 다른 PC 의 서버라 이 PC 에서 켜거나 멈추지 않음");
-        ConnectButton.IsEnabled = ManagerHost.ChangeApiServer is not null;
-        var visibility = local ? Visibility.Visible : Visibility.Collapsed;
-        RestartButton.Visibility = StopButton.Visibility = SettingsFileItem.Visibility = LogItem.Visibility = DataFolderItem.Visibility = visibility;
-    }
-
-    private void ServerAddressBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key != System.Windows.Input.Key.Enter) return;
-        e.Handled = true;
-        ConnectButton_Click(sender, e);
-    }
-
-    /// <summary>주소를 바꿔 그 서버에 연결 (런처가 저장하고 서버 목록을 다시 읽음). 저장하지 않은 편집이 있으면 먼저 물음</summary>
-    private async void ConnectButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_busy || ManagerHost.ChangeApiServer is not { } change) return;
-        bool dirty = _appsDirty || RunnerEnvDirty || NoticeKindLauncher.IsChecked != true && NoticeDirty();
-        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 다른 서버에 연결할까요?", "관리자 메뉴",
-                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        if (change(ServerAddressBox.Text) is null)
-        {
-            SetMessage("주소를 IP:포트로 쓰세요. 예: 192.168.0.10:2003 · https://서버", warning: true);
-            ServerAddressBox.Focus();
-            return;
-        }
-        _timer.Stop();
-        _loaded.Clear();
-        _healthy = false;
-        // 앞 서버의 숫자 · 접속한 PC · 설정이 남지 않게
-        CountReports.Text = CountNew.Text = CountSkills.Text = "—";
-        ClientsList.ItemsSource = null;
-        SettingsList.ItemsSource = null;
-        ServerFootText.Text = "";
-        FirewallText.Visibility = NoClientsText.Visibility = Visibility.Collapsed;
-        await InitializeAsync();
-        SetMessage(_healthy ? "연결했습니다: " + _address.ApiBase : "서버가 응답하지 않습니다: " + _address.ApiBase, warning: !_healthy);
-    }
-
     private void UpdateVersions()
     {
-        string app = ManagerHost.LauncherVersion;
-        if (!ManagerHost.IsLocalServer)
-        {
-            _versionText = $"i-luncher v{app}";
-            VersionsText.Text = _versionText;
-            return;
-        }
-        string bundled = ServerManager.ReadVersion(ServerManager.BundledExe)?.ToString() ?? "없음";
-        string deployed = ServerManager.DeployedVersion is { } version ? version + (ServerManager.IsPython ? " (Python)" : "") : "설치 안 됨";
-        _versionText = $"i-luncher v{app} · 서버 {deployed}" + (bundled != deployed ? $" (포함된 서버 {bundled})" : "");
+        _versionText = $"i-api v{Updater.Current}";
         VersionsText.Text = _versionText;
+    }
+
+    /// <summary>[업데이트]: 최신 릴리스의 i-api-win-x64.zip 이 더 새 버전이면 물어보고 바꾼 뒤 서버와 이 창을 새 버전으로 다시 엶</summary>
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        SetBusy(true);
+        SetMessage("새 버전을 확인하는 중…");
+        Updater.Found? found = null;
+        try
+        {
+            found = await Updater.CheckAsync();
+            if (found is null)
+            {
+                SetMessage($"최신 버전입니다 (v{Updater.Current}).");
+                return;
+            }
+            if (MessageBox.Show(OwnerWindow, $"i-api v{Updater.Current} → v{found.Version} 로 업데이트할까요?\n\n서버가 잠깐 멈췄다가 새 버전으로 다시 켜집니다 (설정 · 데이터는 그대로).",
+                    ManagerHost.Title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.Yes) != MessageBoxResult.Yes)
+            {
+                SetMessage("");
+                return;
+            }
+            SetMessage($"v{found.Version} 로 바꾸는 중…");
+            var update = found;
+            await Task.Run(() => Updater.Apply(update));
+            found = null;
+            var (exitCode, output) = ServerManager.HasPort ? await ServerManager.RestartAsync() : (0, "");
+            if (exitCode != 0)
+            {
+                SetMessage("새 버전의 서버가 시작되지 않았습니다: " + LastLine(output), warning: true);
+                return;
+            }
+            ManagerHost.RestartWindow?.Invoke();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or HttpRequestException
+                                          or Win32Exception or InvalidDataException)
+        {
+            SetMessage(error.Message, warning: true);
+        }
+        finally
+        {
+            if (found is not null) try { File.Delete(found.ZipFile); } catch (IOException) { }
+            SetBusy(false);
+        }
     }
 
     private async Task RefreshHealthAsync()
@@ -232,14 +258,19 @@ public partial class ManagerView : UserControl
 
     private async void RestartButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!ServerManager.CanControl || _busy) return;
+        if (_busy) return;
+        if (!ServerManager.HasPort)
+        {
+            SetMessage("포트를 정하고 [실행]하세요.", warning: true);
+            PortBox.Focus();
+            return;
+        }
         SetBusy(true);
         SetMessage("다시 시작하는 중…");
         try
         {
-            string? deployed = await ServerManager.DeployIfNewerAsync();
             var (exitCode, output) = await ServerManager.RestartAsync();
-            SetMessage((deployed is null ? "" : deployed + " ") + (exitCode == 0 ? "다시 시작했습니다." : "시작되지 않았습니다: " + LastLine(output)), exitCode != 0);
+            SetMessage(exitCode == 0 ? "다시 시작했습니다." : "시작되지 않았습니다: " + LastLine(output), exitCode != 0);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException or Win32Exception)
         {
@@ -254,9 +285,9 @@ public partial class ManagerView : UserControl
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!ServerManager.CanControl || _busy) return;
+        if (_busy) return;
         if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
-                "관리자 메뉴", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                ManagerHost.Title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         SetBusy(true);
         try
         {
@@ -279,7 +310,7 @@ public partial class ManagerView : UserControl
         menu.IsOpen = true;
     }
 
-    private void SettingsFileButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", ServerManager.SettingsPath);
+    private void SettingsFileButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", ServerManager.SettingsFile);
     private void LogButton_Click(object sender, RoutedEventArgs e) => OpenWith("notepad.exe", _address.LogFile);
     private void DataFolderButton_Click(object sender, RoutedEventArgs e) => OpenWith("explorer.exe", _address.DataFolder);
 
@@ -331,7 +362,7 @@ public partial class ManagerView : UserControl
         SettingsList.ItemsSource = status["settings"]!.AsArray().Select(line => Str(line)).Append(firewall).Select(SettingRow.From).ToList();
         int uptime = (int?)status["uptimeSeconds"] ?? 0;
         string running = uptime >= 86400 ? $"{uptime / 86400}일 {uptime % 86400 / 3600}시간" : uptime >= 3600 ? $"{uptime / 3600}시간 {uptime % 3600 / 60}분" : $"{uptime / 60}분";
-        VersionsText.Text = ManagerHost.IsLocalServer ? $"{_versionText} · 실행 {running}" : $"{_versionText} · 서버 {Str(status["version"])} · 실행 {running}";
+        VersionsText.Text = $"{_versionText} · 실행 {running}";
         string size = (((double?)counts["reportsBytes"] ?? 0) / 1048576).ToString("0.0", CultureInfo.InvariantCulture);
         string runtime = Str(status["runtime"]) is { Length: > 0 } engine ? engine : "Python " + Str(status["python"]);
         ServerFootText.Text = $"{runtime} · 보고서 {size} MB · GitHub 중계로 여는 저장소: 앱 목록 {status["githubRepositories"]!.AsArray().Count}개" +
@@ -366,18 +397,13 @@ public partial class ManagerView : UserControl
         {
             "Apps" => _appsDirty,
             "Runners" => RunnerEnvDirty,
-            "Notices" => NoticeKindLauncher.IsChecked != true && NoticeDirty(),
+            "Notices" => NoticeDirty(),
             _ => false,
         };
-        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", "관리자 메뉴",
+        if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", ManagerHost.Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         if (dirty && section == "Runners") _runnerEnvSaved = RunnerEnvBox.Text.Replace("\r\n", "\n"); // 버린 편집은 서버 내용으로 다시 채움
         await RefreshHealthAsync();
-        if (section == "Notices")
-        {
-            await Run(NoticeKindLauncher.IsChecked == true ? LoadLauncherNoticesAsync : LoadAnnouncementAsync);
-            return;
-        }
         await LoadSectionAsync(section, force: true);
     }
 
@@ -394,7 +420,7 @@ public partial class ManagerView : UserControl
                 case "Apps": await LoadAppsAsync(); break;
                 case "Releases": await LoadReleasesAsync(); break;
                 case "Runners": await LoadRunnersAsync(); break;
-                case "Notices": await LoadAnnouncementAsync(); await LoadLauncherNoticesAsync(); break;
+                case "Notices": await LoadAnnouncementAsync(); break;
                 case "Reports": await LoadReportsAsync(); break;
                 case "Skills": await LoadSkillsAsync(); break;
             }
@@ -420,7 +446,7 @@ public partial class ManagerView : UserControl
         }
     }
 
-    /// <summary>런처를 정말 끝낼 때 (트레이로 숨길 때는 아님): 저장하지 않은 편집이 있으면 물음</summary>
+    /// <summary>창을 닫을 때: 저장하지 않은 편집이 있으면 물음</summary>
     private void Host_Closing(object? sender, CancelEventArgs e)
     {
         if (e.Cancel) return;
@@ -428,7 +454,7 @@ public partial class ManagerView : UserControl
         if (_appsDirty) unsaved.Add("앱 목록");
         if (RunnerEnvDirty) unsaved.Add("러너 .env");
         if (_loaded.Contains("Notices") && NoticeDirty()) unsaved.Add("Terminal Notes 공지");
-        if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", "관리자 메뉴",
+        if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", ManagerHost.Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             e.Cancel = true;
     }
@@ -458,18 +484,6 @@ public partial class ManagerView : UserControl
     }
 
     private string? _pendingAppId;
-
-    /// <summary>런처 카드의 "관리자 메뉴에서 편집": 앱 목록을 열고 그 앱을 고름 (아직 안 읽었으면 읽은 뒤에)</summary>
-    public void ShowApp(string appId)
-    {
-        _pendingAppId = appId;
-        if (_loaded.Contains("Apps") && TakePendingApp() is { } row)
-        {
-            AppsList.SelectedItem = row;
-            AppsList.ScrollIntoView(row);
-        }
-        Nav.SelectedItem = Nav.Items.OfType<ListBoxItem>().First(item => item.Tag as string == "Apps");
-    }
 
     private AppRow? TakePendingApp()
     {
@@ -652,70 +666,27 @@ public partial class ManagerView : UserControl
             var saved = (await Admin.SendAsync(HttpMethod.Put, "launcher/catalog", new JsonObject { ["apps"] = apps, ["revision"] = _catalogRevision })).AsObject();
             _catalogRevision = Str(saved["revision"]);
             await LoadAppsAsync();
-            ManagerHost.RaiseCatalogSaved();
             if (selectedId is not null) AppsList.SelectedItem = _apps.FirstOrDefault(app => Str(app.Data["id"]) == selectedId) ?? AppsList.SelectedItem;
         }, done: "앱 목록을 저장했습니다.");
     }
 
-    // ── 공지: Terminal Notes 공지와 i-luncher(런처) 공지를 한 화면에서, 위의 고르기로 바꿔 봄 ─────────────────────
+    // ── 공지: Terminal Notes 의 공지 (i-luncher 공지는 GitHub 공지 저장소의 공지.txt 를 GitHub 에서 고침) ─────────────────────
 
-    private bool ShowingLauncherNotices => NoticeKindLauncher.IsChecked == true;
     private string _announcementInfo = "";
     private List<string> _announcementHistory = [];
 
-    /// <summary>Terminal Notes 공지에 저장하지 않은 편집이 있음 (런처 공지는 GitHub 에서 고치므로 여기서 편집하지 않음)</summary>
+    /// <summary>Terminal Notes 공지에 저장하지 않은 편집이 있음</summary>
     private bool NoticeDirty() => AnnouncementBox.Text.Replace("\r\n", "\n") != _announcementSaved;
-
-    private void NoticeKind_Checked(object sender, RoutedEventArgs e)
-    {
-        if (!IsLoaded) return;
-        bool launcher = ShowingLauncherNotices;
-        AnnouncementBox.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
-        LauncherNoticesBox.Visibility = launcher ? Visibility.Visible : Visibility.Collapsed;
-        HistoryButton.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
-        SaveNoticeButton.Visibility = launcher ? Visibility.Collapsed : Visibility.Visible;
-        EditLauncherNoticesButton.Visibility = launcher ? Visibility.Visible : Visibility.Collapsed;
-        UpdateNoticeState();
-    }
 
     /// <summary>[저장]은 보고 있는 공지에 바뀐 것이 있을 때만 켜짐</summary>
     private void UpdateNoticeState()
     {
-        bool launcher = ShowingLauncherNotices;
-        SaveNoticeButton.IsEnabled = !launcher && NoticeDirty();
-        NoticeInfoText.Text = launcher
-            ? (_launcherNoticesError.Length > 0 ? _launcherNoticesError : "모든 사용자의 i-luncher 에 보입니다. 원본은 GitHub 공지 저장소의 공지.txt 입니다 (첫 줄 제목, 다음 줄부터 본문, 공지 사이 ---).")
-            : _announcementInfo;
+        SaveNoticeButton.IsEnabled = NoticeDirty();
+        NoticeInfoText.Text = _announcementInfo;
         HistoryButton.IsEnabled = _announcementHistory.Count > 0;
     }
 
     private void AnnouncementBox_TextChanged(object sender, TextChangedEventArgs? e) => UpdateNoticeState();
-
-    /// <summary>런처 공지: GitHub 공지 저장소의 공지.txt 를 보여 줌 (고치기는 [GitHub에서 편집])</summary>
-    private async Task LoadLauncherNoticesAsync()
-    {
-        _launcherNoticesError = "";
-        try
-        {
-            string text = ManagerHost.LoadLauncherNotices is { } load ? await load() : "";
-            LauncherNoticesBox.Text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
-        }
-        catch (InvalidOperationException error)
-        {
-            _launcherNoticesError = "GitHub 에서 공지를 읽지 못했습니다: " + error.Message;
-        }
-        UpdateNoticeState();
-    }
-
-    private async void EditLauncherNoticesButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (ManagerHost.LauncherNoticesEditUrl is not { } editUrl || await editUrl() is not { } url)
-        {
-            SetMessage("공지 저장소를 알 수 없습니다 (빌드 설정 LAUNCHER_REPOSITORY · NOTICES_REPOSITORY).", warning: true);
-            return;
-        }
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
-    }
 
     private async Task LoadAnnouncementAsync() => ShowAnnouncement((await Admin.GetAsync("admin/api/announcements")).AsObject());
 
@@ -734,7 +705,6 @@ public partial class ManagerView : UserControl
 
     private async void SaveNoticeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ShowingLauncherNotices) return;  // 런처 공지는 GitHub 에서 고침
         await Run(async () =>
         {
             var board = await Admin.SendAsync(HttpMethod.Put, "admin/api/announcements", new JsonObject

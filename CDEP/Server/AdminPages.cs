@@ -127,7 +127,7 @@ internal static class AdminPages
             $"<td><a href=\"{E(Util.Text(app["repository"]))}\">{E(Util.Text(app["repository"]))}</a></td></tr>"));
         string document = new JsonObject { ["schemaVersion"] = 1, ["apps"] = catalog["apps"]!.DeepClone() }.ToJsonString(Util.Indent2);
         string repositories = server.Launcher.Repositories() is { Count: > 0 } found ? string.Join(", ", found.Order(StringComparer.Ordinal)) : "없음";
-        string body = "<p class=\"muted\">i-luncher가 보여 주는 앱 목록과 공지입니다. 런처의 관리자 메뉴 → 앱 목록이나 여기서 고칩니다.</p>"
+        string body = "<p class=\"muted\">i-luncher가 보여 주는 앱 목록과 공지입니다. i-api 관리 창 → 앱 목록이나 여기서 고칩니다.</p>"
             + (rows.Length > 0 ? $"<table><tr><th>이름</th><th>id</th><th>분류</th><th>저장소</th></tr>{rows}</table>" : "<p class=\"muted\">아직 앱이 없습니다.</p>")
             + "<h2>앱 목록 JSON</h2><form method=\"post\" action=\"/apps\"><input type=\"hidden\" name=\"kind\" value=\"catalog\">"
             + $"<input type=\"hidden\" name=\"revision\" value=\"{E(Util.Text(catalog["revision"]))}\"><textarea name=\"json\" rows=\"18\">{E(document)}</textarea>"

@@ -121,7 +121,7 @@ internal sealed class Request
     /// <summary>응답을 시작한 상태 코드 (0 = 아직)</summary>
     public int Status { get; private set; }
     public bool BodyRead { get; private set; }
-    /// <summary>요청에 맞은 API (관리자 메뉴의 API 화면이 세는 것)</summary>
+    /// <summary>요청에 맞은 API (관리 창의 API 화면이 세는 것)</summary>
     public ApiFunction? Function { get; set; }
     public Dictionary<string, string> Values { get; set; } = [];
     public string? FailureMessage { get; private set; }
@@ -435,7 +435,7 @@ internal sealed class Request
     }
 
     /// <summary>
-    /// 오류 응답: 앱과 관리자 메뉴는 400·409 등에서 JSON 글자를 읽음 (예전 서버와 같음), 관리 페이지는 글자 그대로.
+    /// 오류 응답: 앱과 관리 창은 400·409 등에서 JSON 글자를 읽음 (예전 서버와 같음), 관리 페이지는 글자 그대로.
     /// 응답을 이미 시작했으면 아무것도 하지 않음
     /// </summary>
     public void Error(int status, string message)

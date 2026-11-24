@@ -184,18 +184,6 @@ try
         Assert(renamed.HasId("swiftcopy") && renamed.HasId("fastcopy") && !renamed.HasId("other"), "former ids read");
         Equal("SwiftCopy", renamed.EffectiveFormerInstallNames.Single(), "former install names read");
     });
-    await CheckSync("관리자 메뉴: changing an app's id or install folder name keeps the old value for the launcher", () =>
-    {
-        var data = new System.Text.Json.Nodes.JsonObject { ["id"] = "fastcopy", ["name"] = "FastCopy" };
-        Equal("FastCopy", ApiManager.AppRow.EffectiveInstallName(data), "install name falls back to the name");
-        ApiManager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
-        ApiManager.ManagerView.KeepFormer(data, "formerIds", "swiftcopy", "fastcopy");
-        Equal("[\"swiftcopy\"]", data["formerIds"]!.ToJsonString(), "old id kept once");
-        ApiManager.ManagerView.KeepFormer(data, "formerInstallNames", "FastCopy", "FastCopy");
-        Assert(data["formerInstallNames"] is null, "an unchanged name adds nothing");
-        ApiManager.ManagerView.KeepFormer(data, "formerIds", "fastcopy", "swiftcopy");
-        Equal("[\"fastcopy\"]", data["formerIds"]!.ToJsonString(), "renamed back: the current id leaves the list, the other one stays");
-    });
     await CheckSync("running app: a click brings its window to the front (a minimized one is restored), no window means launch instead", () =>
     {
         Assert(!WindowFront.Activate([]), "no process: nothing to bring forward");
@@ -344,7 +332,7 @@ try
         using var store = new ApiCatalogStore("http://api.test:2003/", () => password, cache, api);
         Equal(0, (await store.LoadAsync()).Apps.Count, "empty list");
         try { await store.UpdateAsync(apps => { apps.Add(new AppDefinition { Id = "a", Name = "A", Repository = "https://github.com/o/a" }); return "add"; }); throw new Exception("expected 401"); }
-        catch (GitHubApiException error) { Assert(error.Status == 401 && error.Message.Contains("관리자 비밀번호"), error.Message); }
+        catch (GitHubApiException error) { Assert(error.Status == 401 && error.Message.Contains("i-api 관리 창"), error.Message); }
         password = "pw";
         api.ConflictOnce = true;
         int calls = 0;
@@ -419,63 +407,6 @@ try
         Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", data);
         try { Equal("http://192.168.0.10:2003", ILuncher.AppKit.AppUsage.LauncherServer(), "apps read the same address from settings.json"); }
         finally { Environment.SetEnvironmentVariable("ILUNCHER_DATA_DIR", before); }
-        Assert(ApiManager.ManagerHost.IsThisPc("http://127.0.0.1:2003") && ApiManager.ManagerHost.IsThisPc($"http://{Environment.MachineName}:2003"), "this PC");
-        Assert(!ApiManager.ManagerHost.IsThisPc("http://203.0.113.9:2003") && !ApiManager.ManagerHost.IsThisPc("https://api.example.com"), "another PC");
-    });
-
-    await Check("API server: the old Python relay moves to the C# server (settings, start at login), which starts, answers and stops", async () =>
-    {
-        // 이 PC 의 실제 서버 · 시작 폴더 · 데이터를 건드리지 않게 모두 임시 폴더로 (서버 프로그램은 따로 도는 프로세스라 환경 변수로)
-        string sandbox = Path.Combine(root, "api-server-move");
-        string local = Path.Combine(sandbox, "Local"), roaming = Path.Combine(sandbox, "Roaming"), machine = Path.Combine(sandbox, "ProgramData");
-        string startup = Path.Combine(roaming, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-        string data = Path.Combine(sandbox, "data");
-        Directory.CreateDirectory(startup);
-        int port;
-        using (var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0)) { probe.Start(); port = ((IPEndPoint)probe.LocalEndpoint).Port; }
-        var saved = (ApiManager.ServerManager.Root, ApiManager.ServerManager.StartupOverride, ApiManager.ServerManager.ChildEnvironment);
-        ApiManager.ServerManager.Root = local;
-        ApiManager.ServerManager.StartupOverride = startup;
-        ApiManager.ServerManager.ChildEnvironment = new() { ["APPDATA"] = roaming, ["LOCALAPPDATA"] = local, ["ProgramData"] = machine };
-        try
-        {
-            Assert(ApiManager.ServerManager.CanControl, "the launcher carries the server (server\\i-api.exe)");
-            Directory.CreateDirectory(ApiManager.ServerManager.OldDeployFolder);
-            File.WriteAllText(ApiManager.ServerManager.OldDeployedScript,
-                "# ── 설정 시작 ──\nSETTINGS = {\n    \"RELAY_HOST\": \"\",\n    \"RELAY_PORT\": " + port + ",\n    \"RELAY_BIND\": \"127.0.0.1\",\n" +
-                "    \"RELAY_ADMIN_PASSWORD\": \"pw\\\"x\",\n    \"RELAY_DATA_ROOT\": \"" + data.Replace("\\", "\\\\") + "\",\n}\n# ── 설정 끝 ──\nVERSION = \"2.22.0\"\n", new UTF8Encoding(false));
-            File.WriteAllText(Path.Combine(startup, "Terminal Notes Relay.vbs"), "old", Encoding.Unicode);
-            Assert(ApiManager.ServerManager.IsPython && ApiManager.ServerManager.IsDeployed, "an old Python relay");
-            Equal("pw\"x", ApiManager.ServerManager.ReadAdminPassword(), "its SETTINGS are read before the move");
-            string? moved = await ApiManager.ServerManager.DeployIfNewerAsync();
-            Assert(moved?.Contains("C#") == true, "moved: " + moved);
-            Assert(File.Exists(ApiManager.ServerManager.DeployedExe) && !ApiManager.ServerManager.IsPython, "the C# server is in place");
-            Equal("pw\"x", ApiManager.ServerManager.ReadAdminPassword(), "the password moved to settings.txt");
-            Equal(port.ToString(), ApiManager.ServerManager.Setting("RELAY_PORT"), "the port moved");
-            Equal("i-api.vbs", string.Join(",", Directory.GetFiles(startup).Select(Path.GetFileName)), "the start at login now starts i-api.exe");
-            Assert(File.ReadAllText(Path.Combine(startup, "i-api.vbs"), Encoding.Unicode).Contains(ApiManager.ServerManager.DeployedExe, StringComparison.OrdinalIgnoreCase), "pointing at the new server");
-            Assert(File.Exists(Path.Combine(ApiManager.ServerManager.OldDeployFolder, "MOVED-TO-i-api.txt")) && File.Exists(ApiManager.ServerManager.OldDeployedScript), "the old folder stays, with a note");
-            Equal<string?>(null, await ApiManager.ServerManager.DeployIfNewerAsync(), "already the bundled version");
-            var (code, output) = await ApiManager.ServerManager.RestartAsync();
-            Equal(0, code, "started: " + output);
-            var address = ApiManager.ServerManager.ReadAddress();
-            Assert(await ApiManager.ServerManager.IsHealthyAsync(address), "it answers at " + address.HealthUrl);
-            using (var http = new HttpClient())
-            {
-                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:pw\"x")));
-                var status = JsonDocument.Parse(await http.GetStringAsync(address.ApiBase + "/admin/api/status")).RootElement;
-                Equal(ApiManager.ServerManager.ReadVersion(ApiManager.ServerManager.BundledExe)?.ToString(), status.GetProperty("version").GetString(), "the bundled version runs");
-                Assert(status.GetProperty("settings")[4].GetString()!.Contains(data, StringComparison.OrdinalIgnoreCase), "on the data folder from the old SETTINGS");
-            }
-            await ApiManager.ServerManager.HaltAsync();
-            Assert(!await ApiManager.ServerManager.IsHealthyAsync(address), "stopped");
-            Assert(!File.Exists(Path.Combine(roaming, "..", "Startup")) && !Directory.Exists(Path.Combine(local, "TerminalNotesRelay", "skills")), "nothing else touched");
-        }
-        finally
-        {
-            try { await ApiManager.ServerManager.HaltAsync(); } catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            (ApiManager.ServerManager.Root, ApiManager.ServerManager.StartupOverride, ApiManager.ServerManager.ChildEnvironment) = saved;
-        }
     });
 
     Console.WriteLine("GitHub client");
@@ -901,8 +832,7 @@ try
         Assert(MyAppStore.SameRepository("https://github.com/Someone/tool", "someone/Tool", null), "same repository whatever the case or form");
         Assert(!MyAppStore.SameRepository("https://github.com/someone/tool", "https://github.com/someone/other", null), "different repositories differ");
         var card = new ILauncher.AppCard(read[0]);
-        Assert(card.PersonalMenuVisibility == System.Windows.Visibility.Visible && card.AdminMenuVisibility == System.Windows.Visibility.Collapsed,
-            "a personal app offers 삭제 and never 관리자 메뉴에서 편집");
+        Assert(card.PersonalMenuVisibility == System.Windows.Visibility.Visible, "a personal app offers 삭제");
     });
 
     await CheckSync("Website favorites: an address opens in the browser, keeps its chosen icon, and never offers 파일 위치 열기", () =>

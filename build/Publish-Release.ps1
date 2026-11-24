@@ -3,6 +3,7 @@
 #                           Windows 에 들어 있는 .NET Framework 로 돌아가며, .NET 10 이 없는 PC 에는 .NET 10 실행 환경을 넣어 줌)
 #   i-luncher-win-x64.zip   설치된 런처가 GitHub Release 에서 내려받아 스스로 업데이트하는 패키지
 #   (설치 파일은 하나: 서버 목록 · 공지는 빌드 설정 MASTER_USERS 의 계정만 봄)
+#   i-api-win-x64.zip       API 서버 i-api (서버 PC 에 풀고 i-api.exe 실행, 런처와 따로). 관리 창의 [업데이트]가 이 파일을 받음
 #   win-x64\                게시된 런처 폴더 (zip 의 내용)
 # .NET 10 SDK 만 있으면 됩니다 (NuGet 패키지 없음).
 # .github\workflows\release.yml 이 부르고, 손으로도 실행할 수 있습니다:
@@ -36,7 +37,7 @@ if (-not $SkipChecks) {
     Write-Host 'Running Launcher.Checks'
     & dotnet run --project (Join-Path $root 'Launcher.Checks\Launcher.Checks.csproj') -c Release -nologo -m:1
     if ($LASTEXITCODE -ne 0) { throw "Launcher.Checks failed (exit $LASTEXITCODE)." }
-    # 런처에 드는 API 서버(CDEP\i-api.csproj)도 확인 (임시 포트 · 임시 폴더)
+    # 같은 릴리스에 올리는 API 서버(CDEP\i-api.csproj)도 확인 (임시 포트 · 임시 폴더)
     Write-Host 'Running i-api.Checks'
     & dotnet run --project (Join-Path $root 'i-api.Checks\i-api.Checks.csproj') -c Release -nologo -m:1
     if ($LASTEXITCODE -ne 0) { throw "i-api.Checks failed (exit $LASTEXITCODE)." }
@@ -107,10 +108,30 @@ foreach ($intermediate in 'bin', 'obj') {
     if (Test-Path $path) { Remove-Item $path -Recurse -Force }
 }
 
+# API 서버 i-api: 런처에 넣지 않고 따로 i-api-win-x64.zip (i-api.exe 와 파일들 + README · 서버 시작 · 중지.cmd).
+# 릴리스 러너에서 빌드하면 i-api 가 이 저장소를 업데이트 받을 곳으로 품음 (GITHUB_SERVER_URL/GITHUB_REPOSITORY)
+$apiProject = Join-Path $root 'CDEP\i-api.csproj'
+$apiStage = Join-Path $out 'i-api'
+$apiZip = Join-Path $out 'i-api-win-x64.zip'
+foreach ($old in $apiStage, $apiZip) { if (Test-Path $old) { Remove-Item $old -Recurse -Force } }
+Write-Host 'Publishing i-api'
+& dotnet publish $apiProject -c Release -nologo -m:1 -o $apiStage
+if ($LASTEXITCODE -ne 0) { throw "i-api publish failed (exit $LASTEXITCODE)." }
+foreach ($required in 'i-api.exe', 'i-api.dll', 'README.md', '서버 시작.cmd', '서버 중지.cmd') {
+    if (-not (Test-Path -LiteralPath (Join-Path $apiStage $required))) { throw "$required is missing from the published i-api." }
+}
+Get-ChildItem -LiteralPath $apiStage -Filter '*.pdb' -Recurse | Remove-Item -Force
+$apiVersion = (Get-Item (Join-Path $apiStage 'i-api.dll')).VersionInfo.ProductVersion
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[IO.Compression.ZipFile]::CreateFromDirectory($apiStage, $apiZip)
+Remove-Item $apiStage -Recurse -Force
+
 Write-Host ("Release zip: {0} ({1:N1} MB, {2} files)" -f $zip, ((Get-Item $zip).Length / 1MB), @(Get-ChildItem $publish -Recurse -File).Count)
 Write-Host ("Installer:   {0} ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
+Write-Host ("i-api {0}: {1} ({2:N1} MB)" -f $apiVersion, $apiZip, ((Get-Item $apiZip).Length / 1MB))
 if ($env:GITHUB_OUTPUT) {
     Add-Content -Path $env:GITHUB_OUTPUT -Value "zip=$zip" -Encoding ASCII
     Add-Content -Path $env:GITHUB_OUTPUT -Value "setup=$setup" -Encoding ASCII
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "api=$apiZip" -Encoding ASCII
     Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$Version" -Encoding ASCII
 }

@@ -6,14 +6,15 @@ namespace IApi;
 
 /// <summary>
 /// i-api: API 서버 (예전 이름 Terminal Notes 중계 서버, 2.23 까지 Python relay.py). 이 PC 의 앱들이 쓰는 API 를 한 곳에서:
-/// i-luncher 서버 목록 · 사용 기록 · 관리자 메뉴, Terminal Notes 문제 보고 · 스킬 · 공지, GitHub 중계, (설정하면) EQ Status 설비 상태.
+/// i-luncher 서버 목록 · 사용 기록 · 관리 창, Terminal Notes 문제 보고 · 스킬 · 공지, GitHub 중계, (설정하면) EQ Status 설비 상태.
 ///
-///     i-api.exe                         설정 파일(settings.txt)대로 실행
+///     i-api.exe                         더블클릭: 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬)
+///     i-api.exe --port 2003             창 없이: 포트를 정하고 로그인 자동 실행 · 방화벽 · 서버 (다시) 시작
 ///     i-api.exe --set RELAY_PORT=5081   이번 실행만 설정 값을 바꿈
 ///     i-api.exe --settings-from D:\예전\relay.py   예전 relay.py 의 SETTINGS 를 설정 파일로 옮김
 ///     i-api.exe --check                 설정 · 방화벽만 확인하고 끝냄 (비밀값은 보이지 않음)
 ///     i-api.exe --start | --stop        자동 실행 등록 · 방화벽 후 창 없이 시작 / 멈추고 자동 실행 해제 (서버 시작.cmd · 서버 중지.cmd)
-///     i-api.exe --restart | --halt      창 없이 다시 시작 / 멈추기만 (관리자 메뉴가 씀)
+///     i-api.exe --restart | --halt      창 없이 다시 시작 / 멈추기만 (관리 창이 씀)
 ///     i-api.exe --allow-firewall        다른 PC 가 접속하도록 Windows 방화벽에 포트를 엶 (관리자 확인 창)
 ///     i-api.exe --install-startup [--no-firewall] | --uninstall-startup
 ///     i-api.exe --backup | --restore-backup [ZIP]
@@ -91,7 +92,14 @@ internal static class Program
     /// <summary>창 없는 프로그램이라 명령 줄에서 부르면 부른 쪽 콘솔에 씀 (출력을 받는 쪽이 있으면 그대로)</summary>
     private static void ConnectConsole()
     {
-        if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected) return;
+        if (!OperatingSystem.IsWindows()) return;
+        if (Console.IsOutputRedirected)
+        {
+            // 관리 창 · 스크립트가 출력을 받음: 한글이 깨지지 않게 UTF-8 로 (받는 쪽도 UTF-8 로 읽음)
+            Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+            if (Console.IsErrorRedirected) Console.SetError(new StreamWriter(Console.OpenStandardError(), new UTF8Encoding(false)) { AutoFlush = true });
+            return;
+        }
         try
         {
             if (!Native.AttachConsole(-1)) return;
@@ -117,11 +125,12 @@ internal static class Program
             return 0;
         }
         if (args.CtrlBreak is { } pid) return int.TryParse(pid, out int target) ? Native.CtrlBreakHelper(target) : 2;
-        // 손으로 실행 (더블클릭 · 바로 가기, 또는 --setup): 포트를 묻는 창. 로그인 자동 실행(wscript) · 관리자 메뉴가 띄운 서버는 그냥 서버로 돎
+        // 손으로 실행 (더블클릭 · 바로 가기, 또는 --setup): 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬).
+        // 로그인 자동 실행(wscript) · 관리 창이 띄운 서버는 그냥 서버로 돎
         if (args.Flags.Contains("--setup") || argv.Length == 0 && StartedByHand())
         {
 #if WINDOWS
-            return SetupWindow.Run(args.Options);
+            return ManagerWindow.Run();
 #else
             throw new ConfigError("포트를 정해 실행하세요: i-api --port <포트>");
 #endif
@@ -225,10 +234,9 @@ internal static class Program
     {
         if (port is < 1 or > 65535) return (false, "포트는 1~65535 의 숫자로 씁니다.");
         string file = Path.GetFullPath(given.SettingsFile ?? Settings.DefaultFile);
-        if (Setup.StopRunning() > 0) Thread.Sleep(1000);
+        string text = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
         Settings.EnsureComplete(file);
-        Settings.SetValue(file, "RELAY_PORT", port.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var options = new Options { SettingsFile = given.SettingsFile, Bind = given.Bind };
+        var options = new Options { SettingsFile = given.SettingsFile, Bind = given.Bind, Port = text };
         options.Sets.AddRange(given.Sets);
         Config config;
         try
@@ -237,16 +245,24 @@ internal static class Program
             config.Validate();
         }
         catch (ConfigError problem) { return (false, problem.Message); }
-        try
+        bool Free()
         {
-            using var probe = new System.Net.Sockets.TcpListener(config.Bind is "" or "0.0.0.0" ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(config.Bind), port);
-            probe.Start();
-            probe.Stop();
+            try
+            {
+                using var probe = new System.Net.Sockets.TcpListener(config.Bind is "" or "0.0.0.0" ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(config.Bind), port);
+                probe.Start();
+                probe.Stop();
+                return true;
+            }
+            catch (Exception error) when (error is System.Net.Sockets.SocketException or FormatException) { return false; }
         }
-        catch (Exception error) when (error is System.Net.Sockets.SocketException or FormatException)
-        {
-            return (false, $"포트 {port} 을(를) 이 PC 의 다른 프로그램이 쓰고 있습니다. 다른 포트를 고르세요.");
-        }
+        string inUse = $"포트 {port} 을(를) 이 PC 의 다른 프로그램이 쓰고 있습니다. 다른 포트를 고르세요.";
+        // 다른 포트로 바꿀 때는 돌고 있는 서버를 멈추기 전에 확인 (쓸 수 없는 포트면 서버는 그대로)
+        bool samePort = Settings.Read(file).GetValueOrDefault("RELAY_PORT", "").Trim() == text;
+        if (!samePort && !Free()) return (false, inUse);
+        if (Setup.StopRunning() > 0) Thread.Sleep(1000);
+        if (samePort && !Free()) return (false, inUse);
+        Settings.SetValue(file, "RELAY_PORT", text);
         var output = Console.Out;
         Console.SetOut(TextWriter.Null);
         try
@@ -321,7 +337,7 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>서버로 돎: 멈추라는 신호(--halt · --stop · 관리자 메뉴)가 오거나 Ctrl+C 까지</summary>
+    /// <summary>서버로 돎: 멈추라는 신호(--halt · --stop · 관리 창)가 오거나 Ctrl+C 까지</summary>
     private static int Serve(Config config, bool quiet)
     {
         // 로그를 열기 전에 (로그가 새 데이터 폴더를 만듦), 다른 서버가 그 포트에서 아직 답하면 하지 않음
