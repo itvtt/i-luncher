@@ -118,10 +118,10 @@ static class UiSnapshot
                         Console.WriteLine($"site {site}: name {siteEditor.NameBox.Text} · {siteEditor.PathNote.Text}");
                         siteEditor.Close();
                     }
-                    // GitHub 프로젝트 추가 창: 확인한 저장소(이 PC 의 API 서버로 실제 확인) · 열 수 없는 저장소 오류. 내 앱 삭제 창
+                    // GitHub 프로젝트 추가 창: 확인한 저장소(GitHub 에 실제 확인) · 릴리스가 없는 저장소(그래도 추가 가능). 내 앱 삭제 창
                     var github = new GitHubClient(repository => settings.GetToken(repository), MainWindow.LauncherVersion);
                     var manager = new AppManager(github, new AppInstaller(), Path.Combine(Path.GetTempPath(), "i-luncher-snapshot-downloads"), () => settings.DefaultHost);
-                    foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-error") })
+                    foreach (var (repository, suffix) in new[] { ("itvtt/Capture", "-github"), ("torvalds/linux", "-github-norelease") })
                     {
                         var projectWindow = new GitHubProjectWindow(manager, settings.DefaultHost, ["개발", "도구", "설비", "일정", "파일"], _ => null)
                         { ShowActivated = false, Left = -4000, Top = 0, MaxHeight = 4000 };

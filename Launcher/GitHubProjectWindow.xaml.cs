@@ -13,7 +13,7 @@ namespace ILauncher;
 /// 추가: 저장소 주소를 넣고 [확인] (또는 Enter) 하면 GitHub 에 바로 최신 릴리스와 설치 파일(zip · 설치 프로그램)을 확인
 /// (비공개라 읽지 못하면 그 자리에서 이 프로젝트의 토큰을 받아 다시 확인. 토큰은 ResultToken 으로 돌려줘 저장소마다 저장).
 /// 이름 · 분류 · 설명 · 아이콘을 정해 [추가]하면 Result 가 이 PC 의 내 앱 (Personal, 설치됨 탭).
-/// 이미 있는 저장소 · 릴리스 없음 · 열 수 없는 저장소는 알려 줌.
+/// 릴리스나 설치 파일이 아직 없어도 더함 (릴리스가 올라오면 받기). 이미 있는 저장소 · 열 수 없는 저장소는 알려 줌.
 /// 편집(editing): 저장소는 그대로, 나머지를 바꿔 [저장]. 아이콘 그림은 CustomIcons.Folder 에 복사해 둠.
 /// (앱 페이지를 없애며 제작자 · 상세 설명 · 스크린샷 칸도 뺌. 예전에 넣은 값은 편집해도 그대로 남음)
 /// </summary>
@@ -153,20 +153,10 @@ public partial class GitHubProjectWindow : Window
         var github = withToken ?? _manager.GitHub;
         try
         {
+            // 릴리스 · 설치 파일이 없어도 더함 (홈 화면에 "릴리스 없음", 올라오면 받기)
             var release = await github.GetLatestReleaseAsync(repository, includePrerelease: false, cancel);
-            if (release is null)
-            {
-                Say($"{repository.FullName} 에 릴리스가 없습니다. 설치할 수 있게 릴리스(zip 또는 설치 프로그램)를 먼저 올려 주세요.");
-                return;
-            }
             var probe = new AppDefinition { Id = "probe", Name = repository.Name, Repository = repository.WebUrl };
-            var asset = AppManager.SelectZipAsset(probe, release) ?? AppManager.SelectSetupAsset(probe, release);
-            string version = release.Version is { } v ? $"v{v}" : release.Tag;
-            if (asset is null)
-            {
-                Say($"최신 릴리스({version})에 설치할 파일(win-x64 zip 또는 설치 프로그램)이 없습니다.");
-                return;
-            }
+            var asset = release is null ? null : AppManager.SelectZipAsset(probe, release) ?? AppManager.SelectSetupAsset(probe, release);
             string description = "";
             if (fillFields)
             {
@@ -177,9 +167,12 @@ public partial class GitHubProjectWindow : Window
             _checked = repository;
             ResultToken = token;
             PreviewName.Text = repository.FullName;
-            PreviewVersion.Text = version;
-            PreviewFile.Text = $"{asset.Name} · {SizeText(asset.Size)}" + (release.PublishedAt is { } at ? $" · {at.LocalDateTime:yyyy-MM-dd}" : "");
+            PreviewVersion.Text = release is null ? "릴리스 없음" : release.Version is { } v ? $"v{v}" : release.Tag;
+            PreviewFile.Text = release is null ? "릴리스가 올라오면 받을 수 있습니다"
+                : asset is null ? "설치 파일 없음 (win-x64 zip · 설치 프로그램)"
+                : $"{asset.Name} · {SizeText(asset.Size)}" + (release.PublishedAt is { } at ? $" · {at.LocalDateTime:yyyy-MM-dd}" : "");
             PreviewFile.ToolTip = PreviewFile.Text;
+            SetVersionPill(ready: asset is not null);
             if (fillFields)
             {
                 NameBox.Text = repository.Name;
@@ -227,12 +220,20 @@ public partial class GitHubProjectWindow : Window
         {
             // 편집: 릴리스를 확인하지 못해도 정보는 고칠 수 있음
             PreviewVersion.Text = "확인 못 함";
+            SetVersionPill(ready: false);
             PreviewFile.Text = text;
             PreviewFile.ToolTip = text;
             return;
         }
         ErrorText.Text = text;
         ErrorText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>버전 표시: 받을 수 있음 = 초록, 릴리스 · 설치 파일 없음 · 확인 못 함 = 노랑</summary>
+    private void SetVersionPill(bool ready)
+    {
+        PreviewVersionPill.Background = new SolidColorBrush(ready ? Color.FromArgb(0x26, 0x30, 0xD1, 0x58) : Color.FromArgb(0x26, 0xFB, 0xBF, 0x24));
+        PreviewVersion.Foreground = new SolidColorBrush(ready ? Color.FromRgb(0x5B, 0xE3, 0xA3) : Color.FromRgb(0xFB, 0xBF, 0x24));
     }
 
     /// <summary>미리 보기 칸의 아이콘: 고른 아이콘 · 저장소 아이콘, 없으면 이름 첫 글자</summary>
