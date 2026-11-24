@@ -12,7 +12,7 @@ namespace IApi.Manager;
 
 /// <summary>
 /// i-api 관리 창의 화면 (i-api.exe 를 손으로 실행하면 뜸): 이 exe 의 서버를 포트로 시작 · 다시 시작 · 멈추기 · 업데이트하고, API 마다 켜고 끄며,
-/// 서버 앱 목록 · 릴리스 · 러너 · Terminal Notes 공지 · 문제 보고 · 스킬을 고침. 관리자 비밀번호는 settings.txt 에서 읽어 자동으로 씀.
+/// 서버 앱 목록 · 릴리스 · 러너 · Terminal Notes 공지 · 스킬을 고침. 관리자 비밀번호는 settings.txt 에서 읽어 자동으로 씀.
 /// </summary>
 internal partial class ManagerView : UserControl
 {
@@ -30,15 +30,10 @@ internal partial class ManagerView : UserControl
     // 공지 (Terminal Notes)
     private string _announcementRevision = "", _announcementSaved = "";
     private bool _announcementExists;
-    // 문제 보고
-    private List<ReportRow> _reports = [];
-    private JsonObject _statuses = new() { ["new"] = "새 보고", ["checking"] = "확인 중", ["resolved"] = "해결" };
-    private ReportRow? _report;
     // 스킬
     private string? _skill;
     // 아래 알림 줄: 결과는 잠깐 보였다 사라지고, 오류는 누를 때까지 남음
     private readonly DispatcherTimer _messageTimer = new() { Interval = TimeSpan.FromSeconds(6) };
-    private string _versionText = "";
 
     private bool _started;
     private Window? _host;
@@ -46,7 +41,6 @@ internal partial class ManagerView : UserControl
     public ManagerView()
     {
         InitializeComponent();
-        ApplyStatusLabels();
         _timer.Tick += async (_, _) => await RefreshHealthAsync();
         _messageTimer.Tick += (_, _) => { _messageTimer.Stop(); MessageBar.Visibility = Visibility.Collapsed; };
         Loaded += async (_, _) =>
@@ -68,7 +62,7 @@ internal partial class ManagerView : UserControl
             if (_admin is null) return;
             _timer.Start();
             await RefreshHealthAsync();
-            if (CurrentSection is "Server" or "Functions" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
+            if (CurrentSection is "Functions" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
         };
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
     }
@@ -92,7 +86,7 @@ internal partial class ManagerView : UserControl
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        RestartButton.IsEnabled = StopButton.IsEnabled = PortButton.IsEnabled = UpdateButton.IsEnabled = !busy;
+        RestartItem.IsEnabled = StopItem.IsEnabled = UpdateItem.IsEnabled = PortButton.IsEnabled = !busy;
         Cursor = busy ? System.Windows.Input.Cursors.Wait : null;
     }
 
@@ -101,13 +95,14 @@ internal partial class ManagerView : UserControl
     private async Task InitializeAsync()
     {
         HeaderText.Text = "API 서버 i-api";
-        UpdateVersions();
         ShowPort();
         SetBusy(true);
         try
         {
-            // 예전 Python 서버(relay.py)가 있으면 한 번 옮김 (설정 · 자동 실행). 그다음 포트가 있으면 이 PC 에서 서버를 켬
-            string? moved = await ServerManager.MoveFromPythonAsync();
+            // 예전 자리(%LOCALAPPDATA%\i-api)의 서버나 예전 Python 서버(relay.py)가 있으면 한 번 옮김 (설정 · 자동 실행). 그다음 포트가 있으면 이 PC 에서 서버를 켬
+            string? moved = await ServerManager.MoveFromOldFolderAsync() is { } folder
+                ? folder + (await ServerManager.MoveFromPythonAsync() is { } python ? " " + python : "")
+                : await ServerManager.MoveFromPythonAsync();
             string before = moved is null ? "" : moved + " ";
             _address = ServerManager.ReadAddress();
             ShowPort();
@@ -134,6 +129,7 @@ internal partial class ManagerView : UserControl
         await RefreshHealthAsync();
         if (IsVisible) _timer.Start();
         await LoadSectionAsync(CurrentSection, force: true);
+        if (_healthy) await CheckFirewallAsync();
     }
 
     private static string OneLine(string text) => string.Join(" ", text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
@@ -143,9 +139,7 @@ internal partial class ManagerView : UserControl
     {
         int port = ServerManager.Port;
         if (PortBox.Text.Length == 0) PortBox.Text = port > 0 ? port.ToString(CultureInfo.InvariantCulture) : "";
-        PortHint.Text = port == 0
-            ? "기본 포트가 없습니다. 포트를 넣고 [실행]하면 이 PC 에서 서버가 켜지고, 로그인할 때마다 다시 켜집니다."
-            : (ServerManager.StartsAtLogon ? "로그인 자동 실행 켜짐" : "로그인 자동 실행 꺼짐 ([실행]하면 켬)") + " · 포트를 바꾸고 [실행]하면 그 포트로 다시 시작 · 방화벽 규칙이 없으면 Windows 확인 창에서 \"예\"";
+        PortBox.ToolTip = port == 0 ? "기본 포트 없음: 포트를 넣고 [실행]" : ServerManager.StartsAtLogon ? "로그인 자동 실행 켜짐" : "로그인 자동 실행 꺼짐 ([실행]하면 켬)";
     }
 
     private void PortBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -178,7 +172,7 @@ internal partial class ManagerView : UserControl
         {
             SetMessage(error.Message, warning: true);
         }
-        finally { SetBusy(false); UpdateVersions(); }
+        finally { SetBusy(false); }
         if (ok) PortBox.Text = "";  // 안 됐으면 넣은 포트를 그대로 둠
         ShowPort();
         ConnectAdmin();
@@ -192,12 +186,6 @@ internal partial class ManagerView : UserControl
         _admin?.Dispose();
         _address = ServerManager.ReadAddress();
         _admin = new AdminClient(_address.ApiBase, ServerManager.AdminPassword());
-    }
-
-    private void UpdateVersions()
-    {
-        _versionText = $"i-api v{Updater.Current}";
-        VersionsText.Text = _versionText;
     }
 
     /// <summary>[업데이트]: 최신 릴리스의 i-api-win-x64.zip 이 더 새 버전이면 물어보고 바꾼 뒤 서버와 이 창을 새 버전으로 다시 엶</summary>
@@ -276,7 +264,7 @@ internal partial class ManagerView : UserControl
         {
             SetMessage(error.Message, warning: true);
         }
-        finally { SetBusy(false); UpdateVersions(); }
+        finally { SetBusy(false); }
         ConnectAdmin();
         _loaded.Clear();
         await RefreshHealthAsync();
@@ -286,7 +274,7 @@ internal partial class ManagerView : UserControl
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy) return;
-        if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬·문제 보고와 i-luncher 앱 목록·업데이트가 서버를 다시 켤 때까지 동작하지 않습니다.",
+        if (MessageBox.Show(OwnerWindow, "API 서버를 멈출까요?\n\nTerminal Notes의 공지·스킬과 i-luncher 서버 목록·사용 기록이 서버를 다시 켤 때까지 동작하지 않습니다.",
                 ManagerHost.Title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         SetBusy(true);
         try
@@ -342,36 +330,20 @@ internal partial class ManagerView : UserControl
         catch (Win32Exception error) { SetMessage(error.Message, warning: true); }
     }
 
-    private async Task LoadStatusAsync()
+    /// <summary>방화벽 규칙이 없으면 아래 줄에 알림 (다른 PC 가 접속하지 못함)</summary>
+    private async Task CheckFirewallAsync()
     {
-        var status = (await Admin.GetAsync("admin/api/status")).AsObject();
-        var counts = status["counts"]!.AsObject();
-        CountReports.Text = Number(counts["reports"]);
-        CountNew.Text = Number(counts["newReports"]);
-        CountSkills.Text = Number(counts["skills"]);
-        var clients = status["clients"]!.AsArray().Select(node => node!.AsObject()).Select(entry => new ClientRow(
-            Str(entry["address"]), Str(entry["version"]) is { Length: > 0 } version ? version : "—", LocalTime(entry["last"]),
-            Str(entry["announcement"]) switch { "latest" => "최신", "older" => "이전 공지", _ => "—" },
-            string.Join(" · ", entry["features"]!.AsArray().Select(feature => Str(feature))))).ToList();
-        ClientsList.ItemsSource = clients;
-        NoClientsText.Visibility = clients.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        // 방화벽 규칙이 없을 때만 위에 한 줄로 알림 (나머지 설정은 [설정 보기] 안에)
-        string firewall = Str(status["firewall"]);
-        FirewallText.Text = firewall;
-        FirewallText.Visibility = firewall.Contains("규칙 없음", StringComparison.Ordinal) ? Visibility.Visible : Visibility.Collapsed;
-        SettingsList.ItemsSource = status["settings"]!.AsArray().Select(line => Str(line)).Append(firewall).Select(SettingRow.From).ToList();
-        int uptime = (int?)status["uptimeSeconds"] ?? 0;
-        string running = uptime >= 86400 ? $"{uptime / 86400}일 {uptime % 86400 / 3600}시간" : uptime >= 3600 ? $"{uptime / 3600}시간 {uptime % 3600 / 60}분" : $"{uptime / 60}분";
-        VersionsText.Text = $"{_versionText} · 실행 {running}";
-        string size = (((double?)counts["reportsBytes"] ?? 0) / 1048576).ToString("0.0", CultureInfo.InvariantCulture);
-        string runtime = Str(status["runtime"]) is { Length: > 0 } engine ? engine : "Python " + Str(status["python"]);
-        ServerFootText.Text = $"{runtime} · 보고서 {size} MB · GitHub 중계로 여는 저장소: 앱 목록 {status["githubRepositories"]!.AsArray().Count}개" +
-            (status["githubProxyRepositories"]!.AsArray().Count > 0 ? $", LAUNCHER_GITHUB_REPOS {status["githubProxyRepositories"]!.AsArray().Count}개" : "");
+        try
+        {
+            string firewall = Str((await Admin.GetAsync("admin/api/status"))["firewall"]);
+            if (firewall.Contains("규칙 없음", StringComparison.Ordinal)) SetMessage(firewall, warning: true);
+        }
+        catch (Exception error) when (error is AdminException or HttpRequestException or TaskCanceledException or InvalidOperationException) { }
     }
 
     // ── 화면 전환·불러오기 ─────────────────────────────────────────────────────────────────────────────
 
-    private string CurrentSection => (Nav.SelectedItem as ListBoxItem)?.Tag as string ?? "Server";
+    private string CurrentSection => (Nav.SelectedItem as ListBoxItem)?.Tag as string ?? "Functions";
 
     private AdminClient Admin => _admin ?? throw new InvalidOperationException("서버에 아직 연결하지 않았습니다.");
 
@@ -379,12 +351,12 @@ internal partial class ManagerView : UserControl
     {
         if (SkillsSection is null) return;  // 화면을 만드는 중 (처음 고른 탭)
         string section = CurrentSection;
-        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Server", ServerSection), ("Functions", FunctionsSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
-                     ("Runners", RunnersSection), ("Notices", NoticesSection), ("Reports", ReportsSection), ("Skills", SkillsSection) })
+        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Functions", FunctionsSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
+                     ("Runners", RunnersSection), ("Notices", NoticesSection), ("Skills", SkillsSection) })
             panel.Visibility = name == section ? Visibility.Visible : Visibility.Collapsed;
         if (!IsLoaded) return;
         if (section != "Runners") _runnerTimer?.Stop();
-        await LoadSectionAsync(section, force: section is "Server" or "Functions" or "Releases" or "Runners");
+        await LoadSectionAsync(section, force: section is "Functions" or "Releases" or "Runners");
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await RefreshCurrentAsync();
@@ -415,17 +387,15 @@ internal partial class ManagerView : UserControl
         {
             switch (section)
             {
-                case "Server": await LoadStatusAsync(); break;
                 case "Functions": await LoadFunctionsAsync(); break;
                 case "Apps": await LoadAppsAsync(); break;
                 case "Releases": await LoadReleasesAsync(); break;
                 case "Runners": await LoadRunnersAsync(); break;
                 case "Notices": await LoadAnnouncementAsync(); break;
-                case "Reports": await LoadReportsAsync(); break;
                 case "Skills": await LoadSkillsAsync(); break;
             }
             _loaded.Add(section);
-        }, quiet: section == "Server" && !_healthy);
+        }, quiet: !_healthy);
     }
 
     /// <summary>서버 요청 하나: 실패하면 아래 줄에 서버가 준 이유를 보여 줌</summary>
@@ -734,140 +704,6 @@ internal partial class ManagerView : UserControl
         HistoryMenu.IsOpen = HistoryMenu.Items.Count > 0;
     }
 
-    // ── 문제 보고 ───────────────────────────────────────────────────────────────────────────────────
-
-    private void ApplyStatusLabels()
-    {
-        string Label(string key) => Str(_statuses[key]);
-        ReportStatusNew.Content = Label("new");
-        ReportStatusChecking.Content = Label("checking");
-        ReportStatusResolved.Content = Label("resolved");
-        int Count(string? key) => key is null ? _reports.Count : _reports.Count(report => report.Status == key);
-        ReportFilterAll.Content = $"전체 {Count(null)}";
-        ReportFilterNew.Content = $"{Label("new")} {Count("new")}";
-        ReportFilterChecking.Content = $"{Label("checking")} {Count("checking")}";
-        ReportFilterResolved.Content = $"{Label("resolved")} {Count("resolved")}";
-        int fresh = Count("new");
-        ReportsNavItem.Content = fresh > 0 ? $"문제 보고 ({fresh})" : "문제 보고";
-    }
-
-    private async Task LoadReportsAsync()
-    {
-        var listing = (await Admin.GetAsync("admin/api/reports")).AsObject();
-        if (listing["statuses"] is JsonObject statuses) _statuses = (JsonObject)statuses.DeepClone();
-        _reports = listing["reports"]!.AsArray().Select(node => node!.AsObject()).Select(item => new ReportRow(
-            Str(item["id"]), LocalTime(item["receivedAt"]), Str(item["appVersion"]), Str(item["summary"]), Str(item["status"]), Str(item["note"]),
-            (bool?)item["hasLogs"] ?? false, Str(item["remoteAddress"]), Str(_statuses[Str(item["status"])]),
-            Str(item["status"]) switch { "new" => Warn, "checking" => Text1, _ => Muted })).ToList();
-        ApplyStatusLabels();
-        string? selected = _report?.Id;
-        ShowReports();
-        // 고르던 보고서를 다시 고르고, 없으면 맨 위 보고서 (오른쪽이 비어 있지 않게)
-        var shown = (IEnumerable<ReportRow>?)ReportsList.ItemsSource;
-        ReportsList.SelectedItem = shown?.FirstOrDefault(report => report.Id == selected) ?? shown?.FirstOrDefault();
-        await LoadReportsAnalysisAsync();
-    }
-
-    /// <summary>제목 아래 한 줄: 최근 7일 보고를 서버가 모아 분석한 결과 (자동·직접, 많은 문제, 버전). 자세한 내용은 툴팁</summary>
-    private async Task LoadReportsAnalysisAsync()
-    {
-        try
-        {
-            var analysis = (await Admin.GetAsync("admin/api/reports/analysis?days=7")).AsObject();
-            static string Top(JsonNode? list, int count) => string.Join(", ", (list as JsonArray ?? []).OfType<JsonObject>().Take(count)
-                .Select(item => $"{Str(item["name"])} {Number(item["count"])}"));
-            int total = (int?)analysis["total"] ?? 0;
-            string problems = Top(analysis["problems"], 3), versions = Top(analysis["versions"], 2);
-            ReportsAnalysisText.Text = total == 0 ? "최근 7일 보고 없음"
-                : $"최근 7일 {total}건 · 자동 {Number(analysis["automatic"])} · 새 보고 {Number(analysis["new"])}" +
-                  (problems.Length > 0 ? " · 많은 문제: " + problems : "") + (versions.Length > 0 ? " · 버전: " + versions : "");
-            ReportsAnalysisText.ToolTip = total == 0 ? null : string.Join("\n", new[]
-            {
-                "문제 이벤트: " + Top(analysis["events"], 10),
-                "PC: " + Top(analysis["addresses"], 6),
-                "날짜별: " + string.Join(", ", (analysis["perDay"] as JsonArray ?? []).OfType<JsonObject>().Select(day => $"{Str(day["day"])[5..]} {Number(day["count"])}")),
-            }.Where(line => !line.EndsWith(": ", StringComparison.Ordinal)));
-            ReportsAnalysisText.Visibility = Visibility.Visible;
-        }
-        catch (AdminException error) when (error.Status == System.Net.HttpStatusCode.NotFound)
-        {
-            ReportsAnalysisText.Visibility = Visibility.Collapsed; // 분석을 모르는 예전 서버
-        }
-    }
-
-    private void ShowReports()
-    {
-        string? status = ReportFilterNew.IsChecked == true ? "new" : ReportFilterChecking.IsChecked == true ? "checking" : ReportFilterResolved.IsChecked == true ? "resolved" : null;
-        string text = ReportSearchBox.Text.Trim();
-        ReportsList.ItemsSource = _reports.Where(report => (status is null || report.Status == status) &&
-            (text.Length == 0 || (report.Summary + " " + report.Version + " " + report.Note).Contains(text, StringComparison.OrdinalIgnoreCase))).ToList();
-    }
-
-    private void ReportFilter_Changed(object sender, RoutedEventArgs e) { if (IsLoaded) ShowReports(); }
-    private void ReportSearchBox_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) ShowReports(); }
-
-    private async void ReportsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        _report = ReportsList.SelectedItem as ReportRow;
-        ReportDetail.IsEnabled = _report is not null;
-        if (_report is null)
-        {
-            ReportHeaderText.Text = "왼쪽에서 보고서를 고르세요.";
-            ReportTextBox.Text = ReportNoteBox.Text = "";
-            return;
-        }
-        var report = _report;
-        ReportHeaderText.Text = $"{report.Time} · {(report.Version.Length > 0 ? report.Version : "버전 미상")}" +
-            (report.Remote.Length > 0 ? " · " + report.Remote : "") + (report.HasLogs ? " · 로그 있음" : "");
-        ReportStatusNew.IsChecked = report.Status == "new";
-        ReportStatusChecking.IsChecked = report.Status == "checking";
-        ReportStatusResolved.IsChecked = report.Status == "resolved";
-        ReportNoteBox.Text = report.Note;
-        SaveReportLogsButton.IsEnabled = report.HasLogs;
-        ReportTextBox.Text = "불러오는 중…";
-        await Run(async () =>
-        {
-            var detail = await Admin.GetAsync("admin/api/reports/" + Uri.EscapeDataString(report.Id));
-            if (ReferenceEquals(_report, report)) ReportTextBox.Text = Str(detail["text"]);
-        });
-    }
-
-    private async void SaveReportButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_report is not { } report) return;
-        string status = ReportStatusChecking.IsChecked == true ? "checking" : ReportStatusResolved.IsChecked == true ? "resolved" : "new";
-        await Run(async () =>
-        {
-            await Admin.SendAsync(HttpMethod.Put, "admin/api/reports/" + Uri.EscapeDataString(report.Id), new JsonObject { ["status"] = status, ["note"] = ReportNoteBox.Text });
-            await LoadReportsAsync();
-        }, done: "상태와 메모를 저장했습니다.");
-    }
-
-    private async void SaveReportLogsButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_report is not { HasLogs: true } report) return;
-        var dialog = new Microsoft.Win32.SaveFileDialog { FileName = $"TerminalNotes-{report.Id}.zip", Filter = "ZIP (*.zip)|*.zip", Title = "로그 저장" };
-        if (dialog.ShowDialog(OwnerWindow) != true) return;
-        await Run(async () =>
-        {
-            byte[] data = await Admin.GetBytesAsync("admin/api/reports/" + Uri.EscapeDataString(report.Id) + "/logs.zip");
-            await File.WriteAllBytesAsync(dialog.FileName, data);
-        }, done: "로그를 저장했습니다: " + dialog.FileName);
-    }
-
-    private async void DeleteReportButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_report is not { } report) return;
-        if (MessageBox.Show(OwnerWindow, $"이 보고서를 삭제할까요?\n\n{report.Summary}\n\n되돌릴 수 없습니다.", "문제 보고",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        await Run(async () =>
-        {
-            await Admin.SendAsync(HttpMethod.Delete, "admin/api/reports/" + Uri.EscapeDataString(report.Id), null);
-            _report = null;
-            await LoadReportsAsync();
-        }, done: "보고서를 삭제했습니다.");
-    }
-
     // ── 스킬 ────────────────────────────────────────────────────────────────────────────────────────
 
     private async Task LoadSkillsAsync()
@@ -969,14 +805,6 @@ internal sealed record ClientRow(string Address, string Version, string Last, st
     public override string ToString() => $"{Address} · {Version} · {Last}";
 }
 
-internal sealed record ReportRow(string Id, string Time, string Version, string Summary, string Status, string Note, bool HasLogs, string Remote,
-    string StatusLabel, Brush StatusBrush)
-{
-    public string Detail => $"{Time} · {(Version.Length > 0 ? Version : "버전 미상")}" + (Note.Length > 0 ? " · " + Note : "");
-    public override string ToString() => $"{Summary} · {StatusLabel}";
-}
-
-/// <summary>서버 설정 한 줄 ("항목: 값")</summary>
 internal sealed record SettingRow(string Name, string Value, Brush Brush)
 {
     private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0xD1, 0xD1, 0xD6)), Warning = new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A));

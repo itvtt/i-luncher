@@ -40,7 +40,7 @@ internal static partial class ServerManager
 
     /// <summary>아직 옮기지 않은 예전 Python 서버 (없으면 null). 옮긴 뒤 안내 파일(MOVED-TO-i-api.txt)만 남긴 예전 폴더는 빼고</summary>
     public static string? PythonScript =>
-        PythonScripts.FirstOrDefault(script => File.Exists(script) && !File.Exists(Path.Combine(Path.GetDirectoryName(script)!, "MOVED-TO-i-api.txt")));
+        PythonScripts.FirstOrDefault(script => File.Exists(script) && !File.Exists(Path.Combine(Path.GetDirectoryName(script)!, MovedNote)));
 
     [GeneratedRegex(@"^VERSION\s*=\s*""(\d+\.\d+\.\d+)""", RegexOptions.Multiline)]
     private static partial Regex VersionLine();
@@ -169,6 +169,35 @@ internal static partial class ServerManager
     public static Task<(int ExitCode, string Output)> RestartAsync() => RunServerAsync("--restart");
     public static Task<(int ExitCode, string Output)> HaltAsync() => RunServerAsync("--halt");
 
+    // ── 예전 자리의 서버 옮기기 ────────────────────────────────────────────────────────────────────
+
+    private const string MovedNote = "MOVED-TO-i-api.txt";
+
+    /// <summary>
+    /// 3.0 까지 런처가 깔던 자리(%LOCALAPPDATA%\i-api)의 i-api 서버를 이 i-api 로 한 번 옮김 (런처 스토어로 %LOCALAPPDATA%\Programs\i-api 에 새로 설치했을 때):
+    /// 그 서버를 멈추고, settings.txt 를 가져오고, 로그인 자동 실행이 있었으면 이 exe 로. 그 폴더는 안내 파일과 함께 남김 (데이터는 C:\ProgramData\i-api-data 라 그대로).
+    /// 이 i-api 에 이미 포트가 있으면 (새로 정해 쓰는 중) 하지 않음. 옮겼으면 설명, 없으면 null
+    /// </summary>
+    public static async Task<string?> MoveFromOldFolderAsync()
+    {
+        string old = Path.Combine(LocalRoot, "i-api"), oldExe = Path.Combine(old, "i-api.exe");
+        if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(old)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(Folder)), StringComparison.OrdinalIgnoreCase)) return null;
+        if (!File.Exists(oldExe) || File.Exists(Path.Combine(old, MovedNote)) || HasPort) return null;
+        bool atLogon = StartupScripts.Any(name => File.Exists(Path.Combine(StartupFolder, name)));
+        if (Setup.StopRunning(oldExe) > 0) await Task.Delay(1000);
+        string oldSettings = Path.Combine(old, Settings.FileName);
+        if (File.Exists(oldSettings)) File.Copy(oldSettings, SettingsFile, overwrite: true);
+        if (atLogon) await RunServerAsync("--install-startup", "--no-firewall");
+        try
+        {
+            File.WriteAllText(Path.Combine(old, MovedNote),
+                $"API 서버를 {Folder} 의 i-api.exe 로 옮겼습니다 ({DateTime.Now:yyyy-MM-dd HH:mm}). 설정(settings.txt)도 옮겼으므로 이 폴더는 쓰지 않습니다.\r\n" +
+                "데이터는 C:\\ProgramData\\i-api-data 에 그대로 있습니다.\r\n", new UTF8Encoding(true));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        return $"예전 자리({old})의 서버를 이 i-api 로 옮겼습니다 (설정 · 자동 실행).";
+    }
+
     // ── 예전 Python 서버 옮기기 ────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -200,7 +229,7 @@ internal static partial class ServerManager
         {
             try
             {
-                File.WriteAllText(Path.Combine(folder, "MOVED-TO-i-api.txt"),
+                File.WriteAllText(Path.Combine(folder, MovedNote),
                     $"API 서버를 {Folder} 의 i-api.exe 로 옮겼습니다 ({DateTime.Now:yyyy-MM-dd HH:mm}). 설정(SETTINGS)도 settings.txt 로 옮겼으므로 이 폴더는 쓰지 않습니다.\r\n" +
                     "데이터 C:\\ProgramData\\TerminalNotesRelayData 는 새 서버가 처음 시작할 때 C:\\ProgramData\\i-api-data 로 옮깁니다.\r\n", new UTF8Encoding(true));
             }

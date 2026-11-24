@@ -6,9 +6,9 @@ namespace IApi;
 
 /// <summary>
 /// i-api: API 서버 (예전 이름 Terminal Notes 중계 서버, 2.23 까지 Python relay.py). 이 PC 의 앱들이 쓰는 API 를 한 곳에서:
-/// i-luncher 서버 목록 · 사용 기록 · 관리 창, Terminal Notes 문제 보고 · 스킬 · 공지, GitHub 중계, (설정하면) EQ Status 설비 상태.
+/// i-luncher 서버 목록 · 사용 기록 · 관리 창, Terminal Notes 스킬 · 플러그인 · 공지, GitHub 중계, (설정하면) EQ Status 설비 상태.
 ///
-///     i-api.exe                         더블클릭: 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬)
+///     i-api.exe                         더블클릭: 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 스킬)
 ///     i-api.exe --port 2003             창 없이: 포트를 정하고 로그인 자동 실행 · 방화벽 · 서버 (다시) 시작
 ///     i-api.exe --set RELAY_PORT=5081   이번 실행만 설정 값을 바꿈
 ///     i-api.exe --settings-from D:\예전\relay.py   예전 relay.py 의 SETTINGS 를 설정 파일로 옮김
@@ -63,7 +63,6 @@ internal static class Program
                 case "--settings-from": parsed.SettingsFrom = Next(); break;
                 case "--port": parsed.Options.Port = Next(); break;
                 case "--bind": parsed.Options.Bind = Next(); break;
-                case "--data-dir": parsed.Options.DataDir = Next(); break;
                 case "--skills-dir": parsed.Options.SkillsDir = Next(); break;
                 case "--ctrl-break": parsed.CtrlBreak = Next(); break;
                 case "--restore-backup":
@@ -125,7 +124,7 @@ internal static class Program
             return 0;
         }
         if (args.CtrlBreak is { } pid) return int.TryParse(pid, out int target) ? Native.CtrlBreakHelper(target) : 2;
-        // 손으로 실행 (더블클릭 · 바로 가기, 또는 --setup): 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬).
+        // 손으로 실행 (더블클릭 · 바로 가기, 또는 --setup): 관리 창 (포트 · 서버 · API 켜고 끄기 · 앱 목록 · 릴리스 · 러너 · 공지 · 스킬).
         // 로그인 자동 실행(wscript) · 관리 창이 띄운 서버는 그냥 서버로 돎
         if (args.Flags.Contains("--setup") || argv.Length == 0 && StartedByHand())
         {
@@ -284,8 +283,8 @@ internal static class Program
         string scheme = config.TlsCert.Length > 0 ? "https" : "http";
         var addresses = config.Host.Length > 0 ? [config.Host] : Config.LocalAddresses();
         string where = string.Join(", ", addresses.Select(address => $"{scheme}://{address}:{port}"));
-        string firewall = Config.IsLoopback(config.Bind) || Setup.FirewallAllowed(port) != false ? "" : "\n방화벽이 닫혀 있어 다른 PC 는 접속하지 못합니다 (다시 실행해 Windows 확인 창에서 \"예\").";
-        return (true, $"실행 중: {where}\n로그인하면 자동으로 다시 켜집니다. i-luncher 서버 주소에는 IP:{port} 를 넣습니다.{firewall}");
+        string firewall = Config.IsLoopback(config.Bind) || Setup.FirewallAllowed(port) != false ? "" : " · 방화벽이 닫혀 있어 다른 PC 는 접속하지 못합니다 ([실행] 후 Windows 확인 창에서 \"예\")";
+        return (true, $"실행 중: {where}{firewall}");
     }
 
     /// <summary>예전 relay.py 의 SETTINGS (또는 다른 settings.txt) 를 이 서버의 설정 파일로 옮김</summary>
@@ -305,7 +304,7 @@ internal static class Program
         if (added.Count > 0) Console.WriteLine($"새 설정 {added.Count}개를 기본값으로 덧붙였습니다: {string.Join(", ", added)}");
         Console.WriteLine($"{path}의 설정을 {target}에 옮겼습니다.");
         // 예전 서버는 스토어를 자기 옆(2.10 전)에 두었을 수 있음: 그 설정이 가리키는 데이터 폴더로 복사해 새 서버가 같은 스킬로 시작
-        var dataKeys = new[] { "RELAY_DATA_ROOT", "RELAY_SKILLS_DIR", "RELAY_PLUGINS_DIR", "RELAY_ANNOUNCEMENTS_DIR", "RELAY_DATA_DIR", "RELAY_BACKUP_DIR", "RELAY_LOG_FILE" };
+        var dataKeys = new[] { "RELAY_DATA_ROOT", "RELAY_SKILLS_DIR", "RELAY_PLUGINS_DIR", "RELAY_ANNOUNCEMENTS_DIR", "RELAY_BACKUP_DIR", "RELAY_LOG_FILE" };
         var copied = new Options { SettingsFile = target };
         foreach (string key in dataKeys)
             if (values.TryGetValue(key, out var value) && value.Trim().Length > 0 && value != "None") copied.Sets.Add($"{key}={value.Trim()}");
@@ -389,10 +388,8 @@ internal static class Program
         {
             try
             {
-                int removed = server.Reports.Housekeep(server.Config.RetentionDays, server.Config.ReportsMaxMb);
                 server.Skills.Housekeep();
                 server.Plugins.Housekeep();
-                if (removed > 0) Log.Info($"housekeeping removed {removed} old reports");
             }
             catch (Exception error) { Log.Exception("housekeeping failed", error); }
             // 시작할 때 한 번, 그다음 하루에 한 번. 스토어가 그대로면 새로 쓰지 않음

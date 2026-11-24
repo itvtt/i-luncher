@@ -48,7 +48,7 @@ internal partial class ManagerView
         int off = _functions.Count(row => row.Switchable && !row.On);
         long today = _functions.Sum(row => row.TodayCalls), failures = _functions.Sum(row => row.TodayFailures);
         FunctionsSummaryText.Text = $"API {_functions.Count}개" + (off > 0 ? $" · 꺼 둔 API {off}개" : "") +
-            $" · 오늘 호출 {today:N0}" + (failures > 0 ? $" · 실패 {failures:N0}" : "") + " · 끈 API 는 앱에 503 으로 거절합니다.";
+            $" · 오늘 호출 {today:N0}" + (failures > 0 ? $" · 실패 {failures:N0}" : "");
     }
 
     private void FunctionsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => ShowFunction(FunctionsList.SelectedItem as FunctionRow);

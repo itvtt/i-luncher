@@ -49,6 +49,11 @@ public sealed partial class AppDefinition
     public int Order { get; set; }
     /// <summary>빌드 설정 MASTER_USERS 의 계정에만 보임 (예: API 서버 관리 프로그램)</summary>
     public bool MasterOnly { get; set; }
+    /// <summary>
+    /// 앱이 스스로 업데이트함 (예: i-luncher 릴리스에 같이 올라가는 i-api): 런처는 설치 · 실행만 하고 업데이트를 권하지 않음.
+    /// 버전은 릴리스 태그(그 저장소의 다른 제품 번호)가 아니라 실행 파일의 버전
+    /// </summary>
+    public bool SelfUpdate { get; set; }
     /// <summary>이름을 바꾸기 전의 id: 그 id 로 된 즐겨찾기를 이 앱으로 옮김</summary>
     public List<string>? FormerIds { get; set; }
     /// <summary>

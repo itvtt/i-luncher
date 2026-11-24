@@ -463,6 +463,28 @@ try
         return zip;
     }
 
+    await Check("self-updating app (i-api in the launcher's release): its own exe version, never an update offer from the release tag", async () =>
+    {
+        // 버전 정보가 든 실제 exe 가 필요: 이 확인 프로그램 옆의 런처 exe 를 그 앱의 exe 로
+        string exe = Path.Combine(AppContext.BaseDirectory, "i-luncher.exe");
+        string own = AppInstaller.ReadFileVersion(exe) ?? throw new InvalidOperationException("no version in " + exe);
+        string folder = Path.Combine(root, "pkg-self-update-app");
+        Directory.CreateDirectory(folder);
+        File.Copy(exe, Path.Combine(folder, "SelfApp.exe"), overwrite: true);
+        string zip = Path.Combine(root, "self-update-app.zip");
+        ZipFile.CreateFromDirectory(folder, zip);
+        var app = new AppDefinition { Id = "self-app", Name = "SelfApp", InstallName = "SelfApp", Repository = "https://ghe.test/team/i-luncher",
+            Asset = "SelfApp-win-x64.zip", Executable = "SelfApp.exe", Arguments = "--setup", SelfUpdate = true };
+        var installed = await installer.InstallZipAsync(app, zip, Release("v99.9.9"));
+        Equal(ReleaseVersion.Parse(own)?.ToString(), installed.Version?.ToString(), "the version is the exe's, not the release tag");
+        var card = new ILauncher.AppCard(app) { Installed = installed };
+        card.SetRelease(Release("v99.9.10"), null);
+        Assert(!card.UpdateAvailable, "no update offer: the app updates itself");
+        Equal("v" + installed.Version, card.VersionText, "the badge shows the app's own version");
+        Assert(CatalogSerializer.Serialize([app]).Contains("\"selfUpdate\": true"), "selfUpdate is kept in the app list");
+        await installer.UninstallAsync(app, installer.Detect(app)!);
+    });
+
     await Check("install, detect the release version, update, keep user files, uninstall", async () =>
     {
         string v1 = MakeZip("v1.zip", new() { ["SampleApp.exe"] = "exe v1", ["lib/old.dll"] = "old", ["data.txt"] = "1", ["createdump.exe"] = "x" });

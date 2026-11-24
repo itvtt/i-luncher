@@ -54,7 +54,7 @@ internal static partial class Util
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var moment) ? moment : fallback;
     }
 
-    /// <summary>보고서 id 앞의 UTC 시각, 날짜가 아니면 지금</summary>
+    /// <summary>id 앞의 UTC 시각 (예: 20260101-120000-…), 날짜가 아니면 지금</summary>
     public static DateTimeOffset IdTime(string reportId) =>
         reportId.Length >= 15 && DateTime.TryParseExact(reportId[..15], "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var moment) ? new DateTimeOffset(moment, TimeSpan.Zero) : Now();
@@ -325,80 +325,6 @@ internal static partial class Util
         return inner.StartsWith(outer, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
 
-    // ── multipart/form-data (앱의 문제 보고 올리기) ──────────────────────────────────────────────────
-
-    [GeneratedRegex("boundary=\"?([^\";]+)\"?", RegexOptions.IgnoreCase)]
-    private static partial Regex BoundaryPattern();
-
-    [GeneratedRegex("(?:^|;)\\s*name=\"?([^\";]+)\"?")]
-    private static partial Regex NamePattern();
-
-    [GeneratedRegex("filename=\"?([^\";]+)\"?")]
-    private static partial Regex FilenamePattern();
-
-    [GeneratedRegex(@"charset=([\w-]+)")]
-    private static partial Regex CharsetPattern();
-
-    public static (Dictionary<string, string> Fields, Dictionary<string, (string Name, byte[] Data)> Files) ParseMultipart(string contentType, byte[] body)
-    {
-        var boundary = BoundaryPattern().Match(contentType);
-        if (!boundary.Success) throw new RelayError(400, "boundary가 없습니다.");
-        byte[] delimiter = Encoding.Latin1.GetBytes("--" + boundary.Groups[1].Value);
-        var fields = new Dictionary<string, string>();
-        var files = new Dictionary<string, (string, byte[])>();
-        var parts = Split(body, delimiter);
-        foreach (byte[] raw in parts.Skip(1))
-        {
-            ReadOnlySpan<byte> part = raw;
-            if (part.StartsWith("--"u8)) break;
-            if (part.StartsWith("\r\n"u8)) part = part[2..];
-            int split = part.IndexOf("\r\n\r\n"u8);
-            if (split < 0) continue;
-            ReadOnlySpan<byte> head = part[..split], content = part[(split + 4)..];
-            if (content.EndsWith("\r\n"u8)) content = content[..^2];
-            var headers = new Dictionary<string, string>();
-            foreach (string line in Encoding.UTF8.GetString(head).Split("\r\n"))
-            {
-                int colon = line.IndexOf(':');
-                if (colon >= 0) headers[line[..colon].Trim().ToLowerInvariant()] = line[(colon + 1)..].Trim();
-            }
-            string disposition = headers.GetValueOrDefault("content-disposition", "");
-            var name = NamePattern().Match(disposition);
-            if (!name.Success) continue;
-            var filename = FilenamePattern().Match(disposition);
-            if (filename.Success) files[name.Groups[1].Value] = (filename.Groups[1].Value, content.ToArray());
-            else
-            {
-                var charset = CharsetPattern().Match(headers.GetValueOrDefault("content-type", ""));
-                Encoding encoding = Encoding.UTF8;
-                if (charset.Success)
-                {
-                    try { encoding = Encoding.GetEncoding(charset.Groups[1].Value); }
-                    catch (ArgumentException) { }
-                }
-                fields[name.Groups[1].Value] = encoding.GetString(content);
-            }
-        }
-        return (fields, files);
-    }
-
-    private static List<byte[]> Split(byte[] data, byte[] delimiter)
-    {
-        var parts = new List<byte[]>();
-        int start = 0;
-        while (true)
-        {
-            int found = data.AsSpan(start).IndexOf(delimiter);
-            if (found < 0)
-            {
-                parts.Add(data[start..]);
-                return parts;
-            }
-            parts.Add(data[start..(start + found)]);
-            start += found + delimiter.Length;
-        }
-    }
-
     // ── 주소 (application/x-www-form-urlencoded, 쿼리) ─────────────────────────────────────────────
 
     /// <summary>a=1&amp;b=2 → {a: [1], b: [2]} (+ 는 공백, 빈 값은 keepBlank 일 때만)</summary>
@@ -536,7 +462,7 @@ internal sealed partial class Clients
     public const int Keep = 2000;
     public static readonly Dictionary<string, string> Features = new()
     {
-        ["reports"] = "문제 보고", ["skills"] = "스킬", ["announcements"] = "공지", ["badkey"] = "키 틀림(거절)", ["launcher"] = "i-luncher",
+        ["skills"] = "스킬", ["announcements"] = "공지", ["badkey"] = "키 틀림(거절)", ["launcher"] = "i-luncher",
         ["github"] = "GitHub 중계", ["equipment"] = "설비 상태",
     };
 

@@ -14,7 +14,7 @@ internal sealed class AdminException(string message, HttpStatusCode status) : Ex
 }
 
 /// <summary>
-/// 이 서버의 관리 기능을 부름: /admin/api/* (상태 · API · 문제 보고 · 스킬 · 공지 · 릴리스 · 러너) 와 /launcher/* (i-luncher 서버 앱 목록 · 스크린샷).
+/// 이 서버의 관리 기능을 부름: /admin/api/* (상태 · API · 스킬 · 공지 · 릴리스 · 러너) 와 /launcher/* (i-luncher 서버 앱 목록 · 스크린샷).
 /// 관리자 비밀번호는 서버 설정(settings.txt 의 RELAY_ADMIN_PASSWORD)에서 읽으므로 따로 묻지 않음.
 /// </summary>
 internal sealed class AdminClient : IDisposable

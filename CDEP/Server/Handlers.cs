@@ -70,22 +70,6 @@ internal sealed partial class RelayServer
 
     // ── Terminal Notes ──────────────────────────────────────────────────────────────────────────
 
-    private void ReportSend(Request request)
-    {
-        Limit(request, "report", Config.UploadsPerHour, 3600);
-        string contentType = request.HeaderOr("Content-Type");
-        if (!contentType.Contains("multipart/form-data", StringComparison.Ordinal)) throw new RelayError(400, "multipart/form-data가 필요합니다.");
-        var (fields, files) = Util.ParseMultipart(contentType, request.Body());
-        string report = fields.GetValueOrDefault("report", "");
-        if (report.Trim().Length == 0 || report.Length > Reports.MaxChars) throw new RelayError(400, "보고서가 비었거나 너무 깁니다.");
-        byte[]? logs = files.TryGetValue("logs", out var file) && file.Data.Length > 0 ? file.Data : null;
-        var meta = Reports.Add(report, logs, request.RemoteAddress);
-        string version = Util.Text(meta["AppVersion"]);
-        Log.Info($"report {Util.Text(meta["Id"])} received ({version})");
-        Notifier.Send($"[Terminal Notes] 새 문제 보고 · {(version.Length > 0 ? version : "버전 미상")} · {Util.Text(meta["Summary"])}\n{Config.PublicUrl}/reports/{Util.Text(meta["Id"])}");
-        request.Json(200, new JsonObject { ["id"] = Util.Text(meta["Id"]) });
-    }
-
     private void SkillSource(Request request)
     {
         // 깃허브 링크의 지시: 공유 창이 공유하기 전에 읽음 (제목, 앞머리)
@@ -251,7 +235,6 @@ internal sealed partial class RelayServer
 
     public JsonObject StatusData()
     {
-        var reports = Reports.All();
         var board = Announcements.Read();
         string firewall = Setup.FirewallText(Config);
         var settings = new JsonArray(Config.Summary().Append(Equipment.State()).Select(line => (JsonNode)line).ToArray());
@@ -261,8 +244,8 @@ internal sealed partial class RelayServer
             ["uptimeSeconds"] = (long)(Util.Now() - Started).TotalSeconds, ["publicUrl"] = Config.PublicUrl,
             ["counts"] = new JsonObject
             {
-                ["reports"] = reports.Count, ["newReports"] = reports.Count(item => item.Status == "new"), ["skills"] = Skills.All().Count,
-                ["reportsBytes"] = Util.FolderSize(Config.ReportsDir),
+                ["skills"] = Skills.All().Count, ["plugins"] = Plugins.All().Count,
+                ["apps"] = (Launcher.Catalog()["apps"] as JsonArray)?.Count ?? 0,
             },
             ["settings"] = settings, ["firewall"] = firewall,
             ["githubRepositories"] = new JsonArray(Launcher.Repositories().Order(StringComparer.Ordinal).Select(item => (JsonNode)item).ToArray()),
@@ -275,39 +258,6 @@ internal sealed partial class RelayServer
                 ["features"] = new JsonArray(entry.Used.Order(StringComparer.Ordinal).Select(feature => (JsonNode)Clients.Features[feature]).ToArray()),
             }).ToArray()),
         };
-    }
-
-    private void AdminReport(Request request)
-    {
-        string id = request.Value("id");
-        switch (request.Method)
-        {
-            case "GET":
-                var detail = Reports.Meta(id).ToJson();
-                detail["text"] = Reports.Text(id);
-                request.Json(200, detail);
-                return;
-            case "PUT":
-                var body = request.JsonObjectBody();
-                var status = body["status"];
-                var note = body["note"];
-                if (status is not null && !Util.IsString(status) || note is not null && !Util.IsString(note)) throw new RelayError(400, "형식이 올바르지 않습니다.");
-                Reports.Update(id, Util.AsString(status), Util.AsString(note));
-                request.Json(200, Reports.Meta(id).ToJson());
-                return;
-            default:
-                Reports.Delete(id);
-                request.Json(200, new JsonObject { ["deleted"] = id });
-                return;
-        }
-    }
-
-    private void ReportLogs(Request request)
-    {
-        string id = request.Value("id");
-        string logs = Path.Combine(Reports.Folder(id), "logs.zip");
-        if (!File.Exists(logs)) throw new RelayError(404, "로그가 없습니다.");
-        request.File(logs, "application/zip", $"TerminalNotes-{id}.zip");
     }
 
     private void AdminSkill(Request request)

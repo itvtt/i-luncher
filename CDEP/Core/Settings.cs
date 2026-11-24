@@ -35,19 +35,16 @@ internal static partial class Settings
         new("LAUNCHER_GITHUB_REPOS", "", "(선택) GitHub 중계로 열어 줄 저장소(쉼표, 소유자/저장소 또는 소유자/*).",
             "비우면 런처 앱 목록에 있는 저장소와 토큰 계정의 저장소만"),
         new("LAUNCHER_DIR", "launcher", "i-luncher 앱 목록·공지 폴더(RELAY_DATA_ROOT 기준)"),
-        new("RELAY_DATA_ROOT", "", "보고서·스킬·공지·앱 목록을 둘 폴더. 비우면 C:\\ProgramData\\i-api-data (이 PC의 모든 계정 공용)",
+        new("RELAY_DATA_ROOT", "", "스킬·플러그인·공지·앱 목록·사용 기록을 둘 폴더. 비우면 C:\\ProgramData\\i-api-data (이 PC의 모든 계정 공용)",
             "서버 폴더(i-api)와 다른 곳이라 그 폴더를 새로 복사하거나 지워도 남습니다"),
-        new("RELAY_DATA_DIR", "reports", "폴더·파일은 RELAY_DATA_ROOT 기준 상대 경로 또는 절대 경로"),
-        new("RELAY_SKILLS_DIR", "skills"),
+        new("RELAY_SKILLS_DIR", "skills", "폴더·파일은 RELAY_DATA_ROOT 기준 상대 경로 또는 절대 경로"),
         new("RELAY_PLUGINS_DIR", "plugins"),
         new("RELAY_ANNOUNCEMENTS_DIR", "announcements"),
         new("RELAY_BACKUP_DIR", "backups", "스킬·플러그인·공지·앱 목록 자동 백업(ZIP). 다른 드라이브의 절대 경로를 쓰면 데이터 폴더가 지워져도 남습니다"),
         new("RELAY_BACKUP_KEEP", "30", "남길 백업 수(시작할 때와 하루에 한 번, 바뀐 것이 있을 때만 만듦)"),
         new("RELAY_LOG_FILE", "relay.log"),
-        new("RELAY_REPORT_RETENTION_DAYS", "90"),
-        new("RELAY_REPORTS_MAX_MB", "2048"),
-        new("RELAY_UPLOADS_PER_HOUR", "60", "주소당 시간당 보고·스킬 공유 수"),
-        new("RELAY_WEBHOOK_URL", "", "(선택) 새 보고·스킬·공지 알림 웹훅"),
+        new("RELAY_UPLOADS_PER_HOUR", "60", "주소당 시간당 스킬·플러그인 공유 수"),
+        new("RELAY_WEBHOOK_URL", "", "(선택) 새 스킬·플러그인·공지 알림 웹훅"),
         new("RELAY_PUBLIC_URL", "", "(선택) 알림 링크의 주소"),
         new("RELAY_TLS_CERT", "", "(선택) HTTPS 인증서·키 파일 (PEM)"),
         new("RELAY_TLS_KEY", ""),
@@ -75,7 +72,7 @@ internal static partial class Settings
     private static readonly string[] Header =
     [
         "# i-api(API 서버) 설정. 이 파일만 고칩니다. 비운 값(이름=)은 쓰지 않거나 기본값입니다.",
-        "# 고친 뒤 i-api 관리 창 → 서버 → [다시 시작] (또는 서버 시작.cmd).",
+        "# 고친 뒤 i-api 관리 창 ⋯ → [다시 시작] (또는 서버 시작.cmd).",
         "# 순서: 이 파일 < 같은 이름의 환경 변수 < --set. 새 버전이 더한 설정은 서버가 시작할 때 기본값으로 덧붙입니다.",
     ];
 

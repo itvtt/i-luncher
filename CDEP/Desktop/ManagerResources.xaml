@@ -127,7 +127,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- 여러 줄 편집 (공지·보고서·스킬 원문) -->
+        <!-- 여러 줄 편집 (공지·스킬 원문·러너 .env) -->
         <Style x:Key="DocumentBoxStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="AcceptsReturn" Value="True" />
             <Setter Property="AcceptsTab" Value="True" />
@@ -192,7 +192,7 @@
             <Setter Property="Padding" Value="14,10" />
         </Style>
 
-        <!-- 고르기 (보고 상태·필터, 공지 종류, 설치 방식): 동그라미 대신 알약 모양, 고른 것은 푸른 면 -->
+        <!-- 고르기 (설치 방식 등): 동그라미 대신 알약 모양, 고른 것은 푸른 면 -->
         <Style TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource LabelTextBrush}" />
             <Setter Property="FontSize" Value="12.5" />

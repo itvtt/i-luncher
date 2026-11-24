@@ -30,9 +30,9 @@ internal sealed class Harness : IDisposable
     {
         Root = NewFolder("i-api check");
         Config = Make(Root, [
-            "RELAY_PORT=0", $"RELAY_INGEST_KEY={Key}", $"RELAY_ADMIN_PASSWORD={Admin}", $"RELAY_DATA_ROOT={Root}", $"RELAY_DATA_DIR={Root}\\reports",
+            "RELAY_PORT=0", $"RELAY_INGEST_KEY={Key}", $"RELAY_ADMIN_PASSWORD={Admin}", $"RELAY_DATA_ROOT={Root}",
             $"RELAY_SKILLS_DIR={Root}\\skills", $"RELAY_PLUGINS_DIR={Root}\\plugins", $"RELAY_ANNOUNCEMENTS_DIR={Root}\\announcements", $"RELAY_LOG_FILE={Root}\\relay.log",
-            $"RELAY_BACKUP_DIR={Root}\\backups", "RELAY_REPORT_RETENTION_DAYS=90", "RELAY_UPLOADS_PER_HOUR=5", "MASTER_USERS=editor_one, DOMAIN\\editor_two", .. extra], bind: "127.0.0.1");
+            $"RELAY_BACKUP_DIR={Root}\\backups", "RELAY_UPLOADS_PER_HOUR=5", "MASTER_USERS=editor_one, DOMAIN\\editor_two", .. extra], bind: "127.0.0.1");
         Server = new RelayServer(Config);
         Server.Start();
     }
@@ -99,22 +99,6 @@ internal sealed class Harness : IDisposable
         string body = string.Join("&", fields.Select(field => Uri.EscapeDataString(field.Item1) + "=" + Uri.EscapeDataString(field.Item2)));
         var headers = origin is null ? new List<(string, string)>() : [("Origin", origin)];
         return Call("POST", path, Encoding.UTF8.GetBytes(body), headers, key: false, admin: Admin, contentType: "application/x-www-form-urlencoded");
-    }
-
-    public Reply UploadReport(string text, byte[]? logs = null)
-    {
-        const string boundary = "b3f2e0f2-9a2b-4c3e-8a77-0123456789ab";
-        var body = new MemoryStream();
-        void Write(string value) => body.Write(Encoding.UTF8.GetBytes(value));
-        Write($"--{boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Disposition: form-data; name=report\r\n\r\n{text}\r\n");
-        if (logs is not null)
-        {
-            Write($"--{boundary}\r\nContent-Type: application/zip\r\nContent-Disposition: form-data; name=logs; filename=logs.zip; filename*=utf-8''logs.zip\r\n\r\n");
-            body.Write(logs);
-            Write("\r\n");
-        }
-        Write($"--{boundary}--\r\n");
-        return Call("POST", "/api/reports", body.ToArray(), contentType: $"multipart/form-data; boundary=\"{boundary}\"");
     }
 
     /// <summary>다른 루프백 주소에서 온 요청 (서버에는 다른 PC)</summary>

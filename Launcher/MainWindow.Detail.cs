@@ -96,7 +96,8 @@ public partial class MainWindow
     {
         var release = card.Latest;
         var facts = new List<DetailFact>();
-        string version = release?.Version is { } latest ? "v" + latest : release?.Tag ?? (card.Installed?.Version is { } own ? "v" + own : "—");
+        string version = card.App.SelfUpdate ? (card.Installed?.Version is { } mine ? "v" + mine : "—")  // 릴리스 태그는 다른 제품의 번호
+            : release?.Version is { } latest ? "v" + latest : release?.Tag ?? (card.Installed?.Version is { } own ? "v" + own : "—");
         facts.Add(new DetailFact("버전", version,
             card.Installed is { } installed ? (card.UpdateAvailable ? $"설치됨 v{installed.Version}" : "설치됨") : "설치 안 됨"));
         if (release?.PublishedAt is { } updated)
@@ -121,7 +122,8 @@ public partial class MainWindow
         DetailDescription.Visibility = details.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         string notes = release is null ? "" : ReleaseNotes(release.Body);
-        DetailNewsSection.Visibility = release is null ? Visibility.Collapsed : Visibility.Visible;
+        // 스스로 업데이트하는 앱: 릴리스 노트는 같은 저장소의 다른 제품 것이라 보이지 않음
+        DetailNewsSection.Visibility = release is null || card.App.SelfUpdate ? Visibility.Collapsed : Visibility.Visible;
         DetailNewsVersion.Text = release is null ? "" : version;
         DetailNewsWhen.Text = release?.PublishedAt is { } at ? When(at.ToLocalTime()) : "";
         DetailNews.Text = notes;

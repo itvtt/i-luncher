@@ -73,7 +73,7 @@ GitHub
 ### 설정
 
 일반 사용자용입니다: **i-luncher 자동 업데이트** (누르면 바로 저장), **재설정** (목록 · 전체), **저장 위치** (`C:\i-luncher`, 열기). 재설정 · 저장 위치는 아래 "설정 · 저장 위치". 마스터에게는 위에 **API 서버**(주소: 서버 목록 · 앱 사용 기록이 가는 곳, 빌드 설정 `API_SERVER` 가 기본, [연결]하면 응답을 확인)와 **런처 공지 → GitHub에서 편집**이 더 있습니다. 비밀번호는 묻지 않습니다.
-서버 목록 · 릴리스 · 러너 · Terminal Notes 공지 · API 같은 관리 일은 런처가 아니라 서버 PC 의 **i-api 관리 창**에서 합니다 (아래 "API 서버").
+서버 목록 · Terminal Notes 공지 · API 같은 관리 일은 런처가 아니라 서버 PC 의 **i-api 관리 창**에서 합니다 (아래 "API 서버").
 
 ### 토큰
 
@@ -177,13 +177,13 @@ API 서버 `i-api.exe`(C#, `CDEP\i-api.csproj`, 3.0 부터. 2.23 까지는 Pytho
 
 | 주소 | 쓰는 곳 |
 |---|---|
-| `/api/reports`, `/api/skills`, `/api/announcements` | Terminal Notes (앱 키) |
+| `/api/skills`, `/api/plugins`, `/api/announcements` | Terminal Notes (앱 키) |
 | `/launcher/catalog` | i-luncher 마스터의 서버 목록 (저장은 관리자 비밀번호). 일반 사용자의 런처는 묻지 않음. `/launcher/notices` 는 남아 있지만 런처는 쓰지 않음 (공지는 GitHub) |
 | `/launcher/usage` | 앱 사용 기록 (마스터 계정의 앱만 보냄) |
 | `/api/v3/repos/<소유자>/<저장소>/…` | GitHub 중계: 예전에 빌드한 앱의 업데이트용으로만 남김. 지금 런처와 앱은 GitHub에 바로 묻습니다 |
 | `/`, `/apps`, `/status` … | 관리 페이지 (관리자 비밀번호) |
 
-API 서버 이름은 **i-api** 입니다. **런처에는 들어 있지 않고**(사용자 결정 2026-11-25: 런처의 관리자 메뉴는 없앰) 릴리스에 `i-api-win-x64.zip` 으로 따로 올라갑니다. 서버 PC 에서 `%LOCALAPPDATA%\i-api` 에 풀고 `i-api.exe` 를 실행하면 **관리 창**이 뜹니다: 포트를 넣고 [실행] (설정 파일 · 로그인 자동 실행 · 방화벽 · 시작, 재부팅해도 다시 켜짐), 다시 시작 · 멈추기 · **업데이트**(같은 저장소의 최신 릴리스에서 새 zip 을 받아 바꿈, 설정 · 데이터는 그대로), **API** 마다 켜고 끄기 · 호출 · 실패 · 걸린 시간, 서버 앱 목록 · 릴리스 · 러너(이 PC의 Actions 러너, 설정 `RUNNERS_ROOT`) · Terminal Notes 공지 · 문제 보고 · 스킬. 관리자 비밀번호는 그 옆 `settings.txt` 에서 알아서 읽습니다. 데이터는 `C:\ProgramData\i-api-data`에 따로 있고, 로그인 자동 시작은 시작 폴더의 `i-api.vbs` 입니다. 자세한 것은 [CDEP/package/README.md](CDEP/package/README.md) (zip 안의 README).
+API 서버 이름은 **i-api** 입니다. **런처에는 들어 있지 않고**(사용자 결정 2026-11-25: 런처의 관리자 메뉴는 없앰) 릴리스에 `i-api-win-x64.zip` 으로 따로 올라갑니다. 서버 PC 에서 마스터 스토어의 **i-api** 를 받아 열면 (서버 목록 앱, `selfUpdate`: 런처는 설치 · 실행만, 버전은 i-api 실행 파일의 것) **관리 창**이 뜹니다: 포트를 넣고 [실행] (설정 파일 · 로그인 자동 실행 · 방화벽 · 시작, 재부팅해도 다시 켜짐), 맨 위 ⋯ 에서 다시 시작 · 멈추기 · **업데이트**(같은 저장소의 최신 릴리스에서 새 zip 을 받아 바꿈, 설정 · 데이터는 그대로), 메뉴는 **API**(API 마다 켜고 끄기 · 호출 · 실패 · 걸린 시간) · 서버 앱 목록 · Terminal Notes 공지. 관리자 비밀번호는 그 옆 `settings.txt` 에서 알아서 읽습니다. 데이터는 `C:\ProgramData\i-api-data`에 따로 있고, 로그인 자동 시작은 시작 폴더의 `i-api.vbs` 입니다. 자세한 것은 [CDEP/package/README.md](CDEP/package/README.md) (zip 안의 README).
 예전 Python 서버(`relay.py`)와 예전 이름(서버 `%LOCALAPPDATA%\TerminalNotesRelay`, 데이터 `C:\ProgramData\TerminalNotesRelayData`, `Terminal Notes Relay.vbs`)의 서버는 새 i-api.exe 를 처음 실행할 때 한 번 저절로 옮깁니다: 예전 서버를 멈추고, SETTINGS 를 옮기고, 자동 시작을 새 이름으로 바꾸고, 새 서버가 처음 시작할 때 데이터 폴더 이름을 바꾸고 러너 로그온 작업(`GitHub Runners`)도 새 서버를 가리키게 합니다. 방화벽 규칙은 예전 이름(`TerminalNotesRelay-2003`)도 그대로 인정합니다 (Windows 확인 창 없음). 예전 서버 폴더는 `MOVED-TO-i-api.txt` 와 함께 남깁니다.
 
 런처는 빌드 설정 `API_SERVER`로 서버를 압니다 (마스터만 씀). 마스터는 **설정 → API 서버**에서 바로 바꿀 수 있습니다: `IP:포트` (포트는 서버에서 정한 것), 비우고 연결하면 빌드 설정의 주소. 바꾼 주소는 `C:\i-luncher\settings.json` 의 `ApiServer` 에 남고, 그 PC 의 서버 목록 · 스크린샷 · 설치된 앱의 사용 기록이 모두 그 주소로 갑니다 (런처를 다시 릴리스하지 않음). 앱의 업데이트는 서버를 거치지 않고 GitHub에 바로 묻습니다 (빌드할 때 `UPDATE_GITHUB_API=https://api.github.com` 또는 `https://<호스트>/api/v3`).
@@ -215,7 +215,7 @@ API 서버 이름은 **i-api** 입니다. **런처에는 들어 있지 않고**(
 ### i-luncher 저장소
 
 1. 이 폴더를 GitHub 저장소(비공개도 됨)로 올립니다. 앱들은 각자 저장소(`<소유자>/<앱>`)로 따로 관리합니다.
-2. Windows x64 self-hosted 러너를 등록합니다 (레이블 `self-hosted`, `windows`, .NET 10 SDK 필요). 서버 PC에서는 i-api 관리 창의 **러너** 화면에서 [+]로 등록하고, 로그온 작업 하나(`GitHub Runners`)가 켜 둔 러너를 시작합니다 ([CDEP/package/README.md](CDEP/package/README.md)).
+2. Windows x64 self-hosted 러너를 등록합니다 (레이블 `self-hosted`, `windows`, .NET 10 SDK 필요). 서버 PC에서는 i-api 설정 `RUNNERS_ROOT` 아래 저장소마다 한 폴더에 만들고 (GitHub 의 New self-hosted runner 안내, 서비스로 등록하지 않음), 로그온 작업 하나(`GitHub Runners`)가 켜 둔 러너를 시작합니다 ([CDEP/package/README.md](CDEP/package/README.md)).
 3. 비공개·internal 저장소면 **Settings → Secrets → Actions**에 `ILUNCHER_ENV`를 만들고 [`.env.sample`](.env.sample)을 참고해 최소 `LAUNCHER_TOKEN=<읽기 전용 토큰>`을 넣습니다. 러너 PC에 `.env`를 두고 러너 환경 변수 `ILUNCHER_ENV_PATH`로 알려 줘도 됩니다. `LAUNCHER_REPOSITORY`는 비워 두면 그 저장소가 됩니다.
 4. `main`에 푸시하면 [release.yml](.github/workflows/release.yml)이 확인(`Launcher.Checks`) → 빌드 → `vX.Y.Z` 릴리스(`i-luncher-Setup.exe`, `i-luncher-win-x64.zip`)를 만듭니다. 초안으로 파일을 모두 올린 뒤 공개하므로 파일이 빠진 릴리스가 최신으로 보이지 않습니다.
 5. 모두에게 `i-luncher-Setup.exe` 를 한 번 나눠 주면 이후는 런처가 스스로 업데이트합니다 (설정에서 끌 수 있음). 서버 목록은 마스터 계정만 봅니다: [일반 · 마스터 배포](#일반--마스터-배포)

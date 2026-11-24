@@ -67,7 +67,7 @@ internal static partial class DataFolders
         if (RenamedDataWaiting(config)) return [];
         var messages = new List<string>();
         var sources = (includeDefaults ? Config.LegacyDataRoots() : []).Concat(extraSources ?? []).Append(Config.ProgramFolder).ToList();
-        foreach (string target in new[] { config.ReportsDir, config.SkillsDir, config.PluginsDir, config.AnnouncementsDir })
+        foreach (string target in new[] { config.SkillsDir, config.PluginsDir, config.AnnouncementsDir })
         {
             if (!Util.IsInside(target, config.DataRoot) || Util.SamePath(target, config.DataRoot)) continue;  // 설정이 정한 따로의 폴더
             string relative = Path.GetRelativePath(config.DataRoot, target);
@@ -98,7 +98,7 @@ internal static partial class DataFolders
                 messages.Add($"{old}의 데이터를 {target}(으)로 복사했습니다(원본은 그대로 둡니다).");
                 try
                 {
-                    File.WriteAllText(Path.Combine(root, MovedNote), $"이 폴더의 스킬·공지·보고서는 {DateTime.Now:yyyy-MM-dd HH:mm}에 {config.DataRoot}(으)로 복사되었습니다.\r\n" +
+                    File.WriteAllText(Path.Combine(root, MovedNote), $"이 폴더의 스킬·공지는 {DateTime.Now:yyyy-MM-dd HH:mm}에 {config.DataRoot}(으)로 복사되었습니다.\r\n" +
                         "API 서버는 이제 그 폴더를 씁니다. 이 폴더에 남은 것은 예전 사본이라 고쳐도 반영되지 않습니다.\r\n", Util.Utf8);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
@@ -130,7 +130,7 @@ internal static partial class DataFolders
     }
 
     /// <summary>
-    /// 스킬 · 플러그인 · 공지 · 앱 목록 · 사용 기록의 ZIP (보고서는 빼고: 크고 오래 두지 않음). 가장 최근 백업 뒤로 바뀐 것이 있을 때만 만들어,
+    /// 스킬 · 플러그인 · 공지 · 앱 목록 · 사용 기록의 ZIP . 가장 최근 백업 뒤로 바뀐 것이 있을 때만 만들어,
     /// 남긴 백업은 서로 다른 상태. RELAY_BACKUP_KEEP 보다 많은 오래된 것은 지움
     /// </summary>
     public static string? BackupStore(Config config)

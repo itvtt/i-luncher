@@ -11,7 +11,7 @@
         Width="1100" Height="820" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         StateChanged="Window_StateChanged">
-    <!-- 손으로 실행한 i-api.exe 의 관리 창: i-api 관리 창과 같은 화면 (서버 · API · 앱 목록 · 릴리스 · 러너 · 공지 · 문제 보고 · 스킬), 서버는 이 exe 자신 -->
+    <!-- 손으로 실행한 i-api.exe 의 관리 창 (서버 · API · 앱 목록 · 릴리스 · 러너 · 공지 · 스킬), 서버는 이 exe 자신 -->
     <Window.Resources>
         <Style x:Key="ChromeButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="46" />

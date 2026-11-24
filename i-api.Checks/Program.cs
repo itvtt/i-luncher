@@ -47,57 +47,17 @@ Check("health and keys", () =>
     var refused = h.Call("GET", "/api/skills", key: false);
     Equal(401, refused.Status);
     Equal("키가 맞지 않습니다.", Str(refused.Json));
-    Equal(401, h.Call("GET", "/reports", key: false).Status);
-    Equal(200, h.Call("GET", "/reports", key: false, admin: Harness.Admin).Status);
+    Equal(401, h.Call("GET", "/", key: false).Status);
+    Equal(200, h.Call("GET", "/", key: false, admin: Harness.Admin).Status);
     Equal(501, h.Call("PATCH", "/health", key: false).Status, "unknown method");
-});
-
-Check("report round trip and triage", () =>
-{
-    using var h = new Harness();
-    byte[] logs = [.. Enumerable.Range(0, 256).SelectMany(_ => Enumerable.Range(0, 50).Select(index => (byte)index)), .. "\r\n--not-a-boundary\r\n"u8.ToArray()];
-    string report = "앱 버전: 1.0.517\n[어떤 문제가 있었나요]\n한글 입력이 안 됩니다\n";
-    var sent = h.UploadReport(report, logs);
-    Equal(200, sent.Status, sent.Text);
-    string id = Str(sent.Json!["id"]);
-    string folder = Path.Combine(h.Root, "reports", id);
-    True(File.ReadAllBytes(Path.Combine(folder, "logs.zip")).SequenceEqual(logs), "logs kept byte for byte");
-    Equal(report, File.ReadAllText(Path.Combine(folder, "report.txt")));
-    var meta = J(File.ReadAllText(Path.Combine(folder, "meta.json")));
-    Equal("1.0.517|한글 입력이 안 됩니다|new", $"{Str(meta["AppVersion"])}|{Str(meta["Summary"])}|{Str(meta["Status"])}");
-    Contains("한글 입력이 안 됩니다", h.Call("GET", "/reports", key: false, admin: Harness.Admin).Text);
-    True(h.Call("GET", $"/reports/{id}/logs.zip", key: false, admin: Harness.Admin).Body.SequenceEqual(logs), "logs download");
-    Equal(303, h.Form($"/reports/{id}/update", [("status", "checking"), ("note", "IME 확인")], h.Base).Status);
-    Equal("checking", h.Server.Reports.Meta(id).Status);
-    Contains("IME 확인", h.Call("GET", "/reports?q=IME", key: false, admin: Harness.Admin).Text);
-    Equal(403, h.Form($"/reports/{id}/update", [("status", "resolved")], "http://evil.example").Status);
-    Equal(303, h.Form($"/reports/{id}/delete", [], h.Base).Status);
-    True(!Directory.Exists(folder), "deleted");
-});
-
-Check("reports analysis counts automatic problems", () =>
-{
-    using var h = new Harness();
-    string automatic = "[Terminal Notes 자동 문제 보고]\n앱 버전: v1.8.3\n[어떤 문제가 있었나요]\n자동 보고 · 비정상 종료 1 · 오류 2\n" +
-                       "문제: 비정상 종료 1 · 오류 2\n문제 이벤트: session.previous_abnormal_shutdown ×1, terminal_lifecycle_fault ×2\n";
-    foreach (string text in new[] { automatic, automatic.Replace("오류 2", "오류 1").Replace("terminal_lifecycle_fault ×2", "terminal_lifecycle_fault ×1"),
-                 "앱 버전: v1.8.2\n[어떤 문제가 있었나요]\n저장이 안 됩니다\n" })
-        Equal(200, h.UploadReport(text).Status);
-    Equal(401, h.Call("GET", "/admin/api/reports/analysis", key: false).Status, "admin only");
-    var analysis = h.AdminJson("GET", "/admin/api/reports/analysis?days=7").Json!;
-    Equal("3 2 1 3", $"{analysis["total"]} {analysis["automatic"]} {analysis["manual"]} {analysis["new"]}");
-    Equal("""[{"name":"오류","count":3},{"name":"비정상 종료","count":2}]""", analysis["problems"]!.ToJsonString(Util.Compact));
-    Equal("""{"name":"terminal_lifecycle_fault","count":3}""", analysis["events"]![0]!.ToJsonString(Util.Compact));
-    Equal("""{"name":"v1.8.3","count":2}""", analysis["versions"]![0]!.ToJsonString(Util.Compact));
-    Equal(3L, analysis["perDay"]!.AsArray().Sum(day => Long(day!["count"])));
 });
 
 Check("upload limits and size", () =>
 {
     using var h = new Harness();
-    for (int index = 0; index < 5; index++) Equal(200, h.UploadReport("[어떤 문제가 있었나요]\nx").Status);
-    Equal(429, h.UploadReport("[어떤 문제가 있었나요]\nx").Status);
-    Equal(200, h.Json("POST", "/api/skills", J("""{"name":"after-reports","title":"t","description":"d","body":"b","author":"a"}""")).Status, "skills counted apart");
+    for (int index = 0; index < 5; index++)
+        Equal(200, h.Json("POST", "/api/skills", J($$"""{"name":"limit-{{index}}","title":"t","description":"d","body":"b","author":"a"}""")).Status);
+    Equal(429, h.Json("POST", "/api/skills", J("""{"name":"limit-over","title":"t","description":"d","body":"b","author":"a"}""")).Status, "an hour's shares per address");
     // 25 MB 가 넘는 길이는 본문을 읽기 전에 거절
     using var socket = new System.Net.Sockets.TcpClient("127.0.0.1", h.Server.Port);
     var stream = socket.GetStream();
@@ -376,27 +336,12 @@ Check("admin api for the admin menu", () =>
     using var h = new Harness();
     Equal(401, h.Call("GET", "/admin/api/status", key: false).Status);
     var info = h.AdminJson("GET", "/admin/api/status").Json!;
-    Equal($"{IApi.Program.Version} 0", $"{Str(info["version"])} {info["counts"]!["reports"]}");
+    Equal($"{IApi.Program.Version} 0 0 0", $"{Str(info["version"])} {info["counts"]!["skills"]} {info["counts"]!["plugins"]} {info["counts"]!["apps"]}");
+    True(!h.Server.Functions.Any(function => function.Pattern.Contains("report", StringComparison.OrdinalIgnoreCase)), "no problem reports any more");
     True(info["settings"] is JsonArray && Str(info["runtime"]).StartsWith(".NET"), "settings and runtime");
     Equal(200, h.Call("GET", "/api/announcements").Status);
     var clients = h.AdminJson("GET", "/admin/api/status").Json!["clients"]!.AsArray();
     True(clients.Count > 0 && Str(clients[0]!["address"]) == "127.0.0.1" && clients[0]!["features"]!.AsArray().Any(feature => Str(feature) == "공지"), clients.ToJsonString());
-    byte[] logs = "zip-bytes"u8.ToArray();
-    string id = Str(h.UploadReport("앱 버전: 1.1.5\n[어떤 문제가 있었나요]\n저장이 안 됩니다\n", logs).Json!["id"]);
-    var listing = h.AdminJson("GET", "/admin/api/reports").Json!;
-    Equal("""{"new":"새 보고","checking":"확인 중","resolved":"해결"}""", listing["statuses"]!.ToJsonString(Util.Compact));
-    var first = listing["reports"]![0]!;
-    Equal($"{id}|저장이 안 됩니다|1.1.5", $"{Str(first["id"])}|{Str(first["summary"])}|{Str(first["appVersion"])}");
-    True(System.Text.RegularExpressions.Regex.IsMatch(Str(first["receivedAt"]), @"^\d{4}-\d\d-\d\dT"), "ISO time");
-    Contains("저장이 안 됩니다", Str(h.AdminJson("GET", $"/admin/api/reports/{id}").Json!["text"]));
-    var updated = h.AdminJson("PUT", $"/admin/api/reports/{id}", J("""{"status":"checking","note":"확인 중"}"""));
-    Equal("200 checking 확인 중", $"{updated.Status} {Str(updated.Json!["status"])} {Str(updated.Json["note"])}");
-    Equal(400, h.AdminJson("PUT", $"/admin/api/reports/{id}", J("""{"status":"nope"}""")).Status);
-    Equal(415, h.Call("PUT", $"/admin/api/reports/{id}", "status=resolved"u8.ToArray(), key: false, admin: Harness.Admin, contentType: "application/x-www-form-urlencoded").Status);
-    True(h.Call("GET", $"/admin/api/reports/{id}/logs.zip", key: false, admin: Harness.Admin).Body.SequenceEqual(logs), "logs");
-    Equal(200, h.AdminJson("DELETE", $"/admin/api/reports/{id}").Status);
-    var missing = h.AdminJson("GET", $"/admin/api/reports/{id}");
-    Equal("404 보고서를 찾지 못했습니다.", $"{missing.Status} {Str(missing.Json)}");
     foreach (string body in new[] { "첫 버전", "둘째 버전" })
         Equal(200, h.Json("POST", "/api/skills", J($$"""{"name":"admin-window","title":"관리 창","description":"d","body":"{{body}}","author":"editor_one"}"""), User("editor_one")).Status);
     Equal("admin-window", Str(h.AdminJson("GET", "/admin/api/skills").Json![0]!["name"]));
@@ -421,35 +366,10 @@ Check("admin lockout", () =>
     Equal(429, h.Call("GET", "/status", key: false, admin: Harness.Admin).Status);
 });
 
-Check("earlier relay files and housekeeping", () =>
-{
-    using var h = new Harness();
-    string old = Path.Combine(h.Root, "reports", "20200101-000000-0123abcd");
-    Directory.CreateDirectory(old);
-    File.WriteAllText(Path.Combine(old, "report.txt"), "[어떤 문제가 있었나요]\n오래된 보고");
-    File.WriteAllText(Path.Combine(old, "meta.json"), """{"Id": "20200101-000000-0123abcd", "ReceivedAt": "2020-01-01T00:00:00.1234567+00:00", "AppVersion": "1.0.1", "Summary": "오래된 보고", "HasLogs": false}""");
-    string kept = Path.Combine(h.Root, "reports", "20200102-000000-0123abce");
-    Util.CopyTree(old, kept);
-    File.WriteAllText(Path.Combine(kept, "meta.json"), """{"Id": "20200102-000000-0123abce", "ReceivedAt": "2020-01-01T00:00:00.1234567+00:00", "AppVersion": "1.0.1", "Summary": "오래된 보고", "HasLogs": false, "Status": "checking"}""");
-    Equal(2020, h.Server.Reports.All()[^1].ReceivedAt.Year);
-    Equal(1, h.Server.Reports.Housekeep(90, 0));
-    True(!Directory.Exists(old) && Directory.Exists(kept), "the report being checked stays");
-});
-
-Check("report times never look older", () =>
+Check("times keep their fraction of a second", () =>
 {
     foreach (var (value, micro) in new[] { ("2026-10-20T14:31:37.2427995+00:00", 242799), ("2026-10-20T14:31:37.24279+00:00", 242790), ("2026-10-20T14:31:37.5Z", 500000), ("2026-10-20T14:31:37+09:00", 0) })
         Equal(micro, (int)(Util.ParseTime(value).Ticks % TimeSpan.TicksPerSecond / 10), value);
-    using var h = new Harness();
-    string old = Path.Combine(h.Root, "reports", "20200101-000000-0123abd0");
-    Directory.CreateDirectory(old);
-    File.WriteAllText(Path.Combine(old, "report.txt"), "[어떤 문제가 있었나요]\n오래된 보고");
-    File.WriteAllText(Path.Combine(old, "meta.json"), """{"Id": "20200101-000000-0123abd0", "ReceivedAt": "2020-01-01T00:00:00.12345+00:00"}""");
-    string writing = Path.Combine(h.Root, "reports", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-0123abcf");
-    Directory.CreateDirectory(writing);
-    File.WriteAllText(Path.Combine(writing, "report.txt"), "[어떤 문제가 있었나요]\n방금 받는 중");
-    Equal(1, h.Server.Reports.Housekeep(90, 0));
-    True(!Directory.Exists(old) && Directory.Exists(writing), "a report without meta.json is dated by its id");
 });
 
 Check("skill version chosen by its author", () =>
@@ -544,7 +464,7 @@ Check("no app key takes any app", () =>
     using var http = new HttpClient();
     var skills = Harness.Send(http, $"http://127.0.0.1:{server.Port}", "GET", "/api/skills", key: false);
     Equal("200 []", $"{skills.Status} {skills.Text}");
-    Equal(401, Harness.Send(http, $"http://127.0.0.1:{server.Port}", "GET", "/reports", key: false).Status, "the admin pages still ask for the password");
+    Equal(401, Harness.Send(http, $"http://127.0.0.1:{server.Port}", "GET", "/status", key: false).Status, "the admin pages still ask for the password");
     True(new Announcements(Path.Combine(root, "bare-announcements"), []).IsEditor("anyone"), "no editors: the app decides");
 });
 
@@ -889,17 +809,12 @@ Check("a plugin follows its GitHub file", () =>
     Equal(400, h.Json("POST", "/api/plugins/source", new JsonObject { ["source"] = link }).Status);
 });
 
-Check("card excerpt and multipart parser", () =>
+Check("card excerpt", () =>
 {
     Equal("결과는 CSV로 저장한다.", SkillText.Excerpt("---\nname: x\ndescription: d\n---\n\n# 제목\n\n<!-- note -->\n---\n1. **결과는** `CSV`로 저장한다.\n- 다음"));
     Equal("code", SkillText.Excerpt("# 제목만\n\n```\ncode\n```\n"));
     Equal("", SkillText.Excerpt("# 제목만\n"));
     Equal(new string('가', 9) + "…", SkillText.Excerpt(new string('가', 200), limit: 10));
-    var (fields, files) = Util.ParseMultipart("multipart/form-data; boundary=\"x1\"",
-        [.. "--x1\r\nContent-Disposition: form-data; name=\"report\"\r\n\r\n"u8.ToArray(), 0xed, 0x95, 0x9c,
-         .. "\r\n--x1\r\nContent-Disposition: form-data; name=\"logs\"; filename=\"l.zip\"\r\n\r\n\0\r\n\u0001\r\n--x1--\r\n"u8.ToArray()]);
-    Equal("한", fields["report"]);
-    Equal("l.zip 0,13,10,1", $"{files["logs"].Name} {string.Join(",", files["logs"].Data)}");
 });
 
 Check("stop signal reaches the running server", () =>
@@ -1313,6 +1228,46 @@ Check("management window: an update replaces the program files, keeps settings.t
     }
 });
 
+Check("management window: an i-api installed from the launcher store takes over the server in the old folder (settings, start at login)", () =>
+{
+    string sandbox = Path.Combine(Path.GetTempPath(), "i-api-checks-takeover-" + Guid.NewGuid().ToString("N")[..8]);
+    string app = Path.Combine(sandbox, "Programs", "i-api"), local = Path.Combine(sandbox, "Local"), roaming = Path.Combine(sandbox, "Roaming");
+    string startup = Path.Combine(roaming, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+    string old = Path.Combine(local, "i-api");
+    Directory.CreateDirectory(startup);
+    Directory.CreateDirectory(app);
+    Directory.CreateDirectory(old);
+    foreach (string file in Directory.EnumerateFiles(AppContext.BaseDirectory))
+        if (Path.GetFileName(file).StartsWith("i-api.", StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(file).StartsWith("i-api.Checks", StringComparison.OrdinalIgnoreCase))
+            File.Copy(file, Path.Combine(app, Path.GetFileName(file)));
+    File.WriteAllText(Path.Combine(old, "i-api.exe"), "old server");
+    File.WriteAllText(Path.Combine(old, "settings.txt"), "RELAY_PORT=5099\r\nRELAY_ADMIN_PASSWORD=pw\r\nRELAY_BIND=127.0.0.1\r\n");
+    File.WriteAllText(Path.Combine(startup, "i-api.vbs"), "old", Encoding.Unicode);
+    IApi.Manager.ServerManager.FolderOverride = app;
+    IApi.Manager.ServerManager.LocalRoot = local;
+    IApi.Manager.ServerManager.StartupOverride = startup;
+    IApi.Manager.ServerManager.ChildEnvironment = new() { ["APPDATA"] = roaming, ["LOCALAPPDATA"] = local, ["ProgramData"] = Path.Combine(sandbox, "ProgramData") };
+    try
+    {
+        string? moved = IApi.Manager.ServerManager.MoveFromOldFolderAsync().GetAwaiter().GetResult();
+        Contains("옮겼습니다", moved ?? "", "moved");
+        Equal(5099, IApi.Manager.ServerManager.Port, "the port came along");
+        Equal("pw", IApi.Manager.ServerManager.AdminPassword(), "and the password");
+        True(File.ReadAllText(Path.Combine(startup, "i-api.vbs"), Encoding.Unicode).Contains(IApi.Manager.ServerManager.Exe, StringComparison.OrdinalIgnoreCase), "the start at login now starts this i-api.exe");
+        True(File.Exists(Path.Combine(old, "MOVED-TO-i-api.txt")) && File.Exists(Path.Combine(old, "i-api.exe")), "the old folder stays, with a note");
+        Equal<string?>(null, IApi.Manager.ServerManager.MoveFromOldFolderAsync().GetAwaiter().GetResult(), "only once");
+        Equal<string?>(null, IApi.Manager.ServerManager.PythonScript, "no Python relay to move either");
+    }
+    finally
+    {
+        IApi.Manager.ServerManager.FolderOverride = null;
+        IApi.Manager.ServerManager.LocalRoot = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "";
+        IApi.Manager.ServerManager.StartupOverride = null;
+        IApi.Manager.ServerManager.ChildEnvironment = [];
+        try { Directory.Delete(sandbox, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+});
+
 Check("management window: an old Python relay moves into this i-api (settings, start at login), which then starts, answers and stops", () =>
 {
     // 이 PC 의 실제 서버 · 시작 폴더 · 데이터를 건드리지 않게 모두 임시 폴더로 (서버 프로그램은 따로 도는 프로세스라 환경 변수로)
@@ -1361,7 +1316,7 @@ Check("management window: an old Python relay moves into this i-api (settings, s
     {
         try { IApi.Manager.ServerManager.HaltAsync().GetAwaiter().GetResult(); } catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
         IApi.Manager.ServerManager.FolderOverride = null;
-        IApi.Manager.ServerManager.LocalRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        IApi.Manager.ServerManager.LocalRoot = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "";
         IApi.Manager.ServerManager.StartupOverride = null;
         IApi.Manager.ServerManager.ChildEnvironment = [];
         try { Directory.Delete(sandbox, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }

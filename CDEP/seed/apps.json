@@ -68,6 +68,27 @@
         "imperformance-2.png",
         "imperformance-3.png"
       ]
+    },
+    {
+      "id": "i-api",
+      "name": "i-api",
+      "repository": "i-luncher",
+      "category": "개발",
+      "installName": "i-api",
+      "asset": "i-api-win-x64.zip",
+      "executable": "i-api.exe",
+      "arguments": "--setup",
+      "selfUpdate": true,
+      "icon": "CDEP/Desktop/Assets/i-api.ico",
+      "order": 110,
+      "description": "API 서버 • 서버 PC 관리",
+      "details": "i-luncher 마스터의 서버 목록 · 앱 사용 기록과 Terminal Notes 의 스킬 · 공지를 맡는 API 서버입니다. 서버 PC 에 설치하고 포트를 정하면 그 PC 에서 서버가 켜지고, 재부팅해도 다시 켜집니다.\n\n주요 기능\n• 맨 위의 포트 · [실행]: 이 PC 에서 서버를 켜고 로그인 자동 실행 · 방화벽까지, ⋯ 에서 다시 시작 · 멈추기 · 업데이트\n• API: API 마다 켜고 끄기, 오늘 · 30일 호출 수 · 실패 · 걸린 시간 · 날짜별 막대\n• 앱 목록: 마스터 계정의 런처에 보이는 서버 목록 (설명 · 스크린샷 · 순서)\n• 공지: Terminal Notes 의 공지\n\n서버 PC 한 대에만 설치합니다. 예전 자리(%LOCALAPPDATA%\\i-api)의 서버나 예전 Python 서버는 처음 열 때 저절로 옮깁니다.",
+      "author": "jy01.ahn",
+      "screenshots": [
+        "i-api-1.png",
+        "i-api-2.png",
+        "i-api-3.png"
+      ]
     }
   ]
 }

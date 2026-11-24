@@ -130,7 +130,8 @@ public sealed class AppCard : INotifyPropertyChanged
     public string Category => string.IsNullOrWhiteSpace(App.Category) ? "기타" : App.Category.Trim();
     public string AutomationId => "App_" + App.Id;
     public bool IsInstalled => Installed is not null;
-    public bool UpdateAvailable => Installed?.Version is { } installed && Latest?.Version is { } latest && latest > installed;
+    /// <summary>새 릴리스가 있음. 스스로 업데이트하는 앱(SelfUpdate)은 런처가 권하지 않음 (릴리스 태그가 그 앱의 번호가 아님)</summary>
+    public bool UpdateAvailable => !App.SelfUpdate && Installed?.Version is { } installed && Latest?.Version is { } latest && latest > installed;
     public bool CanInteract => !IsBusy;
     public bool IsIndeterminate => Progress is null;
     public double ProgressValue => (Progress ?? 0) * 100;
@@ -349,6 +350,7 @@ public sealed class AppCard : INotifyPropertyChanged
                 return installed is null ? "설치됨" : $"v{installed}";  // 새 버전은 오른쪽 아이콘·툴팁에
             }
             if (IsChecking) return "확인 중…";
+            if (App.SelfUpdate && Latest is not null) return "";  // 릴리스 태그는 다른 제품의 번호
             if (latest is not null) return $"v{latest}";
             if (Latest is not null) return Latest.Tag;
             if (LatestError is not null) return "확인 실패";

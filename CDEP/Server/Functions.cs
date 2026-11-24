@@ -8,7 +8,7 @@ namespace IApi;
 /// </summary>
 internal sealed partial class RelayServer
 {
-    private const string GroupServer = "서버", GroupLauncher = "i-luncher", GroupUsage = "앱 사용 기록", GroupReports = "Terminal Notes 문제 보고",
+    private const string GroupServer = "서버", GroupLauncher = "i-luncher", GroupUsage = "앱 사용 기록",
         GroupSkills = "Terminal Notes 스킬", GroupPlugins = "Terminal Notes 플러그인", GroupAnnouncements = "Terminal Notes 공지", GroupGitHub = "GitHub 중계",
         GroupEquipment = "EQ Status", GroupPages = "관리 페이지", GroupAdmin = "관리 창";
 
@@ -36,7 +36,6 @@ internal sealed partial class RelayServer
             Make("usage.summary", "launcher", GroupUsage, "GET", "/launcher/usage", "사용 기록 읽기", "재무성과(ImPerformance)가 앱별 합계를 읽음 (from · to)", UsageSummary),
 
             // Terminal Notes (앱 키)
-            Make("reports.send", "app", GroupReports, "POST", "/api/reports", "문제 보고 보내기", "Terminal Notes 의 문제 보고 (글 + 로그 ZIP)", ReportSend),
             Make("skills.list", "app", GroupSkills, "GET", "/api/skills", "스킬 목록", "스킬 스토어 목록 (비공개 스킬은 작성자에게만)",
                 request => request.Json(200, new JsonArray(Skills.All(Viewer(request)).Select(skill => (JsonNode)skill).ToArray()))),
             Make("skills.source", "app", GroupSkills, "POST", "/api/skills/source", "스킬 링크 읽기", "공유 창이 깃허브 링크의 지시를 미리 읽음", SkillSource),
@@ -69,15 +68,6 @@ internal sealed partial class RelayServer
                 request => request.Json(200, StatusData()), switchable: false),
             Make("admin.functions", "admin", GroupAdmin, "GET", "/admin/api/functions", "API 목록", "이 화면: API 마다 켜짐 · 호출 · 실패 · 걸린 시간", FunctionsList, switchable: false),
             Make("admin.functions.switch", "admin", GroupAdmin, "PUT", "/admin/api/functions/{id}", "API 켜고 끄기", "이 화면의 스위치", FunctionSwitch, switchable: false),
-            Make("admin.reports", "admin", GroupAdmin, "GET", "/admin/api/reports", "문제 보고 목록", "",
-                request => request.Json(200, new JsonObject
-                {
-                    ["statuses"] = Reports.StatusesJson(), ["reports"] = new JsonArray(Reports.All().Select(item => (JsonNode)item.ToJson()).ToArray()),
-                }), switchable: false),
-            Make("admin.reports.analysis", "admin", GroupAdmin, "GET", "/admin/api/reports/analysis", "문제 보고 분석", "최근 며칠 (?days=7)",
-                request => request.Json(200, Reports.Analysis((int)Math.Clamp(Util.AsInt(JsonValue.Create(request.QueryValue("days") ?? "7"), 7), 1, 365))), switchable: false),
-            Make("admin.report", "admin", GroupAdmin, "GET|PUT|DELETE", "/admin/api/reports/{id}", "문제 보고 읽기 · 고치기 · 지우기", "", AdminReport, switchable: false),
-            Make("admin.report.logs", "admin", GroupAdmin, "GET", "/admin/api/reports/{id}/logs.zip", "문제 보고 로그 받기", "", ReportLogs, switchable: false),
             Make("admin.skills", "admin", GroupAdmin, "GET", "/admin/api/skills", "스킬 목록 (관리)", "",
                 request => request.Json(200, new JsonArray(Skills.All().Select(skill => (JsonNode)skill).ToArray())), switchable: false),
             Make("admin.skill", "admin", GroupAdmin, "GET|DELETE", "/admin/api/skills/{name}", "스킬 읽기 · 지우기", "", AdminSkill, switchable: false),

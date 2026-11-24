@@ -236,7 +236,8 @@ public sealed class AppInstaller
 
             string installedExecutable = Path.Combine(target, executableRelative);
             var file = new FileInfo(installedExecutable);
-            string versionText = release?.Version?.ToString() ?? ReadFileVersion(installedExecutable) ?? "";
+            // 스스로 업데이트하는 앱은 릴리스 태그가 그 앱의 번호가 아님 (같은 저장소의 다른 제품): 실행 파일의 버전
+            string versionText = (app.SelfUpdate ? ReadFileVersion(installedExecutable) : null) ?? release?.Version?.ToString() ?? ReadFileVersion(installedExecutable) ?? "";
             var manifest = new InstallManifest
             {
                 AppId = app.Id,

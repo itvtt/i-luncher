@@ -12,7 +12,6 @@ namespace IApi;
 internal sealed partial class RelayServer : IDisposable
 {
     public Config Config { get; }
-    public Reports Reports { get; }
     public Skills Skills { get; }
     public Plugins Plugins { get; }
     public Announcements Announcements { get; }
@@ -39,7 +38,6 @@ internal sealed partial class RelayServer : IDisposable
     public RelayServer(Config config)
     {
         Config = config;
-        Reports = new Reports(config.ReportsDir);
         Skills = new Skills(config.SkillsDir);
         Plugins = new Plugins(config.PluginsDir);
         Announcements = new Announcements(config.AnnouncementsDir, config.Editors);

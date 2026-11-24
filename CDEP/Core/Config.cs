@@ -7,7 +7,7 @@ namespace IApi;
 internal sealed class Options
 {
     public List<string> Sets { get; } = [];
-    public string? SettingsFile, Port, Bind, DataDir, SkillsDir;
+    public string? SettingsFile, Port, Bind, SkillsDir;
 }
 
 /// <summary>
@@ -59,15 +59,12 @@ internal sealed class Config
     public string BindSource { get; }
     public string IngestKey { get; set; }
     public string AdminPassword { get; set; }
-    public string ReportsDir { get; }
     public string SkillsDir { get; }
     public string PluginsDir { get; }
     public string AnnouncementsDir { get; }
     public string BackupDir { get; }
     public int BackupKeep { get; }
     public int UploadsPerHour { get; set; }
-    public int RetentionDays { get; }
-    public int ReportsMaxMb { get; }
     public string WebhookUrl { get; }
     public string PublicUrl { get; }
     public string TlsCert { get; }
@@ -140,7 +137,6 @@ internal sealed class Config
         BindSource = options.Bind is not null ? "--bind" : Text("RELAY_BIND").Length > 0 ? "RELAY_BIND" : "RELAY_HOST";
         IngestKey = Text("RELAY_INGEST_KEY");
         AdminPassword = Text("RELAY_ADMIN_PASSWORD");
-        ReportsDir = Directory("RELAY_DATA_DIR", "reports", options.DataDir);
         SkillsDir = Directory("RELAY_SKILLS_DIR", "skills", options.SkillsDir);
         PluginsDir = Directory("RELAY_PLUGINS_DIR", "plugins", null);
         AnnouncementsDir = Directory("RELAY_ANNOUNCEMENTS_DIR", "announcements", null);
@@ -148,8 +144,6 @@ internal sealed class Config
         BackupKeep = Math.Max(1, Number("RELAY_BACKUP_KEEP", 30));
         // 주소 · 시간마다 보고와 스킬 공유를 따로 셈. 한 NAT · 프록시 뒤의 사무실은 주소를 나눠 쓰므로 넉넉하게
         UploadsPerHour = Number("RELAY_UPLOADS_PER_HOUR", 60);
-        RetentionDays = Number("RELAY_REPORT_RETENTION_DAYS", 90);
-        ReportsMaxMb = Number("RELAY_REPORTS_MAX_MB", 2048);
         WebhookUrl = Text("RELAY_WEBHOOK_URL");
         PublicUrl = Text("RELAY_PUBLIC_URL").TrimEnd('/') is { Length: > 0 } publicUrl ? publicUrl : $"http://{(Host.Length > 0 ? Host : "localhost")}:{Port}";
         TlsCert = Text("RELAY_TLS_CERT");
@@ -266,8 +260,7 @@ internal sealed class Config
             ? $"— 주의: 서버 폴더({ProgramFolder}) 안이라 그 폴더를 바꾸거나 지우면 스킬·공지가 함께 사라집니다. 설정의 RELAY_DATA_ROOT를 비우거나 다른 폴더로 쓰세요."
             : "(서버 폴더를 바꾸거나 지워도 남습니다)"),
         $"자동 백업: {BackupDir}  (스킬·플러그인·공지·앱 목록 ZIP, 시작할 때와 하루에 한 번 바뀐 것이 있으면, {BackupKeep}개 보관 · 복원: i-api.exe --restore-backup)",
-        $"보고서 폴더: {ReportsDir}  (보관 {(RetentionDays != 0 ? RetentionDays.ToString() : "무제한")}일, 최대 {ReportsMaxMb} MB)",
-        $"올리기 제한: 주소당 시간당 보고 {UploadsPerHour}건 · 스킬 공유 {UploadsPerHour}건",
+        $"올리기 제한: 주소당 시간당 스킬 공유 {UploadsPerHour}건",
         $"스킬 폴더: {SkillsDir}",
         $"플러그인 폴더: {PluginsDir}  (올리기: 마스터 계정)",
         $"공지 폴더: {AnnouncementsDir}",

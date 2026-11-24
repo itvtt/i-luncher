@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace IApi;
 
-/// <summary>브라우저 관리 페이지 (관리자 비밀번호): /  /reports  /skills  /announcements  /apps  /status</summary>
+/// <summary>브라우저 관리 페이지 (관리자 비밀번호): / (상태)  /skills  /announcements  /apps</summary>
 internal static class AdminPages
 {
     private static string E(string? value) => Util.HtmlEscape(value);
@@ -19,54 +19,12 @@ internal static class AdminPages
         a{color:#E5C07B} table{border-collapse:collapse;width:100%} th,td{border-bottom:1px solid #2C2C2C;padding:8px;text-align:left;vertical-align:top}
         th{color:#8C8C8C;font-weight:600} small,.muted{color:#8C8C8C}
         pre{white-space:pre-wrap;background:#101010;border:1px solid #2C2C2C;border-radius:6px;padding:14px;overflow-x:auto}
-        .badge{display:inline-block;border:1px solid #3A3A3A;border-radius:10px;padding:1px 8px;font-size:12px}
-        .badge.new{border-color:#E5C07B;color:#E5C07B} .badge.checking{color:#F2F2F2} .badge.resolved{color:#8C8C8C}
         form.inline{display:inline} button,input,select,textarea{font:inherit;background:#222;color:#F2F2F2;border:1px solid #3A3A3A;border-radius:6px;padding:5px 10px}
         button:hover{border-color:#E5C07B} textarea{width:100%;box-sizing:border-box} .cards{display:flex;gap:14px;flex-wrap:wrap}
         .card{background:#1C1C1C;border:1px solid #2C2C2C;border-radius:8px;padding:12px 16px;min-width:150px} .card b{font-size:22px;color:#E5C07B}
-        </style></head><body><header><b>API 서버</b><a href="/reports">문제 보고</a><a href="/skills">스킬</a>
-        <a href="/announcements">공지</a><a href="/apps">i-luncher</a><a href="/status">상태</a></header><main><h1>{{E(title)}}</h1>{{body}}</main></body></html>
+        </style></head><body><header><b>API 서버</b><a href="/">상태</a><a href="/skills">스킬</a>
+        <a href="/announcements">공지</a><a href="/apps">i-luncher</a></header><main><h1>{{E(title)}}</h1>{{body}}</main></body></html>
         """;
-
-    private static string Badge(string status) => $"<span class=\"badge {E(status)}\">{E(Reports.Label(status))}</span>";
-
-    public static (string Title, string Body) ReportsPage(RelayServer server, Request request)
-    {
-        string status = request.QueryValue("status") ?? "", text = (request.QueryValue("q") ?? "").Trim();
-        var reports = server.Reports.All();
-        var shown = reports.Where(item => (status.Length == 0 || item.Status == status) &&
-            (text.Length == 0 || (item.Summary + " " + item.AppVersion + " " + item.Note).Contains(text, StringComparison.OrdinalIgnoreCase))).ToList();
-        string filters = string.Join(" · ", new[] { $"<a href=\"/reports\">전체 {reports.Count}</a>" }
-            .Concat(Reports.Statuses.Select(item => $"<a href=\"/reports?status={item.Key}\">{item.Label} {reports.Count(report => report.Status == item.Key)}</a>")));
-        string rows = string.Concat(shown.Select(Row));
-        string search = $"<form method=\"get\" action=\"/reports\"><input type=\"hidden\" name=\"status\" value=\"{E(status)}\">" +
-                        $"<input name=\"q\" value=\"{E(text)}\" placeholder=\"문제·버전·메모 검색\"> <button>찾기</button></form>";
-        string table = rows.Length > 0 ? $"<table><tr><th>받은 시각</th><th>버전</th><th>문제</th><th>상태</th><th>로그</th></tr>{rows}</table>"
-            : "<p class='muted'>보고서가 없습니다.</p>";
-        return ("문제 보고", $"<p>{filters}</p>{search}{table}");
-    }
-
-    private static string Row(ReportInfo item)
-    {
-        string note = item.Note.Length > 0 ? $"<br><small>{E(item.Note.Length > 80 ? item.Note[..80] : item.Note)}</small>" : "";
-        string logs = item.HasLogs ? $"<a href=\"/reports/{item.Id}/logs.zip\">ZIP</a>" : "—";
-        return $"<tr><td>{E(Util.LocalText(item.ReceivedAt))}</td><td>{E(item.AppVersion)}</td>" +
-               $"<td><a href=\"/reports/{item.Id}\">{E(item.Summary)}</a>{note}</td><td>{Badge(item.Status)}</td><td>{logs}</td></tr>";
-    }
-
-    public static (string, string) ReportPage(RelayServer server, string reportId)
-    {
-        var item = server.Reports.Meta(reportId);
-        string options = string.Concat(Reports.Statuses.Select(status => $"<option value=\"{status.Key}\"{(status.Key == item.Status ? " selected" : "")}>{status.Label}</option>"));
-        string logs = item.HasLogs ? $" · <a href=\"/reports/{item.Id}/logs.zip\">로그 ZIP 내려받기</a>" : "";
-        string body = $"<p><a href=\"/reports\">← 목록</a> · 받은 시각 {E(Util.LocalText(item.ReceivedAt))} · 버전 {E(item.AppVersion.Length > 0 ? item.AppVersion : "—")} · " +
-                      $"보낸 곳 {E(item.RemoteAddress.Length > 0 ? item.RemoteAddress : "—")} · {Badge(item.Status)}{logs}</p>" +
-                      $"<form method=\"post\" action=\"/reports/{item.Id}/update\"><select name=\"status\">{options}</select> " +
-                      $"<input name=\"note\" value=\"{E(item.Note)}\" placeholder=\"메모(원인·조치)\" size=\"60\"> <button>저장</button></form>" +
-                      $"<pre>{E(server.Reports.Text(reportId))}</pre>" +
-                      $"<form class=\"inline\" method=\"post\" action=\"/reports/{item.Id}/delete\"><button>이 보고서 삭제</button></form>";
-        return ("보고서 " + reportId, body);
-    }
 
     public static (string, string) SkillsPage(RelayServer server)
     {
@@ -143,11 +101,10 @@ internal static class AdminPages
     public static (string, string) StatusPage(RelayServer server)
     {
         var config = server.Config;
-        var reports = server.Reports.All();
         string cards = string.Concat(new (string Label, string Value)[]
         {
-            ("문제 보고", reports.Count.ToString()), ("새 보고", reports.Count(item => item.Status == "new").ToString()),
-            ("공유된 스킬", server.Skills.All().Count.ToString()), ("보고서 용량", $"{Util.FolderSize(config.ReportsDir) / 1048576.0:0.0} MB"),
+            ("공유된 스킬", server.Skills.All().Count.ToString()), ("플러그인", server.Plugins.All().Count.ToString()),
+            ("서버 목록 앱", ((server.Launcher.Catalog()["apps"] as JsonArray)?.Count ?? 0).ToString()),
         }.Select(card => $"<div class=\"card\"><small>{card.Label}</small><br><b>{card.Value}</b></div>"));
         var uptime = Util.Now() - server.Started;
         string lines = string.Concat(config.Summary().Append(server.Equipment.State()).Append(Setup.FirewallText(config)).Select(line => $"<li>{E(line)}</li>"));
@@ -189,18 +146,6 @@ internal sealed partial class RelayServer
                 request.Redirect("/apps");
                 return;
             }
-            if (parts is ["reports", var reportId, "update"])
-            {
-                Reports.Update(reportId, form.TryGetValue("status", out var status) ? status : null, form.TryGetValue("note", out var note) ? note : null);
-                request.Redirect($"/reports/{reportId}");
-                return;
-            }
-            if (parts is ["reports", var deleted, "delete"])
-            {
-                Reports.Delete(deleted);
-                request.Redirect("/reports");
-                return;
-            }
             if (parts is ["skills", var skill, "delete"])
             {
                 Skills.Delete(skill);
@@ -229,12 +174,10 @@ internal sealed partial class RelayServer
         if (request.Method != "GET") throw new RelayError(405, "지원하지 않는 요청입니다.");
         (string Title, string Body)? page = parts switch
         {
-            [] or ["reports"] => AdminPages.ReportsPage(this, request),
-            ["reports", var id] => AdminPages.ReportPage(this, id),
             ["skills"] => AdminPages.SkillsPage(this),
             ["skills", var name] => AdminPages.SkillPage(this, name),
             ["announcements"] => AdminPages.AnnouncementsPage(this),
-            ["status"] => AdminPages.StatusPage(this),
+            [] or ["status"] => AdminPages.StatusPage(this),
             ["apps"] => AdminPages.AppsPage(this),
             _ => null,
         };
@@ -245,11 +188,6 @@ internal sealed partial class RelayServer
         }
         switch (parts)
         {
-            case ["reports", var id, "logs.zip"]:
-                string logs = Path.Combine(Reports.Folder(id), "logs.zip");
-                if (!File.Exists(logs)) throw new RelayError(404, "로그가 없습니다.");
-                request.File(logs, "application/zip", $"TerminalNotes-{id}.zip");
-                return;
             case ["skills", var name, "SKILL.md"]:
                 request.Text(200, Util.Text(Skills.Version(name)["content"]));
                 return;
