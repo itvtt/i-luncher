@@ -16,6 +16,8 @@
 *.lnk
 **/out/
 **/AGENTS.md
+# 보내기용 i-api.exe (build\Publish-IApiExe.ps1 이 만듦, git 에는 넣지 않음)
+CDEP/exe/
 
 # Local credentials and signing material
 .env

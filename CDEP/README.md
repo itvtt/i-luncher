@@ -65,7 +65,7 @@ NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 릴리스(`bui
 
 ## 서버 PC 에서 실행
 
-1. 서버 PC 에서 마스터 계정의 런처 **스토어 → i-api → 받기** 하고 엽니다 (`%LOCALAPPDATA%\Programs\i-api`, 서버 목록 항목은 `seed\apps.json` 의 `i-api`: `selfUpdate` 라 런처는 설치 · 실행만). 런처가 없으면 릴리스의 `i-api-win-x64.zip` 을 풀고 `i-api.exe` 를 실행합니다. 예전 자리(`%LOCALAPPDATA%\i-api`)의 서버는 처음 열 때 넘겨받습니다. 관리 창에서 **포트를 넣어 [실행]** (포트는 기본값이 없어 꼭 정함): 그 PC 에서 서버가 켜지고, 로그인 자동 실행(`i-api.vbs`)으로 재부팅해도 다시 켜지며, 방화벽에 그 포트를 엽니다. 예전 Python 서버(`relay.py`)는 이때 저절로 옮겨집니다 (SETTINGS → `settings.txt` · 자동 실행, 러너 로그온 작업은 서버가 처음 시작할 때).
+1. 서버 PC 에서 마스터 계정의 런처 **스토어 → i-api → 받기** 하고 엽니다 (`%LOCALAPPDATA%\Programs\i-api`, 서버 목록 항목은 `seed\apps.json` 의 `i-api`: `selfUpdate` 라 런처는 설치 · 실행만). 런처가 없으면 릴리스의 `i-api-win-x64.zip` 을 풀고 `i-api.exe` 를 실행합니다. 릴리스도 없으면 **파일 하나짜리 `CDEP\exe\i-api.exe`** 를 서버 PC 의 빈 폴더(예: `%LOCALAPPDATA%\Programs\i-api`)에 복사해 실행합니다 (`build\Publish-IApiExe.ps1` 이 만듦, 보내기에 같이 가고 git 에는 안 들어감, .NET 10 데스크톱 런타임 필요, `-SelfContained` 면 필요 없음. 이 파일로 [업데이트]하려면 `settings.txt` 에 `RELAY_UPDATE_REPOSITORY`). 예전 자리(`%LOCALAPPDATA%\i-api`)의 서버는 처음 열 때 넘겨받습니다. 관리 창에서 **포트를 넣어 [실행]** (포트는 기본값이 없어 꼭 정함): 그 PC 에서 서버가 켜지고, 로그인 자동 실행(`i-api.vbs`)으로 재부팅해도 다시 켜지며, 방화벽에 그 포트를 엽니다. 예전 Python 서버(`relay.py`)는 이때 저절로 옮겨집니다 (SETTINGS → `settings.txt` · 자동 실행, 러너 로그온 작업은 서버가 처음 시작할 때).
 2. 설정은 exe 옆 `settings.txt` (관리 창 맨 위 ⋯ → 설정 파일 열기): `RELAY_ADMIN_PASSWORD`, GitHub Enterprise 면 `RELAY_GITHUB_API=https://<Enterprise 호스트>/api/v3` · `RELAY_GITHUB_TOKEN`(읽기 전용). 고친 뒤 [다시 시작].
 3. 방화벽은 [실행]할 때 엽니다 (관리 창 아래에 "규칙 없음"이 보이면 [실행]을 다시 누르고 Windows 확인 창에서 "예". 자세한 것은 [`package\README.md`](package/README.md)).
 4. 데이터(앱 목록 · 스크린샷 · 사용 기록 · 공지 · 스킬 · API 기록 · 백업)는 `C:\ProgramData\i-api-data` 에 따로 있습니다. 서버 PC 를 옮길 때는 이 폴더를 새 서버 PC 에 그대로 복사합니다.

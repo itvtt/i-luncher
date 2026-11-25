@@ -24,7 +24,7 @@
     <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
     <!-- Windows 전용 기능(러너 · 방화벽 · 자동 실행)은 OperatingSystem.IsWindows() 로 감쌈. 컨테이너(Linux)에서도 서버는 돔 -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
-    <DefaultItemExcludes>$(DefaultItemExcludes);seed\**;out\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);seed\**;out\**;exe\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
