@@ -89,6 +89,30 @@
         "i-api-2.png",
         "i-api-3.png"
       ]
+    },
+    {
+      "id": "para",
+      "name": "PARA",
+      "repository": "PARA",
+      "category": "업무",
+      "installName": "PARA",
+      "order": 120,
+      "description": "칸반 • 채널 • 달력 • 코드 폴더 트리",
+      "details": "할 일 칸반과 채널(대화), 달력 · 메모 · 마인드맵, 코드 폴더 트리를 한 창에서 씁니다. 여러 PC 가 MySQL 서버를 함께 쓰거나 이 PC 에만 저장합니다.\n\n주요 기능\n• 칸반: Project · Area · Resource · Archive 로 나누고 카드마다 파일 폴더\n• 채널: 태스크마다 대화 · 첨부, 보관함에서 되살리기\n• 달력 · 메모 · 알림 · 마인드맵 · OneNote 열기\n• 코드: 코드 폴더를 트리로 보고 끌어 놓아 옮기기 · 되돌리기, VS Code 의 작업 폴더는 그대로 두고 필요한 폴더만 올리고 내리기\n• 처음 실행할 때 데이터 · 코드 폴더와 저장 방식(이 PC / MySQL)을 정함, 제목 표시줄 ⚙ 에서 바꾸기\n\n트레이에서 계속 실행되고 Windows 시작 때 자동 실행됩니다.",
+      "author": "jy01.ahn",
+      "screenshots": []
+    },
+    {
+      "id": "wide",
+      "name": "WIDE",
+      "repository": "WIDE",
+      "category": "도구",
+      "installName": "WIDE",
+      "order": 130,
+      "description": "와이드 모니터 대시보드 • 메모 • 할 일",
+      "details": "가로로 긴 보조 모니터(1920×480)에 띄워 두는 대시보드입니다. 화면을 넘기며 메모 · 할 일 · 서비스 현황 · 코드 조각을 봅니다.\n\n주요 기능\n• 메모: 색 서식이 있는 메모 여러 개\n• 할 일: 대기 · 진행 · 완료 칸반\n• 서비스 현황: 서비스마다 주기 · 지연을 색으로, 실행 단추\n• 코드 조각: 30칸에 자주 쓰는 코드 (구문 강조)\n• 모니터 밝기 조절, Ctrl+Alt+K 로 화면 가리기\n\n접속 정보(DB · 실행 서버)는 빌드 설정으로 들어갑니다.",
+      "author": "jy01.ahn",
+      "screenshots": []
     }
   ]
 }

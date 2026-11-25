@@ -54,7 +54,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`C:\i-luncher\my-apps.json`) | 바로 |
 
 - **모두에게 나눠 주는 앱은 기본 목록으로만** 관리합니다. 그 밖의 앱은 각 사용자가 내 앱으로 더해 씁니다.
-- 지금 목록: 기본 = DeskCal · Compare · FastCopy · DiskScan · Capture · MemoPad. 서버 = Terminal Notes · EQ Status · File Shared · ImPerformance.
+- 지금 목록: 기본 = DeskCal · Compare · FastCopy · DiskScan · Capture · MemoPad. 서버 = Terminal Notes · EQ Status · File Shared · ImPerformance · i-api · PARA · WIDE.
 - `basic-apps.json` 의 `repository` 는 **저장소 이름만** 씁니다. 호스트 · 소유자는 런처 빌드 설정 `LAUNCHER_REPOSITORY` 와 같게 붙습니다.
 - 스토어 내용(한 줄 설명 · 상세 설명 · 개발자 · 스크린샷 3장 이상)은 원본 파일의 값을 그대로 씁니다. 지어내지 않습니다.
 
