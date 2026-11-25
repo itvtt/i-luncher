@@ -171,7 +171,7 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `C:\i-luncher\c
 | 폴더 | 파일 | 지우면 |
 |---|---|---|
 | `C:\i-luncher` (사용자 데이터) | `settings.json` (자동 업데이트, 일반/마스터 전환, 토큰) · `favorites.json` (즐겨찾기 · 내 PC 프로그램 · 웹사이트) · `my-apps.json` (내 앱) · `removed-apps.json` (목록에서 뺀 앱) · `custom-icons\` (고른 아이콘) · `my-media\` (내 앱 그림) | 되살릴 수 없음 |
-| `%LOCALAPPDATA%\i-luncher` (캐시) | `basic-apps-cache.json` · `catalog-cache.json` (받아 둔 목록) · `notice-state.json` (읽은 공지) · `icons\` · `screenshots\` · `site-icons\` · `downloads\` | 다시 받음 |
+| `%LOCALAPPDATA%\i-luncher` (캐시) | `basic-apps-cache.json` · `catalog-cache.json` (받아 둔 목록) · `notice-state.json` (읽은 공지) · `icons\` · `screenshots\` · `site-icons\` · `downloads\` · `error.log` (처리하지 못한 오류, 런처는 꺼지지 않음) | 다시 받음 |
 
 - 즐겨찾기 · 내 앱은 고른 아이콘을 `C:\i-luncher\custom-icons\…` 전체 경로로 가리키므로 같은 자리에 복사해야 아이콘이 그대로 보입니다.
 - **토큰은 옮겨지지 않습니다**: Windows 계정 · PC 마다 암호화(DPAPI)라 새 PC 에서는 풀리지 않고 무시됩니다. 비공개 프로젝트는 우클릭 → 토큰… 으로 다시 넣습니다 (마스터 PC 는 git 로그인을 자동으로 다시 씀).

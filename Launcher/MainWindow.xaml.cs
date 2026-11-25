@@ -159,7 +159,7 @@ public partial class MainWindow : Window
         if (_settings.NoticesRepository is not { } repository) return null;
         string branch = "main";
         try { branch = (await _github.GetRepositoryAsync(repository)).DefaultBranch; }
-        catch (GitHubApiException) { }
+        catch (Exception error) { Debug.WriteLine("Notices repository: " + error.Message); }  // 못 읽어도 main 으로 엶
         return $"{repository.WebUrl}/edit/{Uri.EscapeDataString(branch)}/{string.Join('/', _settings.NoticesPath.Split('/').Select(Uri.EscapeDataString))}";
     }
 
@@ -439,7 +439,7 @@ public partial class MainWindow : Window
             {
                 warning = $"기본 목록({_settings.BasicAppsPath}) 형식 오류: {error.Message}";
             }
-            catch (Exception error) when (error is GitHubApiException or System.Net.Http.HttpRequestException or OperationCanceledException or IOException or FormatException)
+            catch (Exception error)  // 공지 저장소가 없거나 닿지 않거나 이상하게 답함: 보관한 목록 (런처는 계속)
             {
                 Debug.WriteLine("Basic list from GitHub failed: " + error.Message);
             }
@@ -1665,6 +1665,9 @@ public partial class MainWindow : Window
         ErrorPanel.Visibility = Visibility.Visible;
     }
 
+    /// <summary>처리하지 못한 오류 (App 의 안전망): 런처는 계속 돌고 오류 줄에만 보임</summary>
+    internal void ShowUnexpectedError(Exception error) => ShowError("오류: " + error.Message);
+
     private void HideError() => ErrorPanel.Visibility = Visibility.Collapsed;
     private void DismissErrorButton_Click(object sender, RoutedEventArgs e) => HideError();
 
@@ -1677,7 +1680,10 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 공지 ─────────────────────────
 
-    /// <summary>공지: 일반 · 마스터 모두 GitHub 공지 저장소에서 (시작 · 새로고침 때)</summary>
+    /// <summary>
+    /// 공지: 일반 · 마스터 모두 GitHub 공지 저장소에서 (시작 · 새로고침 때).
+    /// 공지는 덤: 저장소가 없거나 · 닿지 않거나 · 이상하게 답해도 어떤 오류든 "공지 없음"(보관한 공지)으로 넘김. 런처는 계속 돎
+    /// </summary>
     private async Task RefreshNoticesAsync()
     {
         try
@@ -1687,8 +1693,9 @@ public partial class MainWindow : Window
             _noticeRefreshFailed = false;
             ShowNotices(notices);
         }
-        catch (Exception error) when (error is GitHubApiException or IOException or OperationCanceledException or FormatException or System.Net.Http.HttpRequestException or System.Text.Json.JsonException)
+        catch (Exception error)
         {
+            Debug.WriteLine("Notices failed: " + error.Message);
             _noticeRefreshFailed = true;
             ShowNotices(_notices.CachedNotices);
         }

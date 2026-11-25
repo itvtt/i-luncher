@@ -979,6 +979,27 @@ try
         Equal(notices.Single(n => n.Title == "첫 공지").Id, edited[0].Id, "same title, same id");
         Assert(notices.Single(n => n.Title == "첫 공지").Revision != edited[0].Revision, "edited body changes the revision");
     });
+    await Check("notices repository missing or answering oddly: GitHub errors only, never a crash", async () =>
+    {
+        // 공지 파일 404 → 저장소 확인. 저장소 응답이 GitHub 와 조금 달라도(permissions: null, size: null, 배열) 런처가 죽으면 안 됨
+        string repositoryBody = "{\"name\":\"i-luncher-notices\",\"permissions\":null,\"size\":null,\"private\":null}";
+        using var odd = new GitHubClient(_ => null, "checks", new StubHandler(request => request.RequestUri!.AbsolutePath.Contains("/contents/")
+            ? (HttpStatusCode.NotFound, "{\"message\":\"Not Found\"}") : (HttpStatusCode.OK, repositoryBody)));
+        var noticesRepository = GitHubRepository.Parse("https://ghe.test/team/i-luncher-notices")!;
+        Assert(await odd.GetFileAsync(noticesRepository, "공지.txt", null) is null, "permissions: null → repository readable, no notice file");
+        foreach (string body in new[] { "[]", "\"text\"", "null" })
+        {
+            repositoryBody = body;
+            try
+            {
+                await odd.GetFileAsync(noticesRepository, "공지.txt", null);
+                throw new Exception("expected a GitHub API error for " + body);
+            }
+            catch (GitHubApiException) { }
+        }
+        repositoryBody = "[{\"tag_name\":null,\"draft\":null,\"assets\":{\"size\":\"x\"}}]";
+        Assert(await odd.GetLatestReleaseAsync(noticesRepository, includePrerelease: true) is { Version: null }, "odd release list → release without a version");
+    });
 
     Console.WriteLine("Settings");
     await CheckSync("build settings, catalog defaults and DPAPI tokens", () =>
@@ -1177,6 +1198,16 @@ sealed class FakeApiServer : HttpMessageHandler
 }
 
 /// <summary>GitHub REST API 의 필요한 부분만 흉내 내는 HTTP 처리기 (호스트 ghe.test)</summary>
+/// <summary>요청마다 정한 상태 · 본문을 돌려주는 가짜 서버 (GitHub 와 다르게 답하는 서버 흉내)</summary>
+sealed class StubHandler(Func<HttpRequestMessage, (HttpStatusCode Status, string Body)> answer) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var (status, body) = answer(request);
+        return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+    }
+}
+
 sealed class FakeGitHub : HttpMessageHandler
 {
     public readonly List<string> Requests = [];

@@ -43,6 +43,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 - 저장소는 빌드 설정 `NOTICES_REPOSITORY`(비우면 `i-luncher-notices`, 이름만이면 런처 저장소와 같은 호스트 · 소유자), 파일은 `NOTICES_PATH`(비우면 `공지.txt`).
 - 제목이 같으면 같은 공지이고, 본문을 고치면 읽은 사람에게도 다시 알립니다. 읽지 않은 공지는 목록 위에 띠로 보입니다.
 - 새 환경에서는 같은 이름의 **공개** 저장소를 만들고 `공지.txt` 를 넣습니다 (비워 두면 공지 없음).
+- 공지 저장소가 아직 없거나 닿지 않거나 GitHub 와 다르게 답해도 런처는 그대로 돌고 공지만 비어 있습니다 (기본 목록은 보관한 목록 · 런처에 든 목록). 처리하지 못한 오류가 생겨도 런처는 꺼지지 않고 창 위 오류 줄에 보이며 `%LOCALAPPDATA%\i-luncher\error.log` 에 남습니다.
 - 마스터를 더하거나 빼려면 런처 빌드 설정 `MASTER_USERS` 를 고쳐 런처를 릴리스합니다. 설치 파일을 다시 나눠 주지 않습니다 (런처가 스스로 업데이트).
 
 ## 2. 앱 목록
@@ -161,7 +162,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | `favorites.json` | 즐겨찾기 · 내 PC 프로그램 · 웹사이트 |
 | `custom-icons\` · `my-media\` | 고른 아이콘 · 내 앱 그림 (즐겨찾기 · 내 앱이 전체 경로로 가리킴) |
 
-캐시는 `%LOCALAPPDATA%\i-luncher` 에 둡니다 (지워도 다시 받음): `basic-apps-cache.json` · `catalog-cache.json` (받아 둔 기본 · 서버 목록), `notice-state.json`, `icons\` · `screenshots\` (`screenshots\basic\` = 기본 목록 스크린샷) · `site-icons\` · `downloads\`. 토큰은 PC · 계정마다 암호화라 새 PC 로 옮겨지지 않습니다 (다시 넣음).
+캐시는 `%LOCALAPPDATA%\i-luncher` 에 둡니다 (지워도 다시 받음): `basic-apps-cache.json` · `catalog-cache.json` (받아 둔 기본 · 서버 목록), `notice-state.json`, `icons\` · `screenshots\` (`screenshots\basic\` = 기본 목록 스크린샷) · `site-icons\` · `downloads\` · `error.log` (처리하지 못한 오류). 토큰은 PC · 계정마다 암호화라 새 PC 로 옮겨지지 않습니다 (다시 넣음).
 
 설정 → **재설정**: **목록** = `removed-apps.json` · `basic-apps-cache.json` · `catalog-cache.json`, **전체** = 위 사용자 데이터와 캐시 모두. 런처를 다시 시작하며 지우고, 설치한 앱은 그대로 둡니다 (README "설정 · 저장 위치").
 

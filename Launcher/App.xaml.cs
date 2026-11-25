@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using ILauncher.Services;
 
 namespace ILauncher;
@@ -25,6 +26,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // 안전망: 처리하지 못한 오류가 있어도 런처를 끄지 않음 (창의 오류 줄에 보이고 %LOCALAPPDATA%\i-luncher\error.log 에 남김)
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        TaskScheduler.UnobservedTaskException += (_, unobserved) => { LogError(unobserved.Exception); unobserved.SetObserved(); };
+        AppDomain.CurrentDomain.UnhandledException += (_, fatal) => { if (fatal.ExceptionObject is Exception error) LogError(error); };
         string[] args = e.Args;
         int uninstall = Array.FindIndex(args, arg => string.Equals(arg, "--uninstall", StringComparison.OrdinalIgnoreCase));
         if (uninstall >= 0)
@@ -74,6 +79,28 @@ public partial class App : Application
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
         _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal, (_, _) => Dispatcher.BeginInvoke(window.ShowFromTray), null, -1, executeOnlyOnce: false);
         window.Show();
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs args)
+    {
+        LogError(args.Exception);
+        // 창이 뜨기 전(시작 중)의 오류는 그대로 끝냄: 창 없이 남아 다음 실행을 막지 않게
+        if (MainWindow is not ILauncher.MainWindow { IsLoaded: true } window) return;
+        args.Handled = true;
+        window.ShowUnexpectedError(args.Exception);
+    }
+
+    /// <summary>처리하지 못한 오류를 %LOCALAPPDATA%\i-luncher\error.log 에 남김 (1 MB 를 넘으면 새로 시작)</summary>
+    internal static void LogError(Exception error)
+    {
+        try
+        {
+            Directory.CreateDirectory(DataFolder.Cache);
+            string path = Path.Combine(DataFolder.Cache, "error.log");
+            if (File.Exists(path) && new FileInfo(path).Length > 1_000_000) File.Delete(path);
+            File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] v{typeof(App).Assembly.GetName().Version} {error}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (Exception) { }  // 기록하지 못해도 런처는 계속
     }
 
     private static string? ArgumentAfter(string[] args, string name)

@@ -154,16 +154,18 @@ public sealed class GitHubClient : IDisposable
     {
         using var document = await SendJsonAsync(Request(HttpMethod.Get, repository, RepositoryUrl(repository)), repository, cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new GitHubApiException(0, $"{repository.Host}의 응답이 GitHub API 형식이 아닙니다. 주소를 확인하세요.");
         return new GitHubRepositoryInfo(
             String(root, "name") ?? repository.Name,
             String(root, "full_name") ?? repository.FullName,
             String(root, "description") ?? "",
             String(root, "default_branch") ?? "main",
             String(root, "html_url") ?? repository.WebUrl,
-            root.TryGetProperty("private", out var isPrivate) && isPrivate.ValueKind == JsonValueKind.True,
-            root.TryGetProperty("permissions", out var permissions) && permissions.TryGetProperty("push", out var push)
-                ? push.ValueKind == JsonValueKind.True : null,
-            root.TryGetProperty("size", out var size) && size.TryGetInt64(out long kb) ? kb : 0);
+            True(root, "private"),
+            Property(root, "permissions") is { ValueKind: JsonValueKind.Object } permissions && Property(permissions, "push") is not null
+                ? True(permissions, "push") : null,
+            Number(root, "size"));
     }
 
     /// <summary>저장소 파일 목록 (Git Trees API). recursive 면 하위 폴더까지. 너무 큰 저장소는 GitHub 가 잘라서 줌 (Truncated)</summary>
@@ -174,15 +176,14 @@ public sealed class GitHubClient : IDisposable
         using var document = await SendJsonAsync(Request(HttpMethod.Get, repository, url), repository, cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
         var entries = new List<GitHubTreeEntry>();
-        if (root.TryGetProperty("tree", out var tree) && tree.ValueKind == JsonValueKind.Array)
-            foreach (var item in tree.EnumerateArray())
+        if (Property(root, "tree") is { } tree)
+            foreach (var item in Items(tree))
             {
                 string? path = String(item, "path");
                 if (path is null) continue;
-                entries.Add(new GitHubTreeEntry(path, String(item, "type") == "blob",
-                    item.TryGetProperty("size", out var size) && size.TryGetInt64(out long length) ? length : 0));
+                entries.Add(new GitHubTreeEntry(path, String(item, "type") == "blob", Number(item, "size")));
             }
-        return (entries, root.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True);
+        return (entries, True(root, "truncated"));
     }
 
     /// <summary>저장소 파일의 원래 바이트 (Contents API raw). maxBytes 보다 크면 실패</summary>
@@ -248,8 +249,8 @@ public sealed class GitHubClient : IDisposable
         {
             using var list = await SendJsonAsync(Request(HttpMethod.Get, repository, RepositoryUrl(repository) + "/releases?per_page=30"),
                 repository, cancellationToken).ConfigureAwait(false);
-            return list.RootElement.EnumerateArray()
-                .Where(item => !(item.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True))
+            return Items(list.RootElement)
+                .Where(item => !True(item, "draft"))
                 .Select(ReadRelease)
                 .OrderByDescending(release => release.Version)
                 .ThenByDescending(release => release.PublishedAt)
@@ -278,10 +279,10 @@ public sealed class GitHubClient : IDisposable
             using var list = await SendJsonAsync(Request(HttpMethod.Get, repository, RepositoryUrl(repository) + $"/releases?per_page=100&page={page}"),
                 repository, cancellationToken).ConfigureAwait(false);
             int count = 0;
-            foreach (var item in list.RootElement.EnumerateArray())
+            foreach (var item in Items(list.RootElement))
             {
                 count++;
-                if (item.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True) continue;
+                if (True(item, "draft")) continue;
                 if (ReadRelease(item).PublishedAt is { } published && (first is null || published < first)) first = published;
             }
             if (count < 100) break;
@@ -294,22 +295,21 @@ public sealed class GitHubClient : IDisposable
         string tag = String(root, "tag_name") ?? "";
         string title = String(root, "name") ?? "";
         var assets = new List<GitHubAsset>();
-        if (root.TryGetProperty("assets", out var items) && items.ValueKind == JsonValueKind.Array)
-            foreach (var asset in items.EnumerateArray())
+        if (Property(root, "assets") is { } items)
+            foreach (var asset in Items(items))
             {
                 string? digest = String(asset, "digest");
                 assets.Add(new GitHubAsset(
                     String(asset, "name") ?? "",
                     String(asset, "url") ?? "",
                     String(asset, "browser_download_url") ?? "",
-                    asset.TryGetProperty("size", out var size) && size.TryGetInt64(out long length) ? length : 0,
+                    Number(asset, "size"),
                     digest is not null && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) ? digest[7..].ToLowerInvariant() : null));
             }
-        DateTimeOffset? published = root.TryGetProperty("published_at", out var date) && date.ValueKind == JsonValueKind.String &&
+        DateTimeOffset? published = Property(root, "published_at") is { ValueKind: JsonValueKind.String } date &&
             date.TryGetDateTimeOffset(out var value) ? value : null;
         return new GitHubRelease(tag, title, ReleaseVersion.Parse(tag) ?? ReleaseVersion.Parse(title),
-            root.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True,
-            published, String(root, "html_url") ?? "", String(root, "body") ?? "", assets);
+            True(root, "prerelease"), published, String(root, "html_url") ?? "", String(root, "body") ?? "", assets);
     }
 
     /// <summary>릴리스 파일을 받음. API 주소(Accept: octet-stream)라 비공개·내부(internal) 저장소에서도 받아짐. SHA-256 을 돌려줌</summary>
@@ -409,8 +409,7 @@ public sealed class GitHubClient : IDisposable
         try
         {
             using var document = await SendJsonAsync(Request(HttpMethod.Get, repository, url), repository, cancellationToken).ConfigureAwait(false);
-            if (document.RootElement.ValueKind != JsonValueKind.Array) return files;
-            foreach (var item in document.RootElement.EnumerateArray())
+            foreach (var item in Items(document.RootElement))
                 if (String(item, "type") is "file" && String(item, "name") is { Length: > 0 } name && String(item, "sha") is { Length: > 0 } sha)
                     files[name] = sha;
             return files;
@@ -428,12 +427,23 @@ public sealed class GitHubClient : IDisposable
         using var request = Request(HttpMethod.Put, repository, ContentsUrl(repository, path));
         request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         using var document = await SendJsonAsync(request, repository, cancellationToken).ConfigureAwait(false);
-        return document.RootElement.TryGetProperty("content", out var file) && file.ValueKind == JsonValueKind.Object
-            ? String(file, "sha") ?? "" : "";
+        return Property(document.RootElement, "content") is { } file ? String(file, "sha") ?? "" : "";
     }
 
+    // 응답 JSON 읽기: 값이 없거나 형식이 다르면(null · 배열 · 문자열 …) 없는 것으로. 서버가 조금 다르게 답해도 예외로 런처가 죽지 않게
+    private static JsonElement? Property(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) ? value : null;
+
     private static string? String(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        Property(element, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
+
+    private static bool True(JsonElement element, string name) => Property(element, name) is { ValueKind: JsonValueKind.True };
+
+    private static long Number(JsonElement element, string name) =>
+        Property(element, name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt64(out long number) ? number : 0;
+
+    private static IEnumerable<JsonElement> Items(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Array ? element.EnumerateArray() : Enumerable.Empty<JsonElement>();
 
     private static void TryDelete(string path)
     {
