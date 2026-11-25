@@ -421,7 +421,22 @@
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="Row" Property="Background" Value="{StaticResource SelectedBrush}" />
                             </Trigger>
+                            <!-- 누를 수 없는 줄 (제목 · 지금 상태): 흐리게 -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 메뉴 안의 구분선: 메뉴 폭 그대로 얇은 선 -->
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Margin="8,4" Background="{StaticResource LineBrush}" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>

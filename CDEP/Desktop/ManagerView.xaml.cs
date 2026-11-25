@@ -11,8 +11,8 @@ using System.Windows.Threading;
 namespace IApi.Manager;
 
 /// <summary>
-/// i-api 관리 창의 화면 (i-api.exe 를 손으로 실행하면 뜸): 이 exe 의 서버를 포트로 시작 · 다시 시작 · 멈추기 · 업데이트하고, API 마다 켜고 끄며,
-/// 서버 앱 목록 · 릴리스 · 러너 · Terminal Notes 공지 · 스킬을 고침. 관리자 비밀번호는 settings.txt 에서 읽어 자동으로 씀.
+/// i-api 관리 창의 화면 (i-api.exe 를 손으로 실행하면 뜸): 이 exe 의 서버를 포트로 시작 · 다시 시작 · 멈추기 · 업데이트하고, API 마다 켜고 끄며
+/// 사용자 API 를 더하고 고치고 (ManagerView.Functions.cs), 서버 앱 목록 · Terminal Notes 공지를 고침. 관리자 비밀번호는 settings.txt 에서 읽어 자동으로 씀.
 /// </summary>
 internal partial class ManagerView : UserControl
 {
@@ -30,8 +30,6 @@ internal partial class ManagerView : UserControl
     // 공지 (Terminal Notes)
     private string _announcementRevision = "", _announcementSaved = "";
     private bool _announcementExists;
-    // 스킬
-    private string? _skill;
     // 아래 알림 줄: 결과는 잠깐 보였다 사라지고, 오류는 누를 때까지 남음
     private readonly DispatcherTimer _messageTimer = new() { Interval = TimeSpan.FromSeconds(6) };
 
@@ -49,7 +47,7 @@ internal partial class ManagerView : UserControl
             {
                 _host = host;
                 host.Closing += Host_Closing;
-                host.Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _releaseTimer?.Stop(); _runnerTimer?.Stop(); _admin?.Dispose(); };
+                host.Closed += (_, _) => { _timer.Stop(); _messageTimer.Stop(); _admin?.Dispose(); };
             }
             if (_started) return;
             _started = true;
@@ -58,11 +56,11 @@ internal partial class ManagerView : UserControl
         // 다른 화면으로 가면 서버 확인을 멈추고, 돌아오면 바로 다시 확인
         IsVisibleChanged += async (_, _) =>
         {
-            if (!IsVisible) { _timer.Stop(); _releaseTimer?.Stop(); _runnerTimer?.Stop(); return; }
+            if (!IsVisible) { _timer.Stop(); return; }
             if (_admin is null) return;
             _timer.Start();
             await RefreshHealthAsync();
-            if (CurrentSection is "Functions" or "Releases" or "Runners") await LoadSectionAsync(CurrentSection, force: true);
+            if (CurrentSection is "Functions") await LoadSectionAsync(CurrentSection, force: true);
         };
         PreviewKeyDown += async (_, e) => { if (e.Key == System.Windows.Input.Key.F5) { e.Handled = true; await RefreshCurrentAsync(); } };
     }
@@ -290,11 +288,15 @@ internal partial class ManagerView : UserControl
         await RefreshHealthAsync();
     }
 
-    private void MoreButton_Click(object sender, RoutedEventArgs e)
+    private void MoreButton_Click(object sender, RoutedEventArgs e) => OpenBelow(MoreButton.ContextMenu, MoreButton);
+
+    /// <summary>버튼 바로 아래에 메뉴를 열고 오른쪽 끝을 버튼에 맞춤 (창 오른쪽 밖으로 나가지 않게)</summary>
+    private static void OpenBelow(ContextMenu menu, FrameworkElement button)
     {
-        var menu = MoreButton.ContextMenu;
-        menu.PlacementTarget = MoreButton;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.PlacementTarget = button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Left;
+        menu.HorizontalOffset = button.ActualWidth;
+        menu.VerticalOffset = button.ActualHeight + 4;
         menu.IsOpen = true;
     }
 
@@ -349,14 +351,12 @@ internal partial class ManagerView : UserControl
 
     private async void Nav_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SkillsSection is null) return;  // 화면을 만드는 중 (처음 고른 탭)
+        if (NoticesSection is null) return;  // 화면을 만드는 중 (처음 고른 탭)
         string section = CurrentSection;
-        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Functions", FunctionsSection), ("Apps", AppsSection), ("Releases", ReleasesSection),
-                     ("Runners", RunnersSection), ("Notices", NoticesSection), ("Skills", SkillsSection) })
+        foreach (var (name, panel) in new (string, FrameworkElement)[] { ("Functions", FunctionsSection), ("Apps", AppsSection), ("Notices", NoticesSection) })
             panel.Visibility = name == section ? Visibility.Visible : Visibility.Collapsed;
         if (!IsLoaded) return;
-        if (section != "Runners") _runnerTimer?.Stop();
-        await LoadSectionAsync(section, force: section is "Functions" or "Releases" or "Runners");
+        await LoadSectionAsync(section, force: section is "Functions");
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await RefreshCurrentAsync();
@@ -368,13 +368,11 @@ internal partial class ManagerView : UserControl
         bool dirty = section switch
         {
             "Apps" => _appsDirty,
-            "Runners" => RunnerEnvDirty,
             "Notices" => NoticeDirty(),
             _ => false,
         };
         if (dirty && MessageBox.Show(OwnerWindow, "저장하지 않은 변경을 버리고 서버에서 다시 읽을까요?", ManagerHost.Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        if (dirty && section == "Runners") _runnerEnvSaved = RunnerEnvBox.Text.Replace("\r\n", "\n"); // 버린 편집은 서버 내용으로 다시 채움
         await RefreshHealthAsync();
         await LoadSectionAsync(section, force: true);
     }
@@ -389,10 +387,7 @@ internal partial class ManagerView : UserControl
             {
                 case "Functions": await LoadFunctionsAsync(); break;
                 case "Apps": await LoadAppsAsync(); break;
-                case "Releases": await LoadReleasesAsync(); break;
-                case "Runners": await LoadRunnersAsync(); break;
                 case "Notices": await LoadAnnouncementAsync(); break;
-                case "Skills": await LoadSkillsAsync(); break;
             }
             _loaded.Add(section);
         }, quiet: !_healthy);
@@ -422,7 +417,6 @@ internal partial class ManagerView : UserControl
         if (e.Cancel) return;
         var unsaved = new List<string>();
         if (_appsDirty) unsaved.Add("앱 목록");
-        if (RunnerEnvDirty) unsaved.Add("러너 .env");
         if (_loaded.Contains("Notices") && NoticeDirty()) unsaved.Add("Terminal Notes 공지");
         if (unsaved.Count > 0 && MessageBox.Show(OwnerWindow, $"저장하지 않은 변경이 있습니다: {string.Join(", ", unsaved)}\n\n저장하지 않고 닫을까요?", ManagerHost.Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
@@ -704,89 +698,6 @@ internal partial class ManagerView : UserControl
         HistoryMenu.IsOpen = HistoryMenu.Items.Count > 0;
     }
 
-    // ── 스킬 ────────────────────────────────────────────────────────────────────────────────────────
-
-    private async Task LoadSkillsAsync()
-    {
-        var skills = (await Admin.GetAsync("admin/api/skills")).AsArray().Select(node => node!.AsObject()).Select(skill => new SkillRow(
-            Str(skill["name"]), Str(skill["title"]) is { Length: > 0 } title ? title : Str(skill["name"]),
-            $"{Str(skill["name"])} · {Str(skill["author"])} · v{Number(skill["version"])} · {LocalTime(skill["updatedAt"])} · 받은 수 {Number(skill["downloads"])}" +
-            (((bool?)skill["private"]) == true ? " · 비공개" : ""))).ToList();
-        string? selected = _skill;
-        SkillsList.ItemsSource = skills;
-        SkillsList.SelectedItem = skills.FirstOrDefault(skill => skill.Name == selected) ?? skills.FirstOrDefault();
-        if (SkillsList.SelectedItem is null) ShowSkill(null);
-    }
-
-    private async void SkillsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => await LoadSkillAsync((SkillsList.SelectedItem as SkillRow)?.Name);
-
-    private void ShowSkill(string? name)
-    {
-        _skill = name;
-        SkillDetail.IsEnabled = name is not null;
-        if (name is null)
-        {
-            SkillHeaderText.Text = "왼쪽에서 스킬을 고르세요.";
-            SkillContentBox.Text = "";
-            SkillVersionsList.ItemsSource = null;
-        }
-    }
-
-    private async Task LoadSkillAsync(string? name)
-    {
-        ShowSkill(name);
-        if (name is null) return;
-        await Run(async () =>
-        {
-            var detail = (await Admin.GetAsync("admin/api/skills/" + Uri.EscapeDataString(name))).AsObject();
-            if (_skill != name) return;
-            var skill = detail["skill"]!.AsObject();
-            SkillHeaderText.Text = $"{Str(skill["title"])} · 작성자 {Str(skill["author"])} · 최신 v{Number(skill["latestVersion"])} · 받은 수 {Number(skill["downloads"])}";
-            SkillContentBox.Text = Str(skill["content"]).Replace("\n", "\r\n");
-            SkillVersionsList.ItemsSource = detail["versions"]!.AsArray().Select(node => node!.AsObject()).Select(version => new VersionRow(
-                (int?)version["version"] ?? 0,
-                $"v{Number(version["version"])} · {LocalTime(version["publishedAt"])} · {Str(version["author"])}" +
-                (Str(version["note"]) is { Length: > 0 } note ? " · " + note : ""))).ToList();
-        });
-    }
-
-    private async void ShowSkillVersionButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_skill is not { } name || SkillVersionsList.SelectedItem is not VersionRow version) { SetMessage("버전 기록에서 버전을 고르세요."); return; }
-        await Run(async () =>
-        {
-            var content = await Admin.GetAsync($"admin/api/skills/{Uri.EscapeDataString(name)}/versions/{version.Version}");
-            SkillContentBox.Text = Str(content["content"]).Replace("\n", "\r\n");
-        }, done: $"v{version.Version} 내용을 보여 줍니다.");
-    }
-
-    private async void RestoreSkillButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_skill is not { } name || SkillVersionsList.SelectedItem is not VersionRow version) { SetMessage("되돌릴 버전을 버전 기록에서 고르세요."); return; }
-        if (MessageBox.Show(OwnerWindow, $"v{version.Version}의 내용을 새 최신 버전으로 올릴까요?\n\n이 스킬을 쓰는 PC에는 업데이트로 보입니다.", "스킬",
-                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        await Run(async () =>
-        {
-            var result = await Admin.SendAsync(HttpMethod.Post, $"admin/api/skills/{Uri.EscapeDataString(name)}/restore", new JsonObject { ["version"] = version.Version });
-            await LoadSkillsAsync();
-            await LoadSkillAsync(name);
-            SetMessage($"v{version.Version}을(를) v{Number(result["version"])}(으)로 올렸습니다.");
-        });
-    }
-
-    private async void DeleteSkillButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_skill is not { } name) return;
-        if (MessageBox.Show(OwnerWindow, $"스킬 {name}을(를) 스토어에서 삭제할까요?\n\n이미 적용한 PC에는 남습니다. 30일 동안 skills\\.trash에 보관됩니다.", "스킬",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        await Run(async () =>
-        {
-            await Admin.SendAsync(HttpMethod.Delete, "admin/api/skills/" + Uri.EscapeDataString(name), null);
-            _skill = null;
-            await LoadSkillsAsync();
-        }, done: "스킬을 삭제했습니다.");
-    }
-
     // ── 도움 ────────────────────────────────────────────────────────────────────────────────────────
 
     private static string Str(JsonNode? node) => node is JsonValue value && value.TryGetValue(out string? text) ? text : node?.ToString() ?? "";
@@ -797,37 +708,6 @@ internal partial class ManagerView : UserControl
             ? moment.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "—";
 
     private static string LastLine(string text) => text.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? "";
-}
-
-internal sealed record ClientRow(string Address, string Version, string Last, string Announcement, string Features)
-{
-    public string Tip => $"받은 공지: {Announcement}" + (Features.Length > 0 ? $"\n쓴 기능: {Features}" : "");
-    public override string ToString() => $"{Address} · {Version} · {Last}";
-}
-
-internal sealed record SettingRow(string Name, string Value, Brush Brush)
-{
-    private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0xD1, 0xD1, 0xD6)), Warning = new SolidColorBrush(Color.FromRgb(0xE6, 0xC0, 0x7A));
-
-    public static SettingRow From(string line)
-    {
-        int colon = line.IndexOf(": ", StringComparison.Ordinal);
-        string name = colon > 0 ? line[..colon] : "";
-        string value = colon > 0 ? line[(colon + 2)..] : line;
-        bool warn = value.Contains("주의", StringComparison.Ordinal) || value.Contains("규칙 없음", StringComparison.Ordinal)
-                    || value.Contains("누구나 열 수 있음", StringComparison.Ordinal);
-        return new SettingRow(name, value, warn ? Warning : Normal);
-    }
-}
-
-internal sealed record SkillRow(string Name, string Title, string Detail)
-{
-    public override string ToString() => Title;
-}
-
-internal sealed record VersionRow(int Version, string Text)
-{
-    public override string ToString() => Text;
 }
 
 /// <summary>앱 목록의 한 앱 (서버의 JSON 그대로: 이 창에 칸이 없는 값도 저장할 때 남음)</summary>

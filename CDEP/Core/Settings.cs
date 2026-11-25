@@ -56,7 +56,7 @@ internal static partial class Settings
         new("EQUIPMENT_STATUS_TABLE", "", "설비 상태 표(열: line, prc, eqpid, status, Hr, Down_time, view, comment, sdwt)"),
         new("EQUIPMENT_API_KEY", "", "(선택) EQ Status 앱에 내장된 키(X-EQStatus-API-Key). 비우면 키 없이 받습니다"),
         new("EQUIPMENT_REFRESH_SECONDS", "10", "설비 상태 DB를 다시 읽는 간격(초)"),
-        new("EQUIPMENT_PORT", "2004", "설비 상태를 내려 주는 포트(여기 · 사내 모두 2004, 이 포트는 설비 상태만). RELAY_PORT 에서도 계속 받음. 0 = 끔"),
+        new("EQUIPMENT_PORT", "2004", "설비 상태를 내려 주는 포트(어디서나 2004, 이 포트는 설비 상태만). RELAY_PORT 에서도 계속 받음. 0 = 끔"),
         new("RUNNERS_ROOT", "", "(선택) 이 PC의 GitHub Actions 러너 폴더(러너마다 하위 폴더). 쓰면 i-api 관리 창의 러너 화면에서",
             "추가·편집·시작·중지·삭제하고, 로그온 작업 하나(GitHub Runners)가 켜 둔 러너를 시작합니다"),
         new("RUNNERS_ENV_DIR", "", "새 러너가 빌드에 쓰는 설정 파일(<저장소>.env) 폴더. 비우면 환경 변수 APPS_ENV_DIR, 없으면 RUNNERS_ROOT\\env"),

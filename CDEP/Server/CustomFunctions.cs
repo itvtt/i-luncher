@@ -178,21 +178,27 @@ internal sealed partial class RelayServer
 
     // ── 관리 창: 더하기 · 고치기 · 지우기 ──────────────────────────────────────────────────────────
 
-    /// <summary>서버가 쓰는 자리 · 기본 API · 다른 사용자 API 와 겹치면 409</summary>
-    private void CheckFree(CustomApi api)
+    /// <summary>서버가 쓰는 자리 · 기본 API · others 의 사용자 API 와 겹치면 그 까닭 (겹치지 않으면 null)</summary>
+    private string? Conflict(CustomApi api, IEnumerable<CustomApi> others)
     {
         var parts = api.Path.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(part => part.StartsWith('{') ? "x" : part).ToList();
         if (parts[0] is "health" or "admin" or "launcher" || parts is ["api", "v3", ..] || parts is ["api", "v1", "equipment-status", ..])
-            throw new RelayError(409, $"{api.Path} 은(는) 서버가 쓰는 자리입니다. 다른 주소를 쓰세요.");
+            return $"{api.Path} 은(는) 서버가 쓰는 자리입니다. 다른 주소를 쓰세요.";
         if (_builtins.FirstOrDefault(builtin => builtin.Id != "pages" && builtin.Matches(api.Method, parts, out _)) is { } taken)
-            throw new RelayError(409, $"{api.Method} {api.Path} 은(는) 기본 API '{taken.Title}' 이(가) 씁니다.");
-        if (Customs.All().FirstOrDefault(other => other.Id != api.Id && other.Method == api.Method && other.Shape == api.Shape) is { } same)
-            throw new RelayError(409, $"같은 방법 · 주소의 사용자 API 가 있습니다: {same.Title}");
+            return $"{api.Method} {api.Path} 은(는) 기본 API '{taken.Title}' 이(가) 씁니다.";
+        if (others.FirstOrDefault(other => other.Id != api.Id && other.Method == api.Method && other.Shape == api.Shape) is { } same)
+            return $"같은 방법 · 주소의 사용자 API 가 있습니다: {same.Title}";
+        return null;
+    }
+
+    private void CheckFree(CustomApi api)
+    {
+        if (Conflict(api, Customs.All()) is { } reason) throw new RelayError(409, reason);
     }
 
     private void CustomCreate(Request request)
     {
-        var api = CustomApi.FromJson("custom-" + Util.HexToken(4), request.JsonObjectBody());
+        var api = CustomApi.FromJson(CustomApis.NewId(), request.JsonObjectBody());
         CheckFree(api);
         Customs.Save(api);
         RebuildFunctions();
@@ -219,5 +225,72 @@ internal sealed partial class RelayServer
         RebuildFunctions();
         Log.Info($"custom API {id} changed: {api.Method} {api.Path} ({request.RemoteAddress})");
         request.Json(200, FunctionJson(Function(id), Stats.PerDay(30).GetValueOrDefault(id), Util.LocalDay(Util.Now())));
+    }
+
+    // ── 관리 창: 내보내기 · 가져오기 · 되돌리기 ───────────────────────────────────────────────────────
+
+    /// <summary>[내보내기]: 사용자 API 전체 (가져오기와 같은 모양: apis). 다른 서버로 옮기거나 따로 보관</summary>
+    private void CustomExport(Request request) => request.Json(200, new JsonObject
+    {
+        ["format"] = "i-api-custom-apis", ["exportedAt"] = Util.Iso(Util.Now()),
+        ["apis"] = new JsonArray(Customs.All().Select(api => (JsonNode)api.ToJson()).ToArray()),
+    });
+
+    /// <summary>
+    /// [가져오기]: 파일의 사용자 API 를 더함. 같은 id, 없으면 같은 방법 · 주소의 사용자 API 는 파일 내용으로 바뀜 (그 id 그대로).
+    /// 틀렸거나 기본 API · 서버 자리와 겹치는 것은 건너뛰고 까닭을 돌려줌. 한 번에 기록 하나
+    /// </summary>
+    private void CustomImport(Request request)
+    {
+        if (request.JsonObjectBody()["apis"] is not JsonArray incoming) throw new RelayError(400, "apis 목록이 있는 i-api 내보내기 파일이 아닙니다.");
+        var items = Customs.All();
+        int added = 0, changed = 0;
+        var skipped = new JsonArray();
+        foreach (var node in incoming)
+        {
+            string title = Util.AsString(node?["title"]) ?? "(이름 없음)";
+            try
+            {
+                if (node is not JsonObject data) throw new RelayError(400, "API 가 아닙니다.");
+                string fileId = Util.AsString(data["id"]) ?? "";
+                var probe = CustomApi.FromJson(CustomApis.IsId(fileId) ? fileId : CustomApis.NewId(), data);
+                int index = items.FindIndex(item => item.Id == probe.Id);
+                if (index < 0) index = items.FindIndex(item => item.Method == probe.Method && item.Shape == probe.Shape);
+                var api = index >= 0 ? probe with { Id = items[index].Id } : probe;
+                if (Conflict(api, items) is { } reason) throw new RelayError(409, reason);
+                if (index >= 0) { items[index] = api; changed++; }
+                else { items.Add(api); added++; }
+            }
+            catch (RelayError error) { skipped.Add(new JsonObject { ["title"] = title, ["reason"] = error.Message }); }
+        }
+        if (added + changed > 0)
+        {
+            Customs.Replace(items, $"가져옴: {added + changed}개");
+            RebuildFunctions();
+        }
+        Log.Info($"custom APIs imported: {added} added, {changed} changed, {skipped.Count} skipped ({request.RemoteAddress})");
+        request.Json(200, new JsonObject { ["added"] = added, ["changed"] = changed, ["skipped"] = skipped });
+    }
+
+    private void CustomHistory(Request request) => request.Json(200, new JsonObject { ["history"] = Customs.History() });
+
+    /// <summary>[되돌리기]: 사용자 API 목록을 그 기록 때로 (지금 목록도 기록에 남아 다시 돌릴 수 있음). 그 뒤 기본 API 와 겹치게 된 것은 건너뜀</summary>
+    private void CustomRestore(Request request)
+    {
+        var (apis, at) = Customs.Snapshot(request.Value("name"));
+        var items = new List<CustomApi>();
+        var skipped = new JsonArray();
+        foreach (var api in apis)
+        {
+            if (Conflict(api, items) is { } reason) skipped.Add(new JsonObject { ["title"] = api.Title, ["reason"] = reason });
+            else items.Add(api);
+        }
+        var before = Customs.All();
+        string when = DateTimeOffset.TryParse(at, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var moment) ? Util.LocalText(moment) : at;
+        Customs.Replace(items, $"되돌림: {when}");
+        foreach (var gone in before.Where(old => items.All(api => api.Id != old.Id))) Switches.Set(gone.Id, true);
+        RebuildFunctions();
+        Log.Info($"custom APIs restored to {request.Value("name")}: {items.Count} ({request.RemoteAddress})");
+        request.Json(200, new JsonObject { ["count"] = items.Count, ["skipped"] = skipped });
     }
 }

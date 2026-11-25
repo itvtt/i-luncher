@@ -3,7 +3,7 @@
 이 폴더에 API 서버를 둡니다 (폴더 이름만 예전 그대로). `i-api.csproj` 가 서버 프로그램 `i-api.exe` 이고, API 를 더할 때도 여기에 더합니다.
 2.23 까지는 Python `relay.py` 였고, 3.0 부터 C# 입니다 (사용자 결정 2026-11-24: 서버 PC 에 Python 없이 돌게). 같은 데이터 폴더 · 같은 API 를 그대로 씁니다.
 
-**API 서버는 사내 서버 PC 한 대에서 돌립니다. C-DEP 에는 올리지 않습니다** (사용자 결정 2026-11-24: 일반 사용자는 API 를 쓰지 않고, 쓰는 것은 마스터뿐).
+**API 서버는 서버 PC 한 대에서 돌립니다. C-DEP 에는 올리지 않습니다** (사용자 결정 2026-11-24: 일반 사용자는 API 를 쓰지 않고, 쓰는 것은 마스터뿐).
 
 **서버의 관리는 `i-api.exe` 의 관리 창에서 합니다** (사용자 결정 2026-11-25: i-luncher 의 관리자 메뉴는 없앰). i-api 는 런처에 들어가지 않고 i-luncher 릴리스에 `i-api-win-x64.zip` 으로 따로 올라갑니다.
 
@@ -26,7 +26,7 @@
 | `Server\` | 요청 나누기, 처리기, 관리 페이지, 자동 실행 · 방화벽 · 멈추기, 데이터 폴더 옮기기 · 백업 |
 | `Stores\` | 스킬 · 플러그인 · 공지 · 앱 목록 · 사용 기록 |
 | `GitHub\` · `Runners\` · `Equipment\` | GitHub 중계 · 릴리스, 러너 관리, 설비 DB (MySQL) |
-| `Desktop\` | **관리 창** (WPF): 맨 위 포트 · [실행] · ⋯(다시 시작 · 멈추기 · 업데이트 · 파일), 메뉴 API · 앱 목록 · 공지 (릴리스 · 러너 · 스킬 화면은 숨김). `Updater.cs` = [업데이트], `ServerManager.cs` = 이 exe 의 서버 다루기 · 예전 Python 서버 옮기기 |
+| `Desktop\` | **관리 창** (WPF): 맨 위 포트 · [실행] · ⋯(다시 시작 · 멈추기 · 업데이트 · 파일), 메뉴 API · 앱 목록 · 공지 (릴리스 · 러너 · 스킬 화면은 3.4.0 에서 지움, 서버 쪽 API · 러너 자동 시작은 그대로). `Updater.cs` = [업데이트], `ServerManager.cs` = 이 exe 의 서버 다루기 · 예전 Python 서버 옮기기 |
 | `package\` | zip 에 같이 드는 서버 PC 용 파일: `README.md` · `서버 시작.cmd` · `서버 중지.cmd` |
 | `seed\` · `import_app_list.py` | 서버 목록의 원본과 넣는 도구 (아래) |
 
@@ -34,7 +34,9 @@ NuGet 패키지 없이 .NET 10 기본 실행 환경만 씁니다. 릴리스(`bui
 
 ## 새 API 더하기
 
-**보통은 i-api 창에서 합니다 (코드 · 릴리스 없이):** 관리 창 → API → **[+ API 추가]** → 이름 · 설명 · 방법(GET · POST · PUT · DELETE) · 주소(`/hello/{name}`) · 부를 수 있는 사람(누구나 · 앱 키 · 관리자) · 종류를 정하고 [저장] 하면 그 자리에서 동작합니다. 고른 API 의 [편집] · [삭제], [부르기]로 시험. 켜고 끄기 · 호출 수는 기본 API 와 같습니다. 정의는 데이터 폴더의 `api\custom.json` (`Stores\CustomApis.cs`, 실행은 `Server\CustomFunctions.cs`).
+**보통은 i-api 창에서 합니다 (코드 · 릴리스 없이):** 관리 창 → API → **[+ API 추가]** → 이름 · 설명 · 방법(GET · POST · PUT · DELETE) · 주소(`/hello/{name}`) · 부를 수 있는 사람(누구나 · 앱 키 · 관리자, 새 API 는 앱 키. PowerShell 은 이 PC 에서 도는 스크립트라 누구나로 열 수 없음) · 종류를 정하고 [저장] 하면 그 자리에서 동작합니다. 고른 API 의 [편집] · [삭제], [부르기]로 시험. 켜고 끄기 · 호출 수는 기본 API 와 같습니다. 정의는 데이터 폴더의 `api\custom.json` (`Stores\CustomApis.cs`, 실행은 `Server\CustomFunctions.cs`).
+
+**바꾼 기록 · 옮기기 (API 화면의 ⋯):** 더하고 고치고 지울 때마다 서버가 그 뒤의 목록 전체를 `api\custom-history\` 에 남깁니다 (최근 200개). **되돌리기** 는 그 기록 때의 목록으로 돌리고 (지금 목록도 기록에 남아 다시 돌릴 수 있음), **내보내기…** 는 사용자 API 전체를 JSON 파일로, **가져오기…** 는 그 파일을 이 서버에 넣습니다 (같은 id, 없으면 같은 방법 · 주소의 API 는 파일 내용으로 바뀜, 틀렸거나 기본 API 와 겹치는 것은 까닭과 함께 건너뜀). 사용자 API 는 git 에 없으므로 다른 서버 PC 로 옮기거나 따로 보관할 때는 내보낸 파일을 씁니다. API: `GET /admin/api/custom/history` · `POST /admin/api/custom/history/{name}/restore` · `GET /admin/api/custom/export` · `POST /admin/api/custom/import` (관리자).
 
 | 종류 | 하는 일 |
 |---|---|

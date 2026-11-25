@@ -12,7 +12,8 @@ namespace IApi.Manager;
 /// <summary>
 /// API 화면: 서버의 API 하나하나 (/admin/api/functions). 켜고 끄기 (끈 API 는 503 으로 거절), 오늘 · 30일 호출, 실패, 평균 시간,
 /// 고른 API 의 설명 · 날짜별 막대 · 마지막 실패. 관리 창이 쓰는 API 와 상태 확인은 끄지 못함.
-/// [+ API 추가] · [편집]: 사용자 API (고정 응답 · PowerShell · 다른 주소로 전달)를 이 화면에서 만들고 고치고 지움 (저장하면 바로 동작), [부르기]로 시험
+/// [+ API 추가] · [편집]: 사용자 API (고정 응답 · PowerShell · 다른 주소로 전달)를 이 화면에서 만들고 고치고 지움 (저장하면 바로 동작), [부르기]로 시험.
+/// ⋯: 되돌리기 (서버가 바꿀 때마다 남기는 기록) · 내보내기 · 가져오기 (파일: 따로 보관하거나 다른 서버로 옮김)
 /// </summary>
 internal partial class ManagerView
 {
@@ -132,7 +133,7 @@ internal partial class ManagerView
         EditorPut.IsChecked = method == "PUT";
         EditorDelete.IsChecked = method == "DELETE";
         EditorPathBox.Text = Text("path");
-        string access = data is null ? "open" : Text("access");
+        string access = data is null ? "key" : Text("access");
         EditorOpen.IsChecked = access == "open";
         EditorKey.IsChecked = access == "key";
         EditorAdmin.IsChecked = access == "admin";
@@ -142,6 +143,7 @@ internal partial class ManagerView
         EditorForward.IsChecked = kind == "forward";
         EditorBodyBox.Text = Text("body").Replace("\r\n", "\n").Replace("\n", "\r\n");
         EditorBodyHint.Text = KindHints[kind];
+        LimitAccess();
         EditorDeleteButton.Visibility = row is null ? Visibility.Collapsed : Visibility.Visible;
         TryPathBox.Text = SamplePath(Text("path"));
         TryBodyBox.Text = "";
@@ -167,10 +169,20 @@ internal partial class ManagerView
         if (ReferenceEquals(sender, EditorPathBox)) TryPathBox.Text = SamplePath(EditorPathBox.Text.Trim());
     }
 
+    /// <summary>PowerShell 은 이 PC 에서 도는 스크립트라 누구나로 열 수 없음 (서버도 거절): 고르면 앱 키로</summary>
+    private void LimitAccess()
+    {
+        bool script = EditorKind == "script";
+        EditorOpen.IsEnabled = !script;
+        EditorOpen.ToolTip = script ? "PowerShell API 는 누구나 부를 수 없습니다." : null;
+        if (script && EditorOpen.IsChecked == true) EditorKey.IsChecked = true;
+    }
+
     private void EditorKind_Checked(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
         EditorBodyHint.Text = KindHints[EditorKind];
+        LimitAccess();
         if (!_fillingEditor && EditorKind == "script" && EditorBodyBox.Text.Trim().Length == 0)
             EditorBodyBox.Text = "@{ message = \"안녕 \" + $request.values.name } | ConvertTo-Json";
         Editor_Changed(sender, e);
@@ -237,6 +249,108 @@ internal partial class ManagerView
         FunctionEditor.Visibility = Visibility.Collapsed;
         _editing = null;
         await LoadFunctionsAsync();
+    }
+
+    // ── 되돌리기 · 내보내기 · 가져오기 ──────────────────────────────────────────────────────────────
+
+    /// <summary>⋯: '되돌리기' 제목 아래에 서버 기록 (새것부터 15개, 맨 위 = 지금 상태)을 넣고 메뉴를 엶</summary>
+    private async void CustomMoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var old in CustomMenu.Items.OfType<MenuItem>().Where(item => Equals(item.Tag, "history")).ToList()) CustomMenu.Items.Remove(old);
+        int at = CustomMenu.Items.IndexOf(CustomHistoryItem) + 1, added = 0;
+        await Run(async () =>
+        {
+            var history = (await Admin.GetAsync("admin/api/custom/history"))["history"] as JsonArray ?? [];
+            foreach (var entry in history.OfType<JsonObject>().Take(15))
+            {
+                string name = entry["name"]?.ToString() ?? "", when = LocalTime(entry["at"]);
+                int count = (int?)entry["count"] ?? 0;
+                var item = new MenuItem { Tag = "history", Header = $"{when} · {entry["change"]} · {count}개" + (added == 0 ? " (지금)" : ""), IsEnabled = added > 0 };
+                item.Click += async (_, _) => await RestoreCustomAsync(name, when, count);
+                CustomMenu.Items.Insert(at + added++, item);
+            }
+        }, quiet: true);
+        CustomHistoryItem.Header = added > 1 ? "되돌리기" : "되돌릴 기록 없음";
+        OpenBelow(CustomMenu, CustomMoreButton);
+    }
+
+    private async Task RestoreCustomAsync(string name, string when, int count)
+    {
+        if (FunctionEditor.Visibility == Visibility.Visible && _editorDirty)
+        {
+            SetMessage("편집 중인 API 를 저장하거나 취소한 뒤 되돌리세요.", warning: true);
+            return;
+        }
+        if (MessageBox.Show(OwnerWindow, $"사용자 API 를 {when} 상태 ({count}개)로 되돌릴까요?\n\n지금 상태도 기록에 남아 다시 돌릴 수 있습니다.", ManagerHost.Title,
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        await Run(async () =>
+        {
+            var answer = await Admin.SendAsync(HttpMethod.Post, $"admin/api/custom/history/{Uri.EscapeDataString(name)}/restore", new JsonObject());
+            if (FunctionEditor.Visibility == Visibility.Visible) CloseEditor();
+            await LoadFunctionsAsync();
+            ShowSkipped($"{when} 상태로 되돌렸습니다.", answer["skipped"] as JsonArray);
+        });
+    }
+
+    /// <summary>결과 한 줄: 건너뛴 API 가 있으면 그 이름과 까닭을 함께 (경고로 남음)</summary>
+    private void ShowSkipped(string done, JsonArray? skipped)
+    {
+        var lines = (skipped ?? []).OfType<JsonObject>().Select(item => $"{item["title"]} ({item["reason"]})").ToList();
+        SetMessage(lines.Count == 0 ? done : $"{done} 건너뜀 {lines.Count}개: {string.Join(" · ", lines)}", warning: lines.Count > 0);
+    }
+
+    /// <summary>[내보내기…]: 사용자 API 전체를 JSON 파일로 (다른 서버의 [가져오기…]가 읽음)</summary>
+    private async void ExportCustomButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "사용자 API 내보내기", Filter = "JSON (*.json)|*.json", DefaultExt = ".json",
+            FileName = $"i-api-사용자API-{DateTime.Now:yyyyMMdd}.json",
+        };
+        if (dialog.ShowDialog(OwnerWindow) != true) return;
+        await Run(async () =>
+        {
+            var exported = await Admin.GetAsync("admin/api/custom/export");
+            int count = (exported["apis"] as JsonArray)?.Count ?? 0;
+            await File.WriteAllTextAsync(dialog.FileName, exported.ToJsonString(new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            }), new System.Text.UTF8Encoding(false));
+            SetMessage($"사용자 API {count}개를 내보냈습니다: {dialog.FileName}");
+        });
+    }
+
+    /// <summary>[가져오기…]: 내보낸 파일의 사용자 API 를 이 서버에 (같은 id 나 같은 방법 · 주소면 파일 내용으로 바뀜, [되돌리기]로 돌릴 수 있음)</summary>
+    private async void ImportCustomButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (FunctionEditor.Visibility == Visibility.Visible && _editorDirty)
+        {
+            SetMessage("편집 중인 API 를 저장하거나 취소한 뒤 가져오세요.", warning: true);
+            return;
+        }
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "사용자 API 가져오기", Filter = "JSON (*.json)|*.json|모든 파일 (*.*)|*.*" };
+        if (dialog.ShowDialog(OwnerWindow) != true) return;
+        JsonObject file;
+        try
+        {
+            file = JsonNode.Parse(await File.ReadAllTextAsync(dialog.FileName)) as JsonObject ?? throw new FormatException();
+            if (file["apis"] is not JsonArray) throw new FormatException();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException or System.Text.Json.JsonException)
+        {
+            SetMessage("i-api 에서 내보낸 사용자 API 파일이 아닙니다: " + Path.GetFileName(dialog.FileName), warning: true);
+            return;
+        }
+        int count = ((JsonArray)file["apis"]!).Count;
+        if (MessageBox.Show(OwnerWindow, $"파일의 사용자 API {count}개를 이 서버에 넣을까요?\n\n같은 API (같은 id, 또는 같은 방법 · 주소)는 파일 내용으로 바뀝니다. ⋯ → 되돌리기로 돌릴 수 있습니다.",
+                ManagerHost.Title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        await Run(async () =>
+        {
+            var answer = await Admin.SendAsync(HttpMethod.Post, "admin/api/custom/import", new JsonObject { ["apis"] = file["apis"]!.DeepClone() });
+            if (FunctionEditor.Visibility == Visibility.Visible) CloseEditor();
+            await LoadFunctionsAsync();
+            ShowSkipped($"가져왔습니다: 새로 {(int?)answer["added"] ?? 0}개 · 바뀜 {(int?)answer["changed"] ?? 0}개.", answer["skipped"] as JsonArray);
+        });
     }
 
     /// <summary>[부르기]: 저장하지 않은 변경이 있으면 먼저 저장하고, 시험 주소로 그 방법 그대로 부름 (관리자 비밀번호 · 앱 키를 함께)</summary>

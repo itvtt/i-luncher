@@ -22,7 +22,7 @@
 | 화면 | 하는 일 |
 | --- | --- |
 | 맨 위 | 포트 · [실행], 서버 상태, ⋯ (다시 시작 · 멈추기 · **업데이트** · 설정 파일 · 로그 · 데이터 폴더 · 브라우저로 열기) |
-| API | **[+ API 추가]** · [편집] · [삭제]: 사용자 API (고정 응답 · PowerShell 스크립트 · 다른 주소로 전달, 저장하면 바로 동작, [부르기]로 시험). API 마다 켜고 끄기 (끈 API 는 503), 오늘 · 30일 호출 수, 실패(400 이상), 평균 시간, 날짜별 막대, 마지막 실패. 관리 창이 쓰는 API 와 상태 확인은 끄지 못함 |
+| API | **[+ API 추가]** · [편집] · [삭제]: 사용자 API (고정 응답 · PowerShell 스크립트 · 다른 주소로 전달, 저장하면 바로 동작, [부르기]로 시험). ⋯ → 되돌리기 (바꿀 때마다 남는 기록) · 내보내기 · 가져오기 (파일: 따로 보관하거나 다른 서버로 옮김). API 마다 켜고 끄기 (끈 API 는 503), 오늘 · 30일 호출 수, 실패(400 이상), 평균 시간, 날짜별 막대, 마지막 실패. 관리 창이 쓰는 API 와 상태 확인은 끄지 못함 |
 | 앱 목록 | 마스터 계정의 런처에 보이는 서버 목록 (이름 · 분류 · 저장소 · 설명 · 상세 설명 · 제작자 · 스크린샷 · 순서) |
 | 공지 | Terminal Notes 의 공지 |
 
@@ -47,7 +47,7 @@
 | `RELAY_UPLOADS_PER_HOUR` | 주소당 시간당 스킬 · 플러그인 공유 수 |
 | `RELAY_GITHUB_TOKEN` · `RELAY_GITHUB_API` | GitHub 중계 · 스킬 링크 · 릴리스 · 러너 · 업데이트에 쓰는 토큰 (비우면 이 PC 의 git 자격 증명), GitHub Enterprise 면 `https://<호스트>/api/v3` |
 | `RELAY_UPDATE_REPOSITORY` | (선택) [업데이트]가 받을 저장소 주소. 비우면 이 i-api 를 릴리스한 저장소 |
-| `LAUNCHER_GITHUB_REPOS` | GitHub 중계 · 릴리스 화면에 더할 저장소 (소유자/저장소, 소유자/*) |
+| `LAUNCHER_GITHUB_REPOS` | GitHub 중계에 더할 저장소 (소유자/저장소, 소유자/*) |
 | `EQUIPMENT_DB_*` · `EQUIPMENT_PORT` | EQ Status 설비 DB (MySQL). 비우면 설비 상태를 열지 않음. 포트 2004 |
 | `RUNNERS_ROOT` · `RUNNERS_ENV_DIR` · `RUNNER_PACKAGE` | 이 PC 의 GitHub Actions 러너 (로그온 작업 `GitHub Runners` 가 켬) |
 | `RELAY_WEBHOOK_URL` · `RELAY_PUBLIC_URL` · `RELAY_TLS_CERT` · `RELAY_TLS_KEY` | 알림 웹훅, 알림 링크 주소, HTTPS (PEM) |

@@ -1205,16 +1205,20 @@ Check("custom APIs: add, call, edit, switch off and delete from the management w
     Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("관리", "GET", "/only-admin", "admin", "text", "ok")).Status);
     Equal("401 200", $"{h.Call("GET", "/only-admin", key: false).Status} {h.Call("GET", "/only-admin", key: false, admin: Harness.Admin).Status}", "the admin password");
 
-    // PowerShell: $request 로 받고 출력이 응답, exit 404 는 404
-    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("되돌려 주기", "POST", "/echo/{kind}", "open", "script",
+    // PowerShell: $request 로 받고 출력이 응답, exit 404 는 404. 이 PC 에서 도는 스크립트라 누구나로는 못 엶
+    var open = h.AdminJson("POST", "/admin/api/custom", Api("열린 스크립트", "GET", "/open-script", "open", "script", "1"));
+    Equal(400, open.Status, "a PowerShell API is never open to anyone");
+    Contains("누구나", open.Text);
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("되돌려 주기", "POST", "/echo/{kind}", "key", "script",
         "@{ name = $request.json.name; kind = $request.values.kind; method = $request.method; page = $request.query.page } | ConvertTo-Json -Compress")).Status);
-    var echo = h.Call("POST", "/echo/test?page=2", Encoding.UTF8.GetBytes("""{"name":"영희"}"""), key: false, contentType: "application/json");
+    Equal(401, h.Call("POST", "/echo/test", Encoding.UTF8.GetBytes("{}"), key: false, contentType: "application/json").Status, "needs the app key");
+    var echo = h.Call("POST", "/echo/test?page=2", Encoding.UTF8.GetBytes("""{"name":"영희"}"""), contentType: "application/json");
     Equal("200 영희 test POST 2", $"{echo.Status} {Str(echo.Json!["name"])} {Str(echo.Json["kind"])} {Str(echo.Json["method"])} {Str(echo.Json["page"])}", echo.Text);
-    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("없음", "GET", "/missing", "open", "script", "Write-Output '없어요'\nexit 404")).Status);
-    var missing = h.Call("GET", "/missing", key: false);
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("없음", "GET", "/missing", "key", "script", "Write-Output '없어요'\nexit 404")).Status);
+    var missing = h.Call("GET", "/missing");
     Equal("404 없어요", $"{missing.Status} {missing.Text}");
-    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("오류", "GET", "/broken", "open", "script", "throw '일부러'")).Status);
-    var broken = h.Call("GET", "/broken", key: false);
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("오류", "GET", "/broken", "key", "script", "throw '일부러'")).Status);
+    var broken = h.Call("GET", "/broken");
     Equal(500, broken.Status);
     Contains("일부러", broken.Text);
 
@@ -1237,6 +1241,65 @@ Check("custom APIs: add, call, edit, switch off and delete from the management w
     Equal(200, h.AdminJson("DELETE", $"/admin/api/custom/{id}").Status);
     True(h.Call("GET", "/hello/a", key: false).Status != 200, "gone");
     True(!h.Server.Functions.Any(function => function.Id == id), "and out of the list");
+});
+
+Check("custom APIs: every change is kept, restore goes back, export and import move them to another server", () =>
+{
+    using var h = new Harness();
+    JsonObject Api(string title, string path, string body) =>
+        new() { ["title"] = title, ["method"] = "GET", ["path"] = path, ["access"] = "open", ["kind"] = "text", ["body"] = body };
+    string id = Str(h.AdminJson("POST", "/admin/api/custom", Api("하나", "/one", "1")).Json!["id"]);
+    Equal(200, h.AdminJson("POST", "/admin/api/custom", Api("둘", "/two", "2")).Status);
+    Equal(200, h.AdminJson("PUT", $"/admin/api/custom/{id}", Api("하나", "/one", "1 고침")).Status);
+    Equal(200, h.AdminJson("DELETE", $"/admin/api/custom/{id}").Status);
+    var history = h.AdminJson("GET", "/admin/api/custom/history").Json!["history"]!.AsArray();
+    Equal("지움: 하나 1|고침: 하나 2|더함: 둘 2|더함: 하나 1", string.Join("|", history.Select(entry => $"{Str(entry!["change"])} {entry["count"]}")),
+        "newest first, with the number of APIs after each change");
+
+    // 되돌리기: '고침' 때로 → 하나가 고친 내용으로 다시, 되돌린 것도 기록에
+    var restored = h.AdminJson("POST", $"/admin/api/custom/history/{Str(history[1]!["name"])}/restore", J("{}"));
+    Equal(200, restored.Status, restored.Text);
+    Equal("1 고침", h.Call("GET", "/one", key: false).Text, "answers at once");
+    var latest = h.AdminJson("GET", "/admin/api/custom/history").Json!["history"]!.AsArray();
+    Equal("5 2", $"{latest.Count} {latest[0]!["count"]}");
+    Contains("되돌림: ", Str(latest[0]!["change"]));
+    Equal(404, h.AdminJson("POST", "/admin/api/custom/history/20000101-000000-000000/restore", J("{}")).Status, "a record that is not there");
+    Equal(404, h.AdminJson("POST", "/admin/api/custom/history/nope/restore", J("{}")).Status, "only record names");
+
+    // 내보내기 → 다른 서버에 가져오기: 새것은 더하고, 같은 방법 · 주소는 파일 내용으로, 틀린 것 · 기본 API 와 겹치는 것은 까닭과 함께 건너뜀
+    var exported = h.AdminJson("GET", "/admin/api/custom/export").Json!.AsObject();
+    Equal("i-api-custom-apis 2", $"{Str(exported["format"])} {exported["apis"]!.AsArray().Count}");
+    using var other = new Harness();
+    Equal(200, other.AdminJson("POST", "/admin/api/custom", Api("다른 둘", "/two", "옛것")).Status);
+    var imported = other.AdminJson("POST", "/admin/api/custom/import", new JsonObject
+    {
+        ["apis"] = new JsonArray(exported["apis"]![0]!.DeepClone(), exported["apis"]![1]!.DeepClone(), Api("겹침", "/api/skills", "x"),
+            new JsonObject { ["title"] = "열린 스크립트", ["method"] = "GET", ["path"] = "/ps", ["access"] = "open", ["kind"] = "script", ["body"] = "1" }),
+    });
+    Equal(200, imported.Status, imported.Text);
+    Equal("1 1 겹침,열린 스크립트", $"{imported.Json!["added"]} {imported.Json["changed"]} {string.Join(",", imported.Json["skipped"]!.AsArray().Select(item => Str(item!["title"])))}");
+    Equal("1 고침|2", other.Call("GET", "/one", key: false).Text + "|" + other.Call("GET", "/two", key: false).Text, "imported APIs answer at once");
+    Equal(2, other.Server.Customs.All().Count);
+    var again = other.AdminJson("POST", "/admin/api/custom/import", new JsonObject { ["apis"] = exported["apis"]!.DeepClone() });
+    Equal("0 2", $"{again.Json!["added"]} {again.Json["changed"]}", "the same file again only changes");
+    Equal(400, other.AdminJson("POST", "/admin/api/custom/import", J("""{"items":[]}""")).Status, "not an export file");
+});
+
+Check("custom APIs: an old PowerShell API saved as open to anyone loads with the app key; the first change keeps the list from before", () =>
+{
+    string folder = Path.Combine(Path.GetTempPath(), "i-api-checks-custom-" + Guid.NewGuid().ToString("N")[..8]);
+    Directory.CreateDirectory(folder);
+    try
+    {
+        File.WriteAllText(Path.Combine(folder, "custom.json"),
+            """{"apis":[{"id":"custom-old","title":"옛 스크립트","method":"GET","path":"/old","access":"open","kind":"script","body":"1"}]}""");
+        var store = new CustomApis(folder);
+        Equal("custom-old key", $"{store.All()[0].Id} {store.All()[0].Access}");
+        store.Save(store.All()[0] with { Title = "새 이름" });
+        Equal("고침: 새 이름|처음 기록 전", string.Join("|", store.History().Select(entry => Str(entry!["change"]))));
+        Equal("옛 스크립트", store.Snapshot(Str(store.History()[1]!["name"])).Apis[0].Title);
+    }
+    finally { Directory.Delete(folder, true); }
 });
 
 // ── 관리 창 (i-api.exe 를 손으로 실행하면 뜨는 창) ──────────────────────────────────────────────────────

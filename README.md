@@ -173,7 +173,7 @@ API 서버도 목록 저장소도 없는 빌드는 이 PC 목록 `C:\i-luncher\c
 
 ## API 서버
 
-API 서버 `i-api.exe`(C#, `CDEP\i-api.csproj`, 3.0 부터. 2.23 까지는 Python `relay.py`)가 모든 API를 맡습니다 (사내 서버 PC 한 대에서 돌림, C-DEP 에는 올리지 않음, [CDEP](CDEP/README.md)) (예전 Terminal Notes 중계 서버, 포트 2003 그대로). 설비 상태 DB(`EQUIPMENT_DB_*`)를 넣은 서버는 EQ Status 설비 상태를 **2004**(`EQUIPMENT_PORT`, 설비 상태만)에서도 내려 줍니다. 포트는 어디서나 API 2003 · 설비 상태 2004 입니다.
+API 서버 `i-api.exe`(C#, `CDEP\i-api.csproj`, 3.0 부터. 2.23 까지는 Python `relay.py`)가 모든 API를 맡습니다 (서버 PC 한 대에서 돌림, C-DEP 에는 올리지 않음, [CDEP](CDEP/README.md)) (예전 Terminal Notes 중계 서버, 포트 2003 그대로). 설비 상태 DB(`EQUIPMENT_DB_*`)를 넣은 서버는 EQ Status 설비 상태를 **2004**(`EQUIPMENT_PORT`, 설비 상태만)에서도 내려 줍니다. 포트는 어디서나 API 2003 · 설비 상태 2004 입니다.
 
 | 주소 | 쓰는 곳 |
 |---|---|

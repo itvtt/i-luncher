@@ -2,7 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Focusable="True">
-    <!-- i-api 관리 창의 화면: 서버 · API · 앱 목록 · 릴리스 · 러너 · 공지 · 스킬 -->
+    <!-- i-api 관리 창의 화면: 머리 줄(포트 · 서버) · API · 앱 목록 · 공지 -->
     <UserControl.Resources>
         <ResourceDictionary Source="ManagerResources.xaml" />
     </UserControl.Resources>
@@ -53,11 +53,7 @@
                  SelectionChanged="Nav_SelectionChanged">
             <ListBoxItem Content="API" Tag="Functions" IsSelected="True" />
             <ListBoxItem Content="앱 목록" Tag="Apps" />
-            <!-- 릴리스 · 러너 · 스킬: API 서버 관리가 아니라 숨김 (사용자 결정 2026-11-25) -->
-            <ListBoxItem Content="릴리스" Tag="Releases" Visibility="Collapsed" />
-            <ListBoxItem Content="러너" Tag="Runners" Visibility="Collapsed" />
             <ListBoxItem Content="공지" Tag="Notices" />
-            <ListBoxItem Content="스킬" Tag="Skills" Visibility="Collapsed" />
         </ListBox>
 
         <Grid Grid.Row="2" Margin="30,18,22,16">
@@ -70,6 +66,18 @@
                 <DockPanel>
                     <Button x:Name="AddFunctionButton" DockPanel.Dock="Right" Content="+ API 추가" Style="{StaticResource PrimaryButtonStyle}" Margin="0"
                             Click="AddFunctionButton_Click" />
+                    <!-- 사용자 API: 되돌리기 (바꿀 때마다 남는 기록) · 내보내기 · 가져오기 (파일) -->
+                    <Button x:Name="CustomMoreButton" DockPanel.Dock="Right" Style="{StaticResource RoundIconButtonStyle}" Content="&#xE712;" Margin="0,0,8,0"
+                            VerticalAlignment="Center" ToolTip="되돌리기 · 내보내기 · 가져오기" AutomationProperties.Name="사용자 API 더 보기" Click="CustomMoreButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="CustomMenu">
+                                <MenuItem x:Name="CustomHistoryItem" Header="되돌리기" IsEnabled="False" />
+                                <Separator />
+                                <MenuItem Header="내보내기…" Click="ExportCustomButton_Click" />
+                                <MenuItem Header="가져오기…" Click="ImportCustomButton_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <TextBlock x:Name="FunctionsSummaryText" Style="{StaticResource HintStyle}" TextWrapping="Wrap" VerticalAlignment="Center" />
                 </DockPanel>
                 <Grid Grid.Row="1" Margin="0,12,0,0">
@@ -178,8 +186,8 @@
                             <TextBox x:Name="EditorPathBox" Margin="0,8,0,0" Tag="/hello/{name}" FontFamily="Consolas, Malgun Gothic" TextChanged="Editor_Changed" />
                             <TextBlock Text="부를 수 있는 사람" Style="{StaticResource FieldLabelStyle}" />
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="EditorOpen" Content="누구나" GroupName="EditorAccess" IsChecked="True" Checked="Editor_Changed" />
-                                <RadioButton x:Name="EditorKey" Content="앱 키" GroupName="EditorAccess" Checked="Editor_Changed" />
+                                <RadioButton x:Name="EditorOpen" Content="누구나" GroupName="EditorAccess" Checked="Editor_Changed" ToolTipService.ShowOnDisabled="True" />
+                                <RadioButton x:Name="EditorKey" Content="앱 키" GroupName="EditorAccess" IsChecked="True" Checked="Editor_Changed" />
                                 <RadioButton x:Name="EditorAdmin" Content="관리자" GroupName="EditorAccess" Checked="Editor_Changed" />
                             </StackPanel>
                             <TextBlock Text="종류" Style="{StaticResource FieldLabelStyle}" />
@@ -323,179 +331,6 @@
                 </Grid>
             </Grid>
 
-            <!-- 릴리스: 프로젝트마다 다음 버전이 들어가 있고, 고쳐서 릴리스 (저장소의 release.yml 실행) -->
-            <Grid x:Name="ReleasesSection" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="새 버전에는 다음 번호가 들어가 있습니다. 고쳐서 릴리스할 수 있습니다." Style="{StaticResource HintStyle}" />
-                <Grid Grid.Row="1" Margin="14,14,14,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="120" /><ColumnDefinition Width="96" /><ColumnDefinition Width="118" /><ColumnDefinition Width="84" /><ColumnDefinition Width="190" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="앱" Style="{StaticResource HintStyle}" />
-                    <TextBlock Grid.Column="1" Text="현재" Style="{StaticResource HintStyle}" />
-                    <TextBlock Grid.Column="2" Text="새 버전" Style="{StaticResource HintStyle}" />
-                    <TextBlock Grid.Column="4" Text="최근 실행" Style="{StaticResource HintStyle}" Margin="10,0,0,0" />
-                </Grid>
-                <ListBox x:Name="ReleasesList" Grid.Row="2">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid ToolTip="{Binding Tip}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" MinWidth="120" /><ColumnDefinition Width="96" /><ColumnDefinition Width="118" /><ColumnDefinition Width="84" /><ColumnDefinition Width="190" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="1" Text="{Binding Latest}" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-                                <TextBox Grid.Column="2" Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsVersionFixed}"
-                                         Margin="0,0,8,0" Padding="8,4" AutomationProperties.Name="새 버전" />
-                                <Button Grid.Column="3" Content="릴리스" IsEnabled="{Binding CanRelease}" Click="ReleaseButton_Click" Margin="0" MinWidth="0" Padding="10,5" />
-                                <Button Grid.Column="4" Style="{StaticResource LinkButtonStyle}" Foreground="{Binding StatusBrush}"
-                                        Cursor="{Binding StatusCursor}" ToolTip="{Binding StatusTip}" Click="ReleaseStatusButton_Click"
-                                        HorizontalAlignment="Left" Margin="2,0,0,0" MaxWidth="188">
-                                    <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" />
-                                </Button>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
-
-            <!-- 러너: 이 PC의 GitHub Actions 러너 (추가·.env 편집·시작·멈추기·삭제), 로그온 작업 하나가 켜 둔 러너를 시작 -->
-            <Grid x:Name="RunnersSection" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <StackPanel x:Name="RunnerTaskBar" Orientation="Horizontal" Visibility="Collapsed">
-                    <TextBlock x:Name="RunnerTaskText" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
-                    <Button x:Name="RunnerTaskButton" Content="정리" Style="{StaticResource LinkButtonStyle}" Margin="10,0,0,0" VerticalAlignment="Center"
-                            ToolTip="로그온 작업을 GitHub Runners 하나로" Click="RunnerTaskButton_Click" />
-                </StackPanel>
-                <TextBlock x:Name="RunnersMessageText" Grid.Row="1" Style="{StaticResource HintStyle}" Visibility="Collapsed" />
-                <Grid x:Name="RunnersBody" Grid.Row="1" Margin="0,12,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="280" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <ListBox x:Name="RunnersList" SelectionChanged="RunnersList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Ellipse Width="8" Height="8" Fill="{Binding DotBrush}" Margin="1,0,11,0" VerticalAlignment="Center" />
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding Id}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource HintStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button x:Name="AddRunnerButton" Style="{StaticResource IconButtonStyle}" Content="&#xE710;" ToolTip="러너 추가" AutomationProperties.Name="러너 추가"
-                                    Click="AddRunnerButton_Click" />
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- 고른 러너 -->
-                    <ScrollViewer x:Name="RunnerDetail" Grid.Column="1" Margin="22,0,0,0" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                        <StackPanel MaxWidth="620" HorizontalAlignment="Left" MinWidth="340">
-                            <DockPanel>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE74D;" ToolTip="러너 삭제" AutomationProperties.Name="러너 삭제"
-                                        Click="DeleteRunnerButton_Click" VerticalAlignment="Center" />
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="StartRunnerButton" Content="시작" Click="StartRunnerButton_Click" />
-                                    <Button x:Name="StopRunnerButton" Content="멈추기" Click="StopRunnerButton_Click" />
-                                    <Button x:Name="RestartRunnerButton" Content="다시 시작" Click="RestartRunnerButton_Click" />
-                                </StackPanel>
-                            </DockPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                                <Ellipse x:Name="RunnerStateDot" Width="9" Height="9" Margin="0,1,8,0" VerticalAlignment="Center" />
-                                <TextBlock x:Name="RunnerStateText" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <TextBlock x:Name="RunnerGitHubText" FontSize="12.5" Foreground="{StaticResource MutedTextBrush}" Margin="12,1,0,0" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <Grid Margin="0,14,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="72" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <TextBlock Text="저장소" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
-                                <Button x:Name="RunnerRepositoryLink" Grid.Column="1" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,3"
-                                        ToolTip="GitHub에서 열기" Click="RunnerRepositoryLink_Click" />
-                                <TextBlock Grid.Row="1" Text="이름" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
-                                <TextBlock x:Name="RunnerNameText" Grid.Row="1" Grid.Column="1" FontSize="12.5" Margin="0,5" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="2" Text="폴더" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
-                                <Button x:Name="RunnerFolderLink" Grid.Row="2" Grid.Column="1" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,3"
-                                        ToolTip="폴더 열기" Click="RunnerFolderLink_Click" />
-                            </Grid>
-                            <DockPanel Margin="0,18,0,6">
-                                <Button x:Name="SaveRunnerEnvButton" DockPanel.Dock="Right" Content="저장" Style="{StaticResource PrimaryButtonStyle}" Margin="0" IsEnabled="False"
-                                        Click="SaveRunnerEnvButton_Click" VerticalAlignment="Bottom" />
-                                <TextBlock Text=".env" Style="{StaticResource SubheadingStyle}" Margin="0" VerticalAlignment="Bottom"
-                                           ToolTip="러너가 작업에 넘기는 환경 변수 (이름=값). 저장하면 쉬는 러너는 다시 시작" />
-                            </DockPanel>
-                            <TextBox x:Name="RunnerEnvBox" Style="{StaticResource DocumentBoxStyle}" Height="150" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
-                                     Tag="이름=값" TextChanged="RunnerEnvBox_TextChanged" />
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <!-- 새 러너 -->
-                    <ScrollViewer x:Name="RunnerAddForm" Grid.Column="1" Margin="22,0,0,0" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                        <StackPanel MaxWidth="620" HorizontalAlignment="Left" MinWidth="340">
-                            <TextBlock Text="저장소" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,4" />
-                            <DockPanel>
-                                <Button x:Name="RunnerRepositoryMenuButton" DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE70D;" Margin="6,0,0,0"
-                                        ToolTip="앱 목록의 저장소" AutomationProperties.Name="저장소 고르기" Click="RunnerRepositoryMenuButton_Click">
-                                    <Button.ContextMenu>
-                                        <ContextMenu x:Name="RunnerRepositoryMenu" />
-                                    </Button.ContextMenu>
-                                </Button>
-                                <TextBox x:Name="NewRunnerRepositoryBox" Tag="소유자/저장소" LostKeyboardFocus="NewRunnerRepositoryBox_LostKeyboardFocus"
-                                         KeyDown="NewRunnerRepositoryBox_KeyDown" />
-                            </DockPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="폴더" Style="{StaticResource FieldLabelStyle}" />
-                                    <TextBox x:Name="NewRunnerFolderBox" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="러너 이름" Style="{StaticResource FieldLabelStyle}" />
-                                    <TextBox x:Name="NewRunnerNameBox" />
-                                </StackPanel>
-                            </Grid>
-                            <TextBlock Text=".env" Style="{StaticResource FieldLabelStyle}" />
-                            <TextBox x:Name="NewRunnerEnvBox" Style="{StaticResource DocumentBoxStyle}" Height="120" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
-                                     Tag="이름=값" />
-                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                                <Button x:Name="RegisterRunnerButton" Content="등록" Style="{StaticResource PrimaryButtonStyle}" Click="RegisterRunnerButton_Click" />
-                                <Button Content="취소" Click="CancelRunnerButton_Click" />
-                            </StackPanel>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </Grid>
-
             <!-- 공지: Terminal Notes 의 공지 (i-luncher 공지는 GitHub 공지 저장소에서 고침) -->
             <Grid x:Name="NoticesSection" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -515,53 +350,6 @@
                 </DockPanel>
                 <TextBlock x:Name="NoticeInfoText" Grid.Row="1" Style="{StaticResource HintStyle}" Margin="0,10,0,0" />
                 <TextBox x:Name="AnnouncementBox" Grid.Row="2" Margin="0,10,0,0" Style="{StaticResource DocumentBoxStyle}" Tag="공지 내용" TextChanged="AnnouncementBox_TextChanged" />
-            </Grid>
-
-            <!-- 스킬 -->
-            <Grid x:Name="SkillsSection" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="320" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ListBox x:Name="SkillsList" SelectionChanged="SkillsList_SelectionChanged">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Detail}" Style="{StaticResource HintStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <Grid x:Name="SkillDetail" Grid.Column="1" Margin="18,0,0,0" IsEnabled="False">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="2*" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButtonStyle}" Content="&#xE74D;" ToolTip="스토어에서 삭제 (30일 동안 skills\.trash에 보관)"
-                                    AutomationProperties.Name="스토어에서 삭제" Click="DeleteSkillButton_Click" VerticalAlignment="Center" />
-                            <TextBlock x:Name="SkillHeaderText" Style="{StaticResource HintStyle}" VerticalAlignment="Center" />
-                        </DockPanel>
-                        <TextBox x:Name="SkillContentBox" Grid.Row="1" Margin="0,8,0,0" Style="{StaticResource DocumentBoxStyle}" IsReadOnly="True" />
-                        <DockPanel Grid.Row="2" Margin="0,14,0,6">
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                <Button Content="보기" Style="{StaticResource LinkButtonStyle}" Click="ShowSkillVersionButton_Click" ToolTip="고른 버전의 내용을 위에 보여 줌" />
-                                <Button Content="이 버전으로 되돌리기" Style="{StaticResource LinkButtonStyle}" Click="RestoreSkillButton_Click"
-                                        ToolTip="고른 버전의 내용을 새 최신 버전으로 올림" />
-                            </StackPanel>
-                            <TextBlock Text="버전" Style="{StaticResource SubheadingStyle}" Margin="0" VerticalAlignment="Center" />
-                        </DockPanel>
-                        <ListBox x:Name="SkillVersionsList" Grid.Row="3" MinHeight="70" MouseDoubleClick="ShowSkillVersionButton_Click" />
-                    </Grid>
-                </Grid>
             </Grid>
         </Grid>
 

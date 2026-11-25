@@ -118,7 +118,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 앱 사용 기록 (`/launcher/usage`) | 마스터 계정의 앱 (AppKit `AppUsage`), ImPerformance 가 읽음 |
 | 스킬 · 플러그인 · 공지 (`/api/…`) | Terminal Notes |
 
-- **사내 서버 PC 한 대**에서 돌립니다 (C-DEP 에는 올리지 않음). 그 PC 에 릴리스의 `i-api-win-x64.zip` 을 풀고 (`%LOCALAPPDATA%\i-api`) `i-api.exe` 를 실행해 관리 창에서 포트를 정하고 [실행] 합니다 (런처에는 서버가 들어 있지 않음, 사용자 결정 2026-11-25).
+- **서버 PC 한 대**에서 돌립니다 (C-DEP 에는 올리지 않음). 그 PC 에 릴리스의 `i-api-win-x64.zip` 을 풀고 (`%LOCALAPPDATA%\i-api`) `i-api.exe` 를 실행해 관리 창에서 포트를 정하고 [실행] 합니다 (런처에는 서버가 들어 있지 않음, 사용자 결정 2026-11-25).
 - 이름은 **i-api** (C#, 3.0 부터): 서버 `%LOCALAPPDATA%\i-api\i-api.exe`, 설정 그 옆의 `settings.txt`, 데이터 `C:\ProgramData\i-api-data`, 로그인 자동 시작 `i-api.vbs`. 서버 PC 에 Python 이 필요 없습니다. 예전 Python 서버(`relay.py`, 예전 이름 `TerminalNotesRelay` 포함)는 새 i-api.exe 를 처음 실행할 때 저절로 옮겨집니다 (SETTINGS → `settings.txt`). 새 버전은 관리 창의 [업데이트] (같은 저장소의 최신 릴리스에서 zip 을 받아 바꿈).
 - i-api 관리 창 → **API**: API 마다 켜고 끄기 (끈 API 는 503), 오늘 · 30일 호출, 실패, 평균 시간. 새 API 는 `CDEP\Server\Functions.cs` 에 등록합니다.
 - **일반 사용자의 런처 · 앱은 이 서버에 아무것도 보내지 않습니다.**
