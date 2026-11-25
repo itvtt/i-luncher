@@ -18,7 +18,9 @@
 // 사용자는 PC 이름·계정의 해시 앞 12자리로만 구분합니다 (이름은 보내지 않음). bin\Debug·bin\Release 에서 도는 개발 빌드는 보내지도,
 // usage-pending.json 에 남기지도 않습니다 (남기면 같은 PC 에 설치된 앱이 나중에 개발 중 기록까지 보냄).
 // 다른 DLL 을 쓰지 않습니다 (JSON 도 직접 읽고 씀): 실행 파일만 복사해 도는 서비스 사본에서도 동작.
-// 또 Start 는 AppMemory 도 켭니다 (누구에게나): 앱이 한가할 때(뒤에서 15초, 앞에서는 입력 없이 30초) 쓰지 않는 메모리를 Windows 에 돌려줌 (이 파일 맨 아래).
+// 또 Start 는 AppMemory 도 켭니다 (누구에게나): 앱이 한가할 때(뒤에서 15초, 앞에서는 입력 없이 30초) 쓰지 않는 메모리를 Windows 에 돌려줌 (이 파일 아래).
+// 그리고 AppTrayIcon (누구에게나): Windows 트레이 아이콘 설정 목록에 남은 예전 아이콘 그림을 지금 아이콘으로 바꿈 (이 파일 맨 아래).
+//   트레이 아이콘을 직접 그리는 앱(날짜 아이콘 등)은 바꿀 때마다 ILuncher.AppKit.AppTrayIcon.Show(notifyIcon.Icon.Handle);
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -70,8 +72,9 @@ namespace ILuncher.AppKit
         /// <summary>앱 시작 때 한 번. app 을 비우면 update.json 의 InstallName, 없으면 실행 파일 이름</summary>
         public static void Start(UsageKind kind = UsageKind.Interactive, string? app = null)
         {
-            // 쓰지 않는 메모리 돌려주기는 누구에게나 (사용량 집계는 아래처럼 마스터만)
+            // 쓰지 않는 메모리 돌려주기 · 트레이 아이콘 설정의 그림 고치기는 누구에게나 (사용량 집계는 아래처럼 마스터만)
             AppMemory.Start();
+            AppTrayIcon.Start();
             lock (Gate)
             {
                 if (_timer != null) return;
@@ -596,5 +599,285 @@ namespace ILuncher.AppKit
         [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LastInput info);
         [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
         [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
+    }
+
+    /// <summary>
+    /// 트레이 아이콘 설정의 그림을 지금 아이콘으로 (AppUsage.Start 가 켬, 일반 · 마스터 모두).
+    /// Windows 는 설정 → 개인 설정 → 작업 표시줄 → 기타 시스템 트레이 아이콘 목록의 그림(HKCU\Control Panel\NotifyIconSettings\&lt;번호&gt;\IconSnapshot)을
+    /// 그 아이콘이 처음 나타날 때 한 번만 찍고 다시 바꾸지 않음 (2026-11-26 확인: 아이콘을 바꾸거나 다시 띄우거나 앱을 다시 실행해도 그대로).
+    /// 그래서 아이콘을 새로 그린 앱 · 날마다 바뀌는 아이콘(DeskCal)은 그 목록에 예전 그림이 남음. 이 실행 파일의 항목만 고침 (다른 프로그램은 건드리지 않음).
+    ///  - 시작하고 20초 뒤(트레이 아이콘이 생긴 뒤) 실행 파일 아이콘으로 한 번 (그림이 같으면 쓰지 않음)
+    ///  - 트레이 아이콘을 직접 그리는 앱은 바꿀 때마다 Show(아이콘 핸들): 그 그림으로 (그 뒤로는 실행 파일 아이콘으로 덮지 않음)
+    /// 시작할 때 탐색기에 이 실행 파일의 아이콘을 다시 읽으라고도 알림 (스스로 업데이트한 뒤 시작 메뉴 · 작업 표시줄에 예전 아이콘이 남지 않게)
+    /// </summary>
+    public static class AppTrayIcon
+    {
+        public const string SettingsKey = @"Control Panel\NotifyIconSettings";
+        private static readonly TimeSpan FirstRefresh = TimeSpan.FromSeconds(20);
+        private static readonly object Gate = new object();
+        private static bool _started, _shown;
+        /// <summary>시험용: HKCU 의 이 키 아래 항목만 · 이 실행 파일 경로로</summary>
+        internal static string Key { get; set; } = SettingsKey;
+        internal static string? ExecutableOverride { get; set; }
+
+        public static void Start()
+        {
+            lock (Gate)
+            {
+                if (_started) return;
+                _started = true;
+            }
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    if (Executable() is { } exe) SHChangeNotify(ShcneUpdateItem, ShcnfPathW | ShcnfFlushNoWait, exe, null);
+                    Thread.Sleep(FirstRefresh);
+                    lock (Gate) if (_shown) return;
+                    RefreshFromExecutable();
+                }
+                catch (Exception)
+                {
+                    // 덤: 실패해도 앱은 그대로 (스레드 풀에서 예외가 나가면 앱이 끝나므로 삼킴)
+                }
+            });
+        }
+
+        /// <summary>트레이 아이콘을 직접 그리는 앱: 바꿀 때마다 (icon = 그 아이콘의 HICON, 예: NotifyIcon.Icon.Handle). 바로 그림을 만들어 둠</summary>
+        public static void Show(IntPtr icon)
+        {
+            if (icon == IntPtr.Zero) return;
+            lock (Gate) _shown = true;
+            try { Write(size => RenderHandle(icon, size)); }
+            catch (Exception) { }
+        }
+
+        /// <summary>실행 파일 아이콘으로 (고친 항목 수)</summary>
+        internal static int RefreshFromExecutable() => Executable() is { } exe ? Write(size => RenderFile(exe, size)) : 0;
+
+        /// <summary>이 실행 파일의 항목마다 그 그림 크기(보통 16)로 그려, 지금 그림과 다르면 씀. 고친 항목 수</summary>
+        internal static int Write(Func<int, byte[]?> picture)
+        {
+            string? exe = Executable();
+            if (exe is null) return 0;
+            int written = 0;
+            var drawn = new Dictionary<int, byte[]?>();
+            try
+            {
+                using (RegistryKey? root = Registry.CurrentUser.OpenSubKey(Key, writable: true))
+                {
+                    if (root is null) return 0;
+                    foreach (string id in root.GetSubKeyNames())
+                    {
+                        using (RegistryKey? entry = root.OpenSubKey(id, writable: true))
+                        {
+                            if (entry is null || !(entry.GetValue("ExecutablePath") is string path) || !SamePath(ResolveKnownFolder(path), exe)) continue;
+                            byte[]? old = entry.GetValue("IconSnapshot") as byte[];
+                            int size = PngWidth(old) ?? 16;
+                            if (!drawn.TryGetValue(size, out byte[]? png)) drawn[size] = png = picture(size);
+                            if (png is null || old != null && old.SequenceEqual(png)) continue;
+                            entry.SetValue("IconSnapshot", png, RegistryValueKind.Binary);
+                            written++;
+                        }
+                    }
+                }
+            }
+            catch (Exception error) when (error is System.Security.SecurityException || error is UnauthorizedAccessException || error is IOException) { }
+            return written;
+        }
+
+        private static string? Executable()
+        {
+            if (ExecutableOverride != null) return ExecutableOverride;
+            try { using (var process = Process.GetCurrentProcess()) return process.MainModule?.FileName; }
+            catch (Exception) { return null; }
+        }
+
+        private static bool SamePath(string? a, string b)
+        {
+            if (a is null) return false;
+            try { return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase); }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>항목의 경로: "{알려진 폴더 GUID}\나머지" 또는 전체 경로</summary>
+        internal static string? ResolveKnownFolder(string path)
+        {
+            string text = path.Trim();
+            if (!text.StartsWith("{", StringComparison.Ordinal)) return text;
+            int close = text.IndexOf('}');
+            if (close < 0 || !Guid.TryParse(text.Substring(0, close + 1), out Guid id)) return null;
+            IntPtr buffer = IntPtr.Zero;
+            try
+            {
+                if (SHGetKnownFolderPath(ref id, 0, IntPtr.Zero, out buffer) != 0) return null;
+                return Marshal.PtrToStringUni(buffer)!.TrimEnd('\\') + "\\" + text.Substring(close + 1).TrimStart('\\');
+            }
+            finally { if (buffer != IntPtr.Zero) Marshal.FreeCoTaskMem(buffer); }
+        }
+
+        private static int? PngWidth(byte[]? png)
+        {
+            if (png is null || png.Length < 24 || png[0] != 0x89 || png[1] != 0x50 || png[2] != 0x4E || png[3] != 0x47) return null;
+            int width = png[16] << 24 | png[17] << 16 | png[18] << 8 | png[19];
+            return width >= 16 && width <= 256 ? width : (int?)null;
+        }
+
+        // ── 아이콘 → PNG (다른 DLL 없이: Win32 로 픽셀을 읽고 PNG 는 직접 씀) ──
+
+        private static byte[]? RenderHandle(IntPtr icon, int size)
+        {
+            IntPtr copy = CopyImage(icon, ImageIcon, size, size, 0);
+            if (copy == IntPtr.Zero) return null;
+            try { return IconToPng(copy, size); }
+            finally { DestroyIcon(copy); }
+        }
+
+        private static byte[]? RenderFile(string file, int size)
+        {
+            var icons = new IntPtr[1];
+            var ids = new uint[1];
+            uint count = PrivateExtractIcons(file, 0, size, size, icons, ids, 1, 0);
+            if (count == 0 || count == uint.MaxValue || icons[0] == IntPtr.Zero) return null;
+            try { return IconToPng(icons[0], size); }
+            finally { DestroyIcon(icons[0]); }
+        }
+
+        private static byte[]? IconToPng(IntPtr icon, int size)
+        {
+            if (!GetIconInfo(icon, out IconInfo info)) return null;
+            try
+            {
+                if (info.Color == IntPtr.Zero) return null;  // 흑백 아이콘은 쓰지 않음
+                byte[]? pixels = Pixels(info.Color, size);
+                if (pixels is null) return null;
+                bool alpha = false;
+                for (int i = 3; i < pixels.Length && !alpha; i += 4) alpha = pixels[i] != 0;
+                if (!alpha)
+                {
+                    // 알파 없는 옛 아이콘: 마스크의 흰 곳이 투명
+                    byte[]? mask = info.Mask == IntPtr.Zero ? null : Pixels(info.Mask, size);
+                    for (int i = 0; i < pixels.Length; i += 4) pixels[i + 3] = mask != null && mask[i] != 0 ? (byte)0 : (byte)255;
+                }
+                return Png(pixels, size);
+            }
+            finally
+            {
+                if (info.Color != IntPtr.Zero) DeleteObject(info.Color);
+                if (info.Mask != IntPtr.Zero) DeleteObject(info.Mask);
+            }
+        }
+
+        /// <summary>비트맵을 size×size 32비트 BGRA(위에서 아래로)로</summary>
+        private static byte[]? Pixels(IntPtr bitmap, int size)
+        {
+            var header = new BitmapInfoHeader { Size = 40, Width = size, Height = -size, Planes = 1, BitCount = 32 };
+            var bits = new byte[size * size * 4];
+            IntPtr dc = GetDC(IntPtr.Zero);
+            try { return GetDIBits(dc, bitmap, 0, (uint)size, bits, ref header, 0) == size ? bits : null; }
+            finally { ReleaseDC(IntPtr.Zero, dc); }
+        }
+
+        /// <summary>BGRA 픽셀 → PNG (8비트 RGBA, 필터 없음)</summary>
+        internal static byte[] Png(byte[] bgra, int size)
+        {
+            int stride = size * 4 + 1;
+            var raw = new byte[stride * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    int from = (y * size + x) * 4, to = y * stride + 1 + x * 4;
+                    raw[to] = bgra[from + 2];
+                    raw[to + 1] = bgra[from + 1];
+                    raw[to + 2] = bgra[from];
+                    raw[to + 3] = bgra[from + 3];
+                }
+            using (var output = new MemoryStream())
+            {
+                output.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, 0, 8);
+                var header = new byte[13];
+                BigEndian(header, 0, (uint)size);
+                BigEndian(header, 4, (uint)size);
+                header[8] = 8;   // 비트 깊이
+                header[9] = 6;   // RGBA
+                Chunk(output, "IHDR", header);
+                Chunk(output, "IDAT", Zlib(raw));
+                Chunk(output, "IEND", new byte[0]);
+                return output.ToArray();
+            }
+        }
+
+        private static byte[] Zlib(byte[] data)
+        {
+            using (var output = new MemoryStream())
+            {
+                output.WriteByte(0x78);
+                output.WriteByte(0x9C);
+                using (var deflate = new System.IO.Compression.DeflateStream(output, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+                    deflate.Write(data, 0, data.Length);
+                uint a = 1, b = 0;
+                foreach (byte value in data) { a = (a + value) % 65521; b = (b + a) % 65521; }
+                var adler = new byte[4];
+                BigEndian(adler, 0, b << 16 | a);
+                output.Write(adler, 0, 4);
+                return output.ToArray();
+            }
+        }
+
+        private static void Chunk(Stream output, string type, byte[] data)
+        {
+            var head = new byte[8];
+            BigEndian(head, 0, (uint)data.Length);
+            for (int i = 0; i < 4; i++) head[4 + i] = (byte)type[i];
+            output.Write(head, 0, 8);
+            output.Write(data, 0, data.Length);
+            uint crc = 0xFFFFFFFF;
+            for (int i = 4; i < 8; i++) crc = Crc(crc, head[i]);
+            foreach (byte value in data) crc = Crc(crc, value);
+            var tail = new byte[4];
+            BigEndian(tail, 0, crc ^ 0xFFFFFFFF);
+            output.Write(tail, 0, 4);
+        }
+
+        private static uint Crc(uint crc, byte value)
+        {
+            crc ^= value;
+            for (int bit = 0; bit < 8; bit++) crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1;
+            return crc;
+        }
+
+        private static void BigEndian(byte[] target, int offset, uint value)
+        {
+            target[offset] = (byte)(value >> 24);
+            target[offset + 1] = (byte)(value >> 16);
+            target[offset + 2] = (byte)(value >> 8);
+            target[offset + 3] = (byte)value;
+        }
+
+        private const uint ImageIcon = 1;
+        private const int ShcneUpdateItem = 0x00002000;
+        private const uint ShcnfPathW = 0x0005, ShcnfFlushNoWait = 0x3000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IconInfo { [MarshalAs(UnmanagedType.Bool)] public bool IsIcon; public int HotspotX, HotspotY; public IntPtr Mask, Color; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct BitmapInfoHeader
+        {
+            public uint Size; public int Width, Height; public ushort Planes, BitCount; public uint Compression, SizeImage;
+            public int XPelsPerMeter, YPelsPerMeter; public uint ColorsUsed, ColorsImportant;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern uint PrivateExtractIcons(string file, int index, int width, int height, IntPtr[] icons, uint[] ids, uint count, uint flags);
+        [DllImport("user32.dll")] private static extern IntPtr CopyImage(IntPtr image, uint type, int width, int height, uint flags);
+        [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr icon);
+        [DllImport("user32.dll")] private static extern bool GetIconInfo(IntPtr icon, out IconInfo info);
+        [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
+        [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+        [DllImport("gdi32.dll")] private static extern int GetDIBits(IntPtr dc, IntPtr bitmap, uint start, uint lines, byte[] bits, ref BitmapInfoHeader info, uint usage);
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern void SHChangeNotify(int eventId, uint flags, string? item1, string? item2);
+        [DllImport("shell32.dll")] private static extern int SHGetKnownFolderPath(ref Guid folderId, uint flags, IntPtr token, out IntPtr path);
     }
 }

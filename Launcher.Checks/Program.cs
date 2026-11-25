@@ -752,6 +752,44 @@ try
         await cleaning.UninstallAsync(renamed, cleaning.Detect(renamed)!);
     });
 
+    // Windows 는 트레이 아이콘 설정의 그림을 처음 한 번만 찍음 (사용자: "deskcal도 트레이설정에서보면 이전 아이콘으로 보이는 경우가")
+    await CheckSync("AppKit AppTrayIcon: this executable's tray settings picture becomes its current icon (valid PNG, written once); other programs stay", () =>
+    {
+        string trayKey = registryRoot + @"\tray";
+        string exe = Path.Combine(AppContext.BaseDirectory, "i-luncher.exe");
+        ILuncher.AppKit.AppTrayIcon.Key = trayKey;
+        ILuncher.AppKit.AppTrayIcon.ExecutableOverride = exe;
+        try
+        {
+            using (var mine = Registry.CurrentUser.CreateSubKey(trayKey + @"\1")) { mine.SetValue("ExecutablePath", exe); mine.SetValue("IconSnapshot", new byte[] { 1, 2, 3 }); mine.SetValue("IsPromoted", 1); }
+            using (var other = Registry.CurrentUser.CreateSubKey(trayKey + @"\2")) { other.SetValue("ExecutablePath", @"C:\Other\other.exe"); other.SetValue("IconSnapshot", new byte[] { 1, 2, 3 }); }
+            Equal(1, ILuncher.AppKit.AppTrayIcon.RefreshFromExecutable(), "this executable's entry updated");
+            byte[] png;
+            int promoted;
+            using (var mine = Registry.CurrentUser.OpenSubKey(trayKey + @"\1")!) { png = (byte[])mine.GetValue("IconSnapshot")!; promoted = (int)mine.GetValue("IsPromoted")!; }
+            Equal(1, promoted, "the user's show-on-taskbar choice stays");
+            Sta(() =>
+            {
+                var frame = new System.Windows.Media.Imaging.PngBitmapDecoder(new MemoryStream(png), System.Windows.Media.Imaging.BitmapCreateOptions.None,
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad).Frames[0];
+                Equal(16, frame.PixelWidth, "16px like Windows' own picture");
+                var pixels = new byte[16 * 16 * 4];
+                frame.CopyPixels(pixels, 16 * 4, 0);
+                Assert(Enumerable.Range(0, 256).Any(i => pixels[i * 4 + 3] > 200), "the icon is drawn (opaque pixels)");
+            });
+            Equal(0, ILuncher.AppKit.AppTrayIcon.RefreshFromExecutable(), "the same picture is not written again");
+            using (var other = Registry.CurrentUser.OpenSubKey(trayKey + @"\2")!)
+                Assert(((byte[])other.GetValue("IconSnapshot")!).SequenceEqual(new byte[] { 1, 2, 3 }), "another program's picture stays");
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            Equal(Path.Combine(local, "X", "x.exe"), ILuncher.AppKit.AppTrayIcon.ResolveKnownFolder(@"{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\X\x.exe"), "known folder path");
+        }
+        finally
+        {
+            ILuncher.AppKit.AppTrayIcon.Key = ILuncher.AppKit.AppTrayIcon.SettingsKey;
+            ILuncher.AppKit.AppTrayIcon.ExecutableOverride = null;
+        }
+    });
+
     Console.WriteLine("AppKit self-update");
     await CheckSync("master PC: this PC's git login becomes the token without typing it; a token the user saved stays", () =>
     {
