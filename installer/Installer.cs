@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using ILauncher.Services;
 using Microsoft.Win32;
 
 namespace ILuncher.Setup;
@@ -226,6 +227,7 @@ internal static class Installer
                 string.Equals(Path.GetFullPath(location).TrimEnd('\\'), target.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
                 Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
         progress("파일 삭제 중…");
+        var executableNames = SystemLeftovers.ExecutableNames(target);
         string self = Path.GetFullPath(SelfPath);
         foreach (string file in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
             if (!string.Equals(Path.GetFullPath(file), self, StringComparison.OrdinalIgnoreCase)) File.Delete(file);
@@ -236,7 +238,41 @@ internal static class Installer
             Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping -n 3 127.0.0.1 >nul & del /f /q \"{self}\" & rmdir \"{target}\"")
                 { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = Path.GetTempPath() });
         else if (!Directory.EnumerateFileSystemEntries(target).Any()) Directory.Delete(target);
+        if (!TestRun)
+        {
+            progress("시스템 등록 정리 중…");
+            RemoveSystemLeftovers(target, executableNames);
+        }
         progress("제거 완료");
+    }
+
+    /// <summary>
+    /// 런처 캐시 폴더(%LOCALAPPDATA%\i-luncher)의 런처 시스템 파일: 받아 둔 목록 · 아이콘 · 스크린샷 · 받은 파일 · 업데이트 임시 파일 (Launcher\Services\DataFolder.cs 의
+    /// CacheFiles · CacheFolders 와 같게, 다시 설치하면 다시 받음). 사용자 데이터(settings.json · favorites.json · my-apps.json · removed-apps.json ·
+    /// custom-icons · my-media 같은 파일, C:\i-luncher)와 그 밖의 이름(이 PC 의 Actions 러너 폴더 등)은 남김
+    /// </summary>
+    private static readonly string[] CacheFiles = { "basic-apps-cache.json", "catalog-cache.json", "notice-state.json" };
+    private static readonly string[] CacheFolders = { "icons", "screenshots", "site-icons", "downloads", "updates" };
+
+    /// <summary>
+    /// 런처를 지운 뒤 Windows 에 남는 것: 런처 폴더를 가리키는 트레이 아이콘 설정 · 바로 가기 · 이름 캐시, 예전 런처의 시스템 파일, 런처 캐시.
+    /// 사용자 데이터와 런처로 설치한 앱은 그대로 (사용자 결정 2026-11-26: 시스템 파일은 지우고 데이터는 남김)
+    /// </summary>
+    private static void RemoveSystemLeftovers(string target, System.Collections.Generic.IEnumerable<string> executableNames)
+    {
+        try
+        {
+            var leftovers = SystemLeftovers.ForCurrentUser();
+            leftovers.RemoveFor(target, executableNames);
+            string cache = DataDirectory;
+            if (!Directory.Exists(cache)) return;
+            leftovers.CleanLegacyLauncherFiles(cache);
+            foreach (string name in CacheFiles)
+                try { File.Delete(Path.Combine(cache, name)); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            foreach (string name in CacheFolders) SystemLeftovers.DeleteTree(Path.Combine(cache, name));
+            if (!Directory.EnumerateFileSystemEntries(cache).Any()) Directory.Delete(cache);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
     }
 
     /// <summary>이 사용자에게 설치된 i-luncher 의 설치 위치 (Windows "앱" 목록에 기록된 것)</summary>

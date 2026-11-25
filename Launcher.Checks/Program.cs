@@ -610,6 +610,148 @@ try
         installer.UninstallByName("SampleApp");
     });
 
+    // 지운 앱이 Windows 에 남긴 등록 (사용자: "제거해도 이전 시스템 파일들이 남아있는거 같은데 … 시스템파일 같은건 제대로 제거되어야해 단 데이터 류는 제거되지 안도록해")
+    Console.WriteLine("System leftovers");
+    string sysRoot = Path.Combine(root, "sys");
+    string sysRegistry = registryRoot + @"\sys";
+    string startMenu = Path.Combine(sysRoot, "StartMenu"), desktop = Path.Combine(sysRoot, "Desktop"), startup = Path.Combine(sysRoot, "Startup");
+    foreach (string folder in new[] { startMenu, desktop, startup }) Directory.CreateDirectory(folder);
+    var leftovers = new SystemLeftovers([(startMenu, true), (desktop, false), (startup, false)], startup, sysRegistry, notifyShell: false);
+    void Link(string path, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+        try { dynamic link = shell.CreateShortcut(path); link.TargetPath = target; link.Save(); }
+        finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
+    }
+    RegistryKey Key(string path) => Registry.CurrentUser.CreateSubKey(sysRegistry + "\\" + path);
+    bool HasKey(string path) { using var key = Registry.CurrentUser.OpenSubKey(sysRegistry + "\\" + path); return key is not null; }
+    bool HasValue(string path, string name) { using var key = Registry.CurrentUser.OpenSubKey(sysRegistry + "\\" + path); return key?.GetValue(name) is not null; }
+    void TrayIcon(string id, string exe) { using var key = Key(SystemLeftovers.TrayIconsKey + "\\" + id); key.SetValue("ExecutablePath", exe); key.SetValue("IconSnapshot", new byte[] { 1, 2, 3 }); }
+
+    await CheckSync("removing an app also removes its shortcuts, startup entries, tray icon settings and name cache; other programs and data stay", () =>
+    {
+        string app = Path.Combine(sysRoot, "Programs", "Leftover"), exe = Path.Combine(app, "Leftover.exe");
+        string other = Path.Combine(sysRoot, "Programs", "Other"), otherExe = Path.Combine(other, "Other.exe");
+        string data = Path.Combine(sysRoot, "LocalAppData", "Leftover");
+        foreach (string folder in new[] { app, other, data }) Directory.CreateDirectory(folder);
+        File.WriteAllText(exe, "x");
+        File.WriteAllText(otherExe, "x");
+        File.WriteAllText(Path.Combine(data, "settings.json"), "mine");
+        Link(Path.Combine(startMenu, "i-luncher", "Leftover (old).lnk"), exe);
+        Link(Path.Combine(startMenu, "Leftover.lnk"), exe);
+        Link(Path.Combine(desktop, "Leftover.lnk"), exe);
+        Link(Path.Combine(desktop, "Other.lnk"), otherExe);
+        File.WriteAllText(Path.Combine(startup, "Leftover.vbs"), $"CreateObject(\"WScript.Shell\").Run \"\"\"{exe}\"\"\", 0, False");
+        File.WriteAllText(Path.Combine(startup, "Mine.vbs"), $"' mine, also mentions {exe}");
+        File.WriteAllText(Path.Combine(startup, "Leftover.cmd"), "echo not about the app folder");
+        using (var run = Key(SystemLeftovers.RunKey)) { run.SetValue("Leftover", $"\"{exe}\" --tray"); run.SetValue("Other", $"\"{otherExe}\""); }
+        using (var approved = Key(SystemLeftovers.StartupApprovedRunKey)) { approved.SetValue("Leftover", new byte[] { 2 }); approved.SetValue("Other", new byte[] { 2 }); }
+        using (var approved = Key(SystemLeftovers.StartupApprovedFolderKey)) approved.SetValue("Leftover.vbs", new byte[] { 2 });
+        TrayIcon("111", exe);
+        TrayIcon("222", otherExe);
+        Key(SystemLeftovers.NotificationsKey + @"\" + SystemLeftovers.GeneratedAumid + "111").Dispose();
+        Key(SystemLeftovers.AppUserModelIdKey + @"\" + SystemLeftovers.GeneratedAumid + "111").Dispose();
+        Key(SystemLeftovers.NotificationsKey + @"\" + SystemLeftovers.GeneratedAumid + "222").Dispose();
+        using (var mui = Key(SystemLeftovers.MuiCacheKey)) { mui.SetValue(exe + ".FriendlyAppName", "Leftover"); mui.SetValue(otherExe + ".FriendlyAppName", "Other"); }
+        using (var entry = Key(SystemLeftovers.UninstallKey + @"\Leftover")) entry.SetValue("InstallLocation", app);
+        using (var entry = Key(SystemLeftovers.UninstallKey + @"\Other")) entry.SetValue("InstallLocation", other);
+
+        var names = SystemLeftovers.ExecutableNames(app);
+        Directory.Delete(app, recursive: true);  // 설치 폴더를 지운 뒤 (AppInstaller.RemoveManaged 와 같은 순서)
+        int removed = leftovers.RemoveFor(app, names);
+
+        Assert(!File.Exists(Path.Combine(startMenu, "Leftover.lnk")) && !File.Exists(Path.Combine(desktop, "Leftover.lnk")), "start menu and desktop shortcuts removed");
+        Assert(!Directory.Exists(Path.Combine(startMenu, "i-luncher")) && Directory.Exists(startMenu), "the emptied start menu subfolder is removed, the start menu stays");
+        Assert(!File.Exists(Path.Combine(startup, "Leftover.vbs")), "the app's own startup script removed");
+        Assert(File.Exists(Path.Combine(startup, "Mine.vbs")) && File.Exists(Path.Combine(startup, "Leftover.cmd")), "other startup scripts stay (other name, or not about the folder)");
+        Assert(!HasValue(SystemLeftovers.RunKey, "Leftover") && !HasValue(SystemLeftovers.StartupApprovedRunKey, "Leftover")
+            && !HasValue(SystemLeftovers.StartupApprovedFolderKey, "Leftover.vbs"), "startup registration removed");
+        Assert(!HasKey(SystemLeftovers.TrayIconsKey + @"\111") && !HasKey(SystemLeftovers.NotificationsKey + @"\" + SystemLeftovers.GeneratedAumid + "111")
+            && !HasKey(SystemLeftovers.AppUserModelIdKey + @"\" + SystemLeftovers.GeneratedAumid + "111"), "tray icon setting and its notification entries removed");
+        Assert(!HasValue(SystemLeftovers.MuiCacheKey, exe + ".FriendlyAppName") && !HasKey(SystemLeftovers.UninstallKey + @"\Leftover"), "name cache and apps list entry removed");
+        Assert(File.Exists(Path.Combine(desktop, "Other.lnk")) && HasValue(SystemLeftovers.RunKey, "Other") && HasValue(SystemLeftovers.StartupApprovedRunKey, "Other")
+            && HasKey(SystemLeftovers.TrayIconsKey + @"\222") && HasKey(SystemLeftovers.NotificationsKey + @"\" + SystemLeftovers.GeneratedAumid + "222")
+            && HasValue(SystemLeftovers.MuiCacheKey, otherExe + ".FriendlyAppName") && HasKey(SystemLeftovers.UninstallKey + @"\Other"), "another program's entries stay");
+        Equal("mine", File.ReadAllText(Path.Combine(data, "settings.json")), "the app's data outside the install folder stays");
+        Equal(8, removed, "removed count (3 shortcuts, startup script, Run, tray icon, name cache, apps list)");
+    });
+
+    await CheckSync("stale tray icon settings: only missing executables inside the launcher's folders, known-folder paths too", () =>
+    {
+        string programs = Path.Combine(sysRoot, "Programs2");
+        string here = Path.Combine(programs, "Here", "Here.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(here)!);
+        File.WriteAllText(here, "x");
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string knownName = "i-luncher-checks-" + Guid.NewGuid().ToString("N")[..6];
+        TrayIcon("301", Path.Combine(programs, "Gone", "Gone.exe"));
+        TrayIcon("302", here);
+        TrayIcon("303", Path.Combine(sysRoot, "Elsewhere", "Gone.exe"));
+        TrayIcon("304", "{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\\" + knownName + "\\Old.exe");  // %LOCALAPPDATA% 의 알려진 폴더 GUID
+        Equal(Path.Combine(local, knownName, "Old.exe"), SystemLeftovers.ResolveKnownFolder("{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}\\" + knownName + "\\Old.exe"), "known folder path");
+        int removed = leftovers.CleanStaleTrayIcons([programs, Path.Combine(local, knownName)]);
+        Assert(!HasKey(SystemLeftovers.TrayIconsKey + @"\301") && !HasKey(SystemLeftovers.TrayIconsKey + @"\304"), "missing executables in the launcher's folders removed");
+        Assert(HasKey(SystemLeftovers.TrayIconsKey + @"\302"), "an existing executable keeps its setting");
+        Assert(HasKey(SystemLeftovers.TrayIconsKey + @"\303"), "outside the launcher's folders: not the launcher's business");
+        Equal(2, removed, "removed count");
+    });
+
+    await CheckSync("old launcher files: payloads, workspaces and old versions go (read-only files too, never through a junction); data and the runner stay", () =>
+    {
+        string cache = Path.Combine(sysRoot, "cache");
+        string payload = Path.Combine(cache, "Apps", "terminalnotes", "abc", "TerminalNotes.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(payload)!);
+        File.WriteAllText(payload, "old");
+        string readOnly = Path.Combine(cache, "Workspaces", "w1", ".git", "objects", "ab", "cd");
+        Directory.CreateDirectory(Path.GetDirectoryName(readOnly)!);
+        File.WriteAllText(readOnly, "blob");
+        File.SetAttributes(readOnly, FileAttributes.ReadOnly);
+        string precious = Path.Combine(sysRoot, "precious-source");
+        Directory.CreateDirectory(precious);
+        File.WriteAllText(Path.Combine(precious, "code.cs"), "keep");
+        string junction = Path.Combine(cache, "Workspaces", "w1", "Projects");
+        using (var mklink = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{junction}\" \"{precious}\"") { CreateNoWindow = true, UseShellExecute = false })!) mklink.WaitForExit();
+        Assert(Directory.Exists(Path.Combine(junction)), "junction made for the check");
+        Directory.CreateDirectory(Path.Combine(cache, "Releases", "0.2.18", "i-luncher"));
+        Directory.CreateDirectory(Path.Combine(cache, "ActionsRunner", "_work"));
+        File.WriteAllText(Path.Combine(cache, "ActionsRunner", "_work", "keep.txt"), "runner");
+        foreach (string name in new[] { "settings.json", "favorites.json", "usage.json", "catalog-cache.json", "store-group.txt", ".managed-payload.lock" })
+            File.WriteAllText(Path.Combine(cache, name), "x");
+        Link(Path.Combine(startMenu, "i-luncher", "Terminal Notes (terminalnotes).lnk"), payload);
+        TrayIcon("401", payload);
+
+        var removed = leftovers.CleanLegacyLauncherFiles(cache);
+        Assert(!Directory.Exists(Path.Combine(cache, "Apps")) && !Directory.Exists(Path.Combine(cache, "Workspaces")) && !Directory.Exists(Path.Combine(cache, "Releases")),
+            "old payloads, workspaces (read-only git files too) and old launcher versions removed: " + string.Join(", ", removed));
+        Equal("keep", File.ReadAllText(Path.Combine(precious, "code.cs")), "a junction's target is never touched");
+        Assert(!File.Exists(Path.Combine(cache, "store-group.txt")) && !File.Exists(Path.Combine(cache, ".managed-payload.lock")), "old marker files removed");
+        Assert(new[] { "settings.json", "favorites.json", "usage.json", "catalog-cache.json" }.All(name => File.Exists(Path.Combine(cache, name))), "user data and current caches stay");
+        Assert(File.Exists(Path.Combine(cache, "ActionsRunner", "_work", "keep.txt")), "the runner folder stays");
+        Assert(!File.Exists(Path.Combine(startMenu, "i-luncher", "Terminal Notes (terminalnotes).lnk")) && !HasKey(SystemLeftovers.TrayIconsKey + @"\401"),
+            "the old start menu entry and tray setting that showed the old icon removed");
+    });
+
+    await Check("AppInstaller: uninstalling removes the app's startup entry, a renamed app's old one too", async () =>
+    {
+        var cleaning = new AppInstaller(Path.Combine(sysRoot, "Programs3"), registryRoot, launcherCommand: @"C:\i-luncher\i-luncher.exe",
+            launcherRuntime: Path.Combine(root, "no-runtime"), createShortcuts: false, leftovers: leftovers);
+        var installed = await cleaning.InstallZipAsync(sample, MakeZip("sys1.zip", new() { ["SampleApp.exe"] = "x" }), Release("v1.0.0"));
+        using (var run = Key(SystemLeftovers.RunKey)) run.SetValue("SampleApp", $"\"{installed.ExecutablePath}\" --tray");
+        TrayIcon("501", installed.ExecutablePath!);
+        await cleaning.UninstallAsync(sample, installed);
+        Assert(!HasValue(SystemLeftovers.RunKey, "SampleApp") && !HasKey(SystemLeftovers.TrayIconsKey + @"\501"), "startup entry and tray setting removed with the app");
+
+        // 이름을 바꾼 앱: 새 이름으로 설치하면 예전 폴더를 가리키던 시작 프로그램 등록도 지움
+        var before = new AppDefinition { Id = "sys-old", Name = "SysOld", InstallName = "SysOld", Repository = "https://ghe.test/team/SysOld" };
+        var old = await cleaning.InstallZipAsync(before, MakeZip("sys2.zip", new() { ["SysOld.exe"] = "x" }), Release("v1.0.0"));
+        using (var run = Key(SystemLeftovers.RunKey)) run.SetValue("SysOld", $"\"{old.ExecutablePath}\"");
+        var renamed = new AppDefinition { Id = "sys-new", Name = "SysNew", InstallName = "SysNew", Repository = "https://ghe.test/team/SysNew", FormerInstallNames = ["SysOld"] };
+        await cleaning.InstallZipAsync(renamed, MakeZip("sys3.zip", new() { ["SysNew.exe"] = "x" }), Release("v1.1.0"));
+        Assert(!HasValue(SystemLeftovers.RunKey, "SysOld"), "the old folder's startup entry removed");
+        await cleaning.UninstallAsync(renamed, cleaning.Detect(renamed)!);
+    });
+
     Console.WriteLine("AppKit self-update");
     await CheckSync("master PC: this PC's git login becomes the token without typing it; a token the user saved stays", () =>
     {

@@ -30,6 +30,8 @@
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="Microsoft.CSharp" />
+    <!-- 제거할 때 시스템 등록(트레이 아이콘 설정 · 바로 가기 …)과 예전 런처 파일을 지움: 런처와 같은 코드 -->
+    <Compile Include="..\Launcher\Services\SystemLeftovers.cs" Link="SystemLeftovers.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(PayloadZip)' != ''">

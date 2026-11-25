@@ -55,10 +55,14 @@ public sealed class AppInstaller
     private readonly string _launcherCommand;
     private readonly string? _launcherRuntime;
     private readonly bool _useGlobalRuntimes;
+    /// <summary>지운 앱이 Windows 에 남긴 등록(시작 프로그램 · 트레이 아이콘 설정 · 바탕화면 바로 가기 …)을 지움. 시험(다른 "앱" 목록 키)에서는 넘긴 것만</summary>
+    private readonly SystemLeftovers? _leftovers;
 
     public AppInstaller(string? programsRoot = null, string? uninstallRoot = null, string? shortcutDirectory = null,
-        string? launcherCommand = null, string? launcherRuntime = null, bool useGlobalRuntimes = true, bool createShortcuts = true)
+        string? launcherCommand = null, string? launcherRuntime = null, bool useGlobalRuntimes = true, bool createShortcuts = true,
+        SystemLeftovers? leftovers = null)
     {
+        _leftovers = leftovers ?? (uninstallRoot is null ? SystemLeftovers.ForCurrentUser() : null);
         _programsRoot = programsRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs");
         _uninstallRoot = uninstallRoot ?? DefaultUninstallRoot;
         _shortcutDirectory = createShortcuts ? shortcutDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs) : null;
@@ -256,6 +260,9 @@ public sealed class AppInstaller
             Register(app, target, installedExecutable, versionText);
             TryCreateShortcut(app, installedExecutable, target);
             RemoveFormerInstalls(app);
+            // 같은 경로의 새 실행 파일: 탐색기 · 시작 메뉴가 예전 아이콘을 계속 보이지 않게
+            _leftovers?.RefreshIcons(_shortcutDirectory is null ? [installedExecutable]
+                : [installedExecutable, Path.Combine(_shortcutDirectory, AppDefinition.SafeFolderName(app.Name) + ".lnk")]);
             ILuncher.AppKit.AppUsage.Count(update ? "update" : "install");
             return Detect(app) ?? throw new IOException("설치한 앱을 확인하지 못했습니다: " + target);
         }
@@ -399,6 +406,7 @@ public sealed class AppInstaller
             if (DetectAs(app, app.EffectiveInstallName) is { } installed)
             {
                 RemoveFormerInstalls(app);
+                if (installed.ExecutablePath is { } executable) _leftovers?.RefreshIcons([executable]);
                 return installed;
             }
             await Task.Delay(500, cancellationToken).ConfigureAwait(false);
@@ -562,6 +570,7 @@ public sealed class AppInstaller
 
     /// <summary>
     /// 런처가 설치한 앱은 바로 가기·"앱" 목록·설치 폴더를 지움. 앱의 자체 설치 프로그램으로 설치된 앱은 그 제거 프로그램을 실행.
+    /// 둘 다 끝나면 그 앱이 Windows 에 남긴 시스템 등록(시작 프로그램 · 트레이 아이콘 설정 · 바탕화면 바로 가기 …)도 지움 (SystemLeftovers).
     /// 설치 폴더 밖의 사용자 데이터는 건드리지 않음.
     /// </summary>
     public async Task UninstallAsync(AppDefinition app, InstalledApp installed, CancellationToken cancellationToken = default)
@@ -569,10 +578,14 @@ public sealed class AppInstaller
         if (IsRunning(installed.Directory)) throw new AppRunningException(app.Name);
         if (!installed.ManagedByLauncher && (installed.QuietUninstallCommand ?? installed.UninstallCommand) is { Length: > 0 } command)
         {
+            var names = SystemLeftovers.ExecutableNames(installed.Directory);
             var (file, arguments) = SplitCommand(command);
             using Process process = Process.Start(new ProcessStartInfo(file, arguments) { UseShellExecute = true })
                 ?? throw new InvalidOperationException("제거 프로그램을 시작하지 못했습니다.");
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            // 제거 프로그램이 앱을 실제로 지웠을 때만 (사용자가 취소했으면 등록을 그대로 둠)
+            if (installed.ExecutablePath is not { } executable || !File.Exists(executable))
+                _leftovers?.RemoveFor(installed.Directory, names);
             return;
         }
         RemoveManaged(installed.InstallName, installed.Directory, app.Name);
@@ -620,6 +633,7 @@ public sealed class AppInstaller
                 if (ShortcutTarget(link) is { } linked && IsInside(linked, full))
                     TryDeleteFile(link);
         Registry.CurrentUser.DeleteSubKeyTree(KeyPath(installName), throwOnMissingSubKey: false);
+        var names = SystemLeftovers.ExecutableNames(full);
         if (owned && Directory.Exists(full))
         {
             for (int attempt = 0; ; attempt++)
@@ -632,6 +646,8 @@ public sealed class AppInstaller
                 }
             }
         }
+        // 앱 파일이 없어졌으면 그 앱이 Windows 에 남긴 등록도 (런처가 관리하지 않는 폴더라 남겨 둔 앱은 그대로)
+        if (!Directory.Exists(full)) _leftovers?.RemoveFor(full, names);
     }
 
     private static (string File, string Arguments) SplitCommand(string command)

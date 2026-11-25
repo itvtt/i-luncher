@@ -179,6 +179,7 @@ public partial class MainWindow : Window
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
         await RefreshAsync(checkReleases: true);
+        _ = CleanSystemLeftoversAsync();
         _periodic.Start();
         _runningTimer.Start();
         _ = ScanRunningAsync();
@@ -188,6 +189,38 @@ public partial class MainWindow : Window
     }
 
     private void Window_Activated(object? sender, EventArgs e) => _ = ScanRunningAsync();
+
+    /// <summary>
+    /// 시작할 때 뒤에서 한 번: 예전 런처가 캐시 폴더에 남긴 시스템 파일(앱 실행 사본 · 빌드 작업 폴더 · 예전 런처 버전 …)과 그것을 가리키던
+    /// 시작 메뉴 · 트레이 아이콘 등록, 런처가 설치하는 폴더의 실행 파일인데 이제 없는 트레이 아이콘 설정(예전 아이콘으로 보이던 것)을 지움.
+    /// 사용자 데이터 · 설치된 앱 · 그 밖의 프로그램은 건드리지 않음 (SystemLeftovers)
+    /// </summary>
+    private async Task CleanSystemLeftoversAsync()
+    {
+        if (!AppUpdater.IsInstalledCopy("i-luncher")) return;  // 개발 빌드는 이 PC 의 실제 설치를 정리하지 않음
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var roots = new List<string> { DataFolder.Cache };
+        foreach (var card in _cards)
+            foreach (string name in card.App.EffectiveFormerInstallNames.Prepend(card.App.EffectiveInstallName))
+                if (name.Length > 0)
+                {
+                    roots.Add(Path.Combine(local, "Programs", name));
+                    roots.Add(Path.Combine(local, name));
+                }
+        try
+        {
+            await Task.Run(() =>
+            {
+                var leftovers = SystemLeftovers.ForCurrentUser();
+                leftovers.CleanLegacyLauncherFiles(DataFolder.Cache);
+                leftovers.CleanStaleTrayIcons(roots);
+            });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            System.Diagnostics.Debug.WriteLine("Leftover cleanup failed: " + error.Message);
+        }
+    }
 
     /// <summary>
     /// 설치된 앱 중 실행 중인 것을 칸 · 독에 표시. 창이 안 보이면 건너뜀.

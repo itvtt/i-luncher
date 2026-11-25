@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 릴리스 버전의 바닥값. Actions 러너(.github\workflows\release.yml)는 마지막 릴리스의 다음 번호를 -p:Version 으로 넘김.
          큰 변경으로 번호를 올리려면 여기만 올리면 됨 -->
-    <Version>2.1.0</Version>
+    <Version>2.2.6</Version>
     <Product>i-luncher</Product>
     <Description>GitHub 릴리스로 앱을 설치·업데이트하는 런처</Description>
     <!-- 버전 표시가 1.0.0+커밋해시 가 되지 않게 (런처·앱 버전 비교는 릴리스 태그 기준) -->
