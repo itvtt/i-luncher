@@ -995,12 +995,12 @@ Check("the GitHub Enterprise host comes from the API address", () =>
 Check("new apps in the server list seed reach an existing list once; a removed one stays removed", () =>
 {
     var store = new LauncherStore(Path.Combine(sandbox, "seeded"), ["github.example.com"]);
-    store.SaveCatalog(J("""[{"id":"terminal-notes","name":"Terminal Notes (사내)","repository":"https://github.example.com/Team/TerminalNotes","description":"사내 설명"}]"""), "");
+    store.SaveCatalog(J("""[{"id":"terminal-notes","name":"Terminal Notes (고친 이름)","repository":"https://github.example.com/Team/TerminalNotes","description":"고친 설명"}]"""), "");
     var seed = J("""[{"id":"terminal-notes","name":"Terminal Notes","repository":"TerminalNotes","description":"원본 설명"},{"id":"imperformance","name":"ImPerformance","repository":"ImPerformance","details":"상세","screenshots":["imperformance-1.png","missing.png"]}]""").AsArray();
     byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
     Equal("ImPerformance", string.Join(",", store.AddSeedApps(seed, name => name == "imperformance-1.png" ? png : null, "")));
     var apps = store.Catalog()["apps"]!.AsArray();
-    Equal("Terminal Notes (사내)|사내 설명", $"{apps[0]!["name"]}|{apps[0]!["description"]}", "a listed app keeps the company values");
+    Equal("Terminal Notes (고친 이름)|고친 설명", $"{apps[0]!["name"]}|{apps[0]!["description"]}", "a listed app keeps its own values");
     Equal("https://github.example.com/Team/ImPerformance", apps[1]!["repository"]!.ToString(), "host and owner of the other apps");
     Equal(1, apps[1]!["screenshots"]!.AsArray().Count, "only the shipped screenshots");
     True(File.Exists(store.MediaFile(apps[1]!["screenshots"]![0]!.ToString())), "the screenshot is served");
