@@ -51,7 +51,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 목록 | 누가 보나 | 원본 · 고치는 곳 | 반영 |
 |---|---|---|---|
 | **기본 목록** | 모두 | GitHub 공지 저장소 `i-luncher-notices` 의 `basic-apps.json` + 스크린샷 `basic-media/<id>-1~3.png` (GitHub 에서 편집) | 런처가 다음에 시작 · 새로고침할 때 (런처 릴리스 필요 없음) |
-| **서버 목록** | 마스터 | 서버 PC 의 i-api 관리 창 → 앱 목록 (`CDEP\seed\apps.json` 의 새 앱은 i-api 가 시작할 때 스스로 더함, 빈 칸 채우기는 `CDEP\import_app_list.py`) | 저장하면 바로 |
+| **서버 목록** | 마스터 | 서버 PC 의 i-api 관리 창 → 앱 목록 (`CDEP\seed\apps.json` 의 새 앱 · 원본에서 고친 설명 · 사진은 i-api 가 시작할 때 스스로 반영 (사내에서 고친 칸은 그대로), 빈 칸 채우기는 `CDEP\import_app_list.py`) | 저장하면 바로 |
 | **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`C:\i-luncher\my-apps.json`) | 바로 |
 
 - **모두에게 나눠 주는 앱은 기본 목록으로만** 관리합니다. 그 밖의 앱은 각 사용자가 내 앱으로 더해 씁니다.

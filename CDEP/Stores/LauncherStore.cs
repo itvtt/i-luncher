@@ -190,18 +190,29 @@ internal sealed partial class LauncherStore
                 catch (JsonException) { }
             }
             var fresh = seed.OfType<JsonObject>().Where(app => Util.Or(app["id"], "") is { Length: > 0 } id && !applied.Contains(id)).ToList();
-            if (fresh.Count == 0) return [];
+            var revised = seed.OfType<JsonObject>().Where(app => app["former"] is JsonArray { Count: > 0 }).ToList();
+            if (fresh.Count == 0 && revised.Count == 0) return [];
 
             var catalog = Catalog();
             var apps = catalog["apps"]!.AsArray();
             string owner = RepositoryBase(apps) ?? repositoryBase.Trim().TrimEnd('/');
             var added = new List<string>();
             bool filled = false;
+            JsonObject? Listed(string id) => apps.OfType<JsonObject>().FirstOrDefault(existing => string.Equals(Util.Or(existing["id"], ""), id, StringComparison.OrdinalIgnoreCase)
+                || (existing["formerIds"] as JsonArray ?? []).Any(former => string.Equals(Util.AsString(former), id, StringComparison.OrdinalIgnoreCase)));
+
+            // 원본을 고친 앱 (seed 의 former = 예전 원본 값): 서버의 값이 예전 원본과 똑같으면 새 원본으로. 관리자가 고친 값은 그대로
+            foreach (var app in revised)
+                if (Listed(Util.Or(app["id"], "")) is { } listed && ApplySeedRevision(listed, app, (JsonArray)app["former"]!, media))
+                {
+                    added.Add(Util.Or(listed["name"], Util.Or(app["id"], "")) + " (새 설명 · 사진)");
+                    filled = true;
+                }
+
             foreach (var app in fresh)
             {
                 string id = Util.Or(app["id"], "");
-                var listed = apps.OfType<JsonObject>().FirstOrDefault(existing => string.Equals(Util.Or(existing["id"], ""), id, StringComparison.OrdinalIgnoreCase)
-                    || (existing["formerIds"] as JsonArray ?? []).Any(former => string.Equals(Util.AsString(former), id, StringComparison.OrdinalIgnoreCase)));
+                var listed = Listed(id);
                 if (listed is not null)
                 {
                     // 이미 있는 앱은 그대로. 스크린샷이 앱 페이지 최소(3장)보다 적을 때만 원본 그림 중 없는 것을 뒤에 더함 (같은 그림 = 같은 이름)
@@ -229,6 +240,7 @@ internal sealed partial class LauncherStore
                     repository = $"{owner}/{repository}";
                 }
                 var copy = (JsonObject)app.DeepClone();
+                copy.Remove("former");
                 copy["repository"] = repository;
                 if (app["screenshots"] is JsonArray shots)
                 {
@@ -244,6 +256,7 @@ internal sealed partial class LauncherStore
                 applied.Add(id);
                 added.Add(Util.Or(app["name"], id));
             }
+            if (fresh.Count == 0 && !filled) return added;
             if (added.Count > 0 || filled)
             {
                 var document = new JsonObject { ["schemaVersion"] = 1, ["apps"] = Validate(apps).DeepClone() };
@@ -252,6 +265,40 @@ internal sealed partial class LauncherStore
             Util.AtomicWrite(appliedPath, Util.Utf8.GetBytes(new JsonArray([.. applied.Order(StringComparer.OrdinalIgnoreCase).Select(id => (JsonNode)id)]).ToJsonString(Util.Indent2) + "\n"));
             return added;
         }
+    }
+
+    /// <summary>
+    /// 원본(seed)에서 설명 · 사진을 고친 앱: 서버의 한 줄 설명 · 상세 설명이 예전 원본(former)의 값과 똑같으면 새 값으로,
+    /// 스크린샷 목록이 예전 원본 그림(이름 = 내용 해시)과 똑같으면 새 원본 그림으로. 하나라도 바꿨으면 true
+    /// </summary>
+    private bool ApplySeedRevision(JsonObject listed, JsonObject seedApp, JsonArray former, Func<string, byte[]?> media)
+    {
+        bool changed = false;
+        foreach (string field in new[] { "description", "details" })
+        {
+            string now = Util.Or(listed[field], ""), next = Util.Or(seedApp[field], "");
+            if (next.Length == 0 || now == next) continue;
+            if (!former.OfType<JsonObject>().Any(old => old[field] is not null && Util.Or(old[field], "") == now)) continue;
+            listed[field] = next;
+            changed = true;
+        }
+        var shots = (listed["screenshots"] as JsonArray ?? []).Select(Util.AsString).OfType<string>().ToList();
+        bool oldShots = former.OfType<JsonObject>().Any(old => old["screenshots"] is JsonArray list
+            && list.Select(Util.AsString).OfType<string>().SequenceEqual(shots, StringComparer.OrdinalIgnoreCase));
+        if (oldShots && seedApp["screenshots"] is JsonArray seedShots)
+        {
+            var images = seedShots.Select(Util.AsString).OfType<string>().Select(media).OfType<byte[]>().Where(image => image.Length > 0).ToList();
+            if (images.Count >= ScreenshotsMin)
+            {
+                var names = images.Select(AddMedia).ToList();
+                if (!names.SequenceEqual(shots, StringComparer.OrdinalIgnoreCase))
+                {
+                    listed["screenshots"] = new JsonArray([.. names.Select(name => (JsonNode)name)]);
+                    changed = true;
+                }
+            }
+        }
+        return changed;
     }
 
     /// <summary>목록의 앱이 가장 많이 쓰는 저장소 주소 앞부분 (https://호스트/소유자). 없으면 null</summary>

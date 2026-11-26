@@ -373,7 +373,7 @@ internal static class Program
         // 새 i-api 에 든 서버 목록 원본의 새 앱 (예: 나중에 생긴 앱): 손으로 넣지 않아도 목록에 (관리자가 뺀 앱은 다시 넣지 않음)
         try
         {
-            if (server.AddSeedApps() is { Count: > 0 } seeded) Log.Info($"서버 목록에 새 앱을 더했습니다: {string.Join(", ", seeded)}");
+            if (server.AddSeedApps() is { Count: > 0 } seeded) Log.Info($"서버 목록에 원본을 반영했습니다 (새 앱 · 새 설명 · 사진): {string.Join(", ", seeded)}");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or RelayError)
         {

@@ -54,13 +54,24 @@ def same_app(existing: dict, seed: dict) -> bool:
     return seed["id"].lower() in ids
 
 
+def revised_fields(existing: dict, seed: dict) -> list:
+    """원본을 고친 앱(seed 의 former = 예전 원본 값): 서버 값이 예전 원본과 똑같은 칸 = 사내에서 고치지 않은 칸"""
+    former = seed.get("former") or []
+    fields = [key for key in ("description", "details")
+              if seed.get(key) and existing.get(key) != seed[key] and any(key in old and old[key] == existing.get(key) for old in former)]
+    shots = [str(shot).lower() for shot in existing.get("screenshots") or []]
+    if seed.get("screenshots") and any([str(shot).lower() for shot in old["screenshots"]] == shots for old in former if old.get("screenshots")):
+        fields.append("screenshots")
+    return fields
+
+
 def plan(catalog: list, seed_apps: list, repository_base: str) -> list:
-    """(action, app, fields) 목록: add = 새 앱, fill = 빈 칸 채우기"""
+    """(action, app, fields) 목록: add = 새 앱, fill = 빈 칸 채우기, update = 사내에서 고치지 않은 예전 원본 값을 새 원본으로"""
     steps = []
     for seed in seed_apps:
         existing = next((app for app in catalog if same_app(app, seed)), None)
         if existing is None:
-            app = dict(seed)
+            app = {key: value for key, value in seed.items() if key != "former"}
             app["repository"] = f"{repository_base.rstrip('/')}/{seed['repository']}"
             steps.append(("add", app, sorted(app)))
             continue
@@ -69,6 +80,9 @@ def plan(catalog: list, seed_apps: list, repository_base: str) -> list:
             fields.append("screenshots")
         if fields:
             steps.append(("fill", existing, fields))
+        revised = [key for key in revised_fields(existing, seed) if key not in fields]
+        if revised:
+            steps.append(("update", existing, revised))
     return steps
 
 
@@ -91,7 +105,7 @@ def main(argv: list | None = None) -> int:
         print("바꿀 것 없음: 서버 목록에 이미 다 들어 있습니다.")
         return 0
     for action, app, fields in steps:
-        print(("더함  " if action == "add" else "채움  ") + f"{app['id']}: {', '.join(fields)}")
+        print({"add": "더함  ", "fill": "채움  "}.get(action, "바꿈  ") + f"{app['id']}: {', '.join(fields)}")
     if not args.apply:
         print("미리 보기만 했습니다. 저장하려면 --apply 를 붙이세요.")
         return 0

@@ -1029,6 +1029,34 @@ Check("new apps in the server list seed reach an existing list once; a removed o
     True(shots.All(shot => File.Exists(h.Server.Launcher.MediaFile(shot))), "screenshots are served");
 });
 
+Check("a revised seed app replaces only the values the server still has from the former seed", () =>
+{
+    var store = new LauncherStore(Path.Combine(sandbox, "seed-revised"), ["github.example.com"]);
+    byte[] Png(byte tail) => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 4, 5, tail];
+    byte[]? Shipped(string name) => name switch { "p-1.png" => Png(21), "p-2.png" => Png(22), "p-3.png" => Png(23), _ => null };
+    string[] old = [store.AddMedia(Png(1)), store.AddMedia(Png(2)), store.AddMedia(Png(3))];
+    string oldShots = string.Join(",", old.Select(name => $"\"{name}\""));
+    // p: 예전 원본 그대로, q: 상세 설명 · 사진을 사내에서 고침 (한 줄 설명만 예전 원본)
+    string p = $$"""{"id":"p","name":"P","repository":"https://github.example.com/Team/P","description":"예전 한 줄","details":"예전 상세","screenshots":[{{oldShots}}]}""";
+    string q = $$"""{"id":"q","name":"Q","repository":"https://github.example.com/Team/Q","description":"예전 한 줄","details":"고친 상세","screenshots":["{{old[2]}}","{{old[1]}}","{{old[0]}}"]}""";
+    store.SaveCatalog(J($"[{p},{q}]"), "");
+    string former = $$"""[{"description":"예전 한 줄","details":"예전 상세","screenshots":[{{oldShots}}]}]""";
+    string Seed(string id) => $$"""{"id":"{{id}}","name":"{{id.ToUpperInvariant()}}","repository":"{{id.ToUpperInvariant()}}","description":"새 한 줄","details":"새 상세","screenshots":["p-1.png","p-2.png","p-3.png"],"former":{{former}}}""";
+    var seed = J($"[{Seed("p")},{Seed("q")}]").AsArray();
+    Equal("P (새 설명 · 사진),Q (새 설명 · 사진)", string.Join(",", store.AddSeedApps(seed, Shipped, "")));
+    var apps = store.Catalog()["apps"]!.AsArray();
+    Equal("새 한 줄|새 상세", $"{apps[0]!["description"]}|{apps[0]!["details"]}", "untouched values follow the new seed");
+    Equal(string.Join(",", new[] { Png(21), Png(22), Png(23) }.Select(store.AddMedia)), string.Join(",", apps[0]!["screenshots"]!.AsArray().Select(s => s!.ToString())), "former screenshots become the new ones");
+    Equal($"새 한 줄|고친 상세|{old[2]},{old[1]},{old[0]}", $"{apps[1]!["description"]}|{apps[1]!["details"]}|{string.Join(",", apps[1]!["screenshots"]!.AsArray().Select(s => s!.ToString()))}",
+        "values changed on the server stay");
+    True(apps.All(app => app!["former"] is null), "former is not stored in the list");
+    Equal(0, store.AddSeedApps(seed, Shipped, "").Count, "once is enough");
+    // 서버 목록에 없던 앱을 더할 때도 former 는 넣지 않음
+    var fresh = new LauncherStore(Path.Combine(sandbox, "seed-revised-new"), ["github.example.com"]);
+    fresh.AddSeedApps(seed, Shipped, "https://github.example.com/Team");
+    True(fresh.Catalog()["apps"]!.AsArray().All(app => app!["former"] is null), "a new app has no former");
+});
+
 string RunnerFolder(Harness h, string name, string agent, string repository)
 {
     string folder = Path.Combine(h.Config.RunnersRoot!, name);
