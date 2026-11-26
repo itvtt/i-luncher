@@ -364,7 +364,7 @@
         <Grid Grid.Row="1">
             <!-- 왼쪽 메뉴 칸: 마스터 화면만 (일반 화면은 폭 0 = 홈 화면, 코드에서) -->
             <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 즐겨찾기 · 업데이트. 설정 · 일반 화면에서는 숨김 -->
+            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 내 앱 · 즐겨찾기 · 업데이트. 설정 · 일반 화면에서는 숨김 -->
             <Border x:Name="Sidebar" Background="#FF161618" BorderBrush="#FF2A2B30" BorderThickness="0,0,1,0">
                 <DockPanel Margin="12,16,12,12">
                     <Border DockPanel.Dock="Top" Height="34" Background="#FF2C2D32" CornerRadius="9">
@@ -400,10 +400,10 @@
             <Grid x:Name="StorePane" Grid.Column="1">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
 
-                <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 즐겨찾기 · 업데이트 · 검색). 일반 화면(홈)은 이름 없이 가운데 분류 버튼 줄만 -->
+                <!-- 지금 화면 이름 (스토어 · 분류 · 설치됨 · 내 앱 · 즐겨찾기 · 업데이트 · 검색). 일반 화면(홈)은 이름 없이 가운데 분류 버튼 줄만 -->
                 <StackPanel x:Name="ViewHeader" Margin="30,22,30,4">
                     <TextBlock x:Name="ViewHeading" FontSize="26" FontWeight="Bold" Foreground="#FFF5F5F7" TextTrimming="CharacterEllipsis" />
-                    <!-- 설치됨: 분류별 필터 단추 (전체 · 분류마다 개수), 검색 중에는 숨김. 홈은 가운데에 색 아이콘이 든 단추 (전체 · 즐겨찾기 · 업데이트 · 분류마다) -->
+                    <!-- 설치됨: 분류별 필터 단추 (전체 · 분류마다 개수), 검색 중에는 숨김. 홈은 가운데에 색 아이콘이 든 단추 (전체 · 즐겨찾기 · 업데이트 · 내 앱 · 분류마다) -->
                     <WrapPanel x:Name="InstalledChips" Margin="-4,14,0,0" Visibility="Collapsed" />
                 </StackPanel>
 

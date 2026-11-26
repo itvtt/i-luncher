@@ -892,9 +892,9 @@ public partial class MainWindow : Window
         var card = new AppCard(app.Clone());
         _cards.Add(card);
         await DetectInstallsAsync([card]);
-        // 내 앱은 설치됨 탭에 (받기는 그 칸의 단추로)
+        // 내 앱 화면에 (받기는 그 칸의 단추로). 일반 화면은 홈 전체
         _tab = "installed";
-        _filter = "all";
+        _filter = IsHome ? "all" : "mine";
         Render();
         StatusText.Text = $"{app.Name} 추가함 (내 앱)";
         await CheckReleaseAsync(card, TimeSpan.FromSeconds(20));
@@ -1168,6 +1168,9 @@ public partial class MainWindow : Window
 
     private static bool InStore(AppCard card) => !card.App.Personal;
 
+    /// <summary>내 앱: 사용자가 독의 + → GitHub 프로젝트… 로 더한 앱 (이 PC 프로그램 · 웹사이트는 ProgramCards)</summary>
+    private static bool IsMine(AppCard card) => card.App.Personal;
+
     /// <summary>설치됨 탭: 설치했거나 받는 중인 앱, 그리고 내 앱 (사용자가 직접 더한 것). 스토어에서 숨긴 앱도 설치했으면 여기 보임</summary>
     private static bool InInstalled(AppCard card) => card.IsInstalled || card.IsBusy || card.App.Personal;
 
@@ -1227,6 +1230,12 @@ public partial class MainWindow : Window
             _title = "업데이트";
             items = [.. pool.Where(card => card.UpdateAvailable)];
         }
+        else if (!store && _filter == "mine")
+        {
+            // 내 앱 = 독의 + 로 더한 것 (GitHub 프로젝트 · 이 PC 프로그램 · 웹사이트). 마스터 · 일반이 같음
+            _title = "내 앱";
+            items = [.. pool.Where(IsMine), .. programs];
+        }
         else if (category is not null)
         {
             _title = category;
@@ -1239,7 +1248,7 @@ public partial class MainWindow : Window
         }
         ViewHeading.Text = _title;
         if (home) RenderHomeChips(pool, programs);
-        else RenderInstalledChips(search.Length == 0 && !store);
+        else RenderInstalledChips(search.Length == 0 && !store && (_filter == "all" || category is not null));  // 설치됨 · 그 분류에서만 (내 앱 · 즐겨찾기 · 업데이트는 없음)
         // 스토어는 같은 앱 칸을 한 줄 모양으로
         if (store) items = items.Select(item => item is AppCard card ? new StoreRow(card) : item).ToList();
 
@@ -1298,6 +1307,12 @@ public partial class MainWindow : Window
             EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 우클릭 → 즐겨찾기에 추가";
             EmptyStateButton.Content = home ? "전체" : "설치됨";
             EmptyStateButton.Tag = "installed";
+        }
+        else if (!store && _filter == "mine" && search.Length == 0)
+        {
+            EmptyStateTitle.Text = "추가한 앱이 없습니다";
+            EmptyStateText.Text = "아래 + 로 추가하세요.";
+            EmptyStateButton.Tag = "none";
         }
         else if (!store && _filter == "all" && search.Length == 0)
         {
@@ -1397,13 +1412,15 @@ public partial class MainWindow : Window
     private static readonly Brush ChipOnBack = Brushes.White, ChipOnText = MakeBrush(0x1C, 0x1C, 0x1E);
     private static readonly Brush StarLight = MakeBrush(0xFF, 0xD1, 0x5C), StarInk = MakeBrush(0xB4, 0x53, 0x09);
     private static readonly Brush UpdateLight = MakeBrush(0x4A, 0xA3, 0xFF), UpdateInk = MakeBrush(0x1D, 0x4E, 0xD8);
+    private static readonly Brush MineLight = MakeBrush(0x2D, 0xD4, 0xBF), MineInk = MakeBrush(0x0F, 0x76, 0x6E);
+    private const string MineGlyph = "\uE77B";  // 사람 (내 것)
 
     /// <summary>
     /// 검색 아래 가운데 버튼 줄 (앱스토어처럼): 전체 · 즐겨찾기 · 업데이트(있을 때), 그리고 분류마다 색이 다른 아이콘과 개수.
     /// 고른 것은 흰 버튼. 검색하는 동안은 숨김
     /// </summary>
     /// <summary>
-    /// 왼쪽 메뉴 (앱스토어처럼): 스토어 · 분류마다 | 설치됨 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판.
+    /// 왼쪽 메뉴 (앱스토어처럼): 스토어 · 분류마다 | 설치됨 · 내 앱 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판.
     /// 누르면 그 화면으로 (검색은 지움). 설정에서는 메뉴를 숨김
     /// </summary>
     private void RenderCategories()
@@ -1418,6 +1435,7 @@ public partial class MainWindow : Window
                      .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
             AddItem(group.Key, group.Count(), "store", "category:" + group.Key, CategoryLook.Glyph(group.Key), 0);
         AddItem("설치됨", installed.Count + programs.Count, "installed", "all", "\uE8F1", 18);
+        AddItem("내 앱", installed.Count(IsMine) + programs.Count, "installed", "mine", MineGlyph, 0);
         int favorites = installed.Count(card => card.IsFavorite) + programs.Count(card => card.Program.Starred);
         if (favorites > 0 || _tab == "installed" && _filter == "favorites") AddItem("즐겨찾기", favorites, "installed", "favorites", "\uE735", 0);
         int updates = installed.Count(card => card.UpdateAvailable);
@@ -1478,7 +1496,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 홈(일반 화면) 위쪽 가운데 분류 버튼 줄 (예전 홈 화면처럼): 전체 · 즐겨찾기 · 업데이트(있을 때) · 분류마다, 색이 다른 아이콘과 개수.
+    /// 홈(일반 화면) 위쪽 가운데 분류 버튼 줄 (예전 홈 화면처럼): 전체 · 즐겨찾기 · 업데이트 · 내 앱(있을 때) · 분류마다, 색이 다른 아이콘과 개수.
     /// 개수는 홈에 보이는 앱 · 내 PC 프로그램. 고른 것은 흰 버튼 (홈이 비면 줄도 숨김)
     /// </summary>
     private void RenderHomeChips(IReadOnlyList<AppCard> pool, IReadOnlyList<FavoriteCard> programs)
@@ -1494,6 +1512,8 @@ public partial class MainWindow : Window
         AddChip("전체", pool.Count + programs.Count, "all", CategoryLook.AllGlyph, Brushes.White, ChipOnText);
         if (favorites > 0 || _filter == "favorites") AddChip("즐겨찾기", favorites, "favorites", "\uE735", StarLight, StarInk);
         if (updates > 0 || _filter == "updates") AddChip("업데이트", updates, "updates", "\uE896", UpdateLight, UpdateInk);
+        int mine = pool.Count(IsMine) + programs.Count;
+        if (mine > 0 || _filter == "mine") AddChip("내 앱", mine, "mine", MineGlyph, MineLight, MineInk);
         int index = 0;
         foreach (var group in groups)
             AddChip(group.Key, group.Count(), "category:" + group.Key, CategoryLook.Glyph(group.Key), CategoryLook.Light(index), CategoryLook.Ink(index++));

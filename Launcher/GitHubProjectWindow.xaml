@@ -20,7 +20,7 @@
 
     <!--
         GitHub 프로젝트 추가 · 내 앱 편집: 저장소 주소 → [확인]으로 최신 릴리스와 설치 파일을 확인 →
-        이름 · 분류 · 설명 · 아이콘 → [추가]. 이 PC 의 "내 앱"이 됨 (설치됨 탭). 편집은 저장소를 빼고 모두 바꿈
+        이름 · 분류 · 설명 · 아이콘 → [추가]. 이 PC 의 "내 앱"이 됨 (설치됨 · 내 앱). 편집은 저장소를 빼고 모두 바꿈
     -->
     <Grid Margin="14">
         <Border Style="{StaticResource DialogCardStyle}" Padding="0" MouseLeftButtonDown="Card_MouseLeftButtonDown">

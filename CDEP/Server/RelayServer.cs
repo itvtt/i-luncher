@@ -54,6 +54,32 @@ internal sealed partial class RelayServer : IDisposable
         RebuildFunctions();
     }
 
+    /// <summary>
+    /// 이 i-api 에 든 서버 목록 원본(seed\apps.json · seed\media)에서 이 서버가 아직 받은 적 없는 앱을 앱 목록에 더함 (서버가 시작할 때).
+    /// 저장소 주소를 목록에서 알 수 없으면 업데이트 저장소(https://호스트/소유자/i-luncher)의 호스트/소유자. 더한 앱 이름들
+    /// </summary>
+    public List<string> AddSeedApps()
+    {
+        var assembly = typeof(RelayServer).Assembly;
+        using var stream = assembly.GetManifestResourceStream("seed/apps.json");
+        if (stream is null) return [];
+        var document = System.Text.Json.Nodes.JsonNode.Parse(stream, documentOptions: new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip });
+        if (document?["apps"] is not System.Text.Json.Nodes.JsonArray apps) return [];
+        string update = Config.UpdateRepository;
+        int slash = update.LastIndexOf('/');
+        string owner = slash > update.IndexOf("://", StringComparison.Ordinal) + 3 ? update[..slash] : "";
+        return Launcher.AddSeedApps(apps, SeedMedia, owner);
+
+        byte[]? SeedMedia(string name)
+        {
+            using var image = assembly.GetManifestResourceStream("seed/media/" + name);
+            if (image is null) return null;
+            using var buffer = new MemoryStream();
+            image.CopyTo(buffer);
+            return buffer.ToArray();
+        }
+    }
+
     /// <summary>포트를 열고 받기 시작 (설비 상태 포트도, 쓰면). 포트가 이미 쓰이면 예외</summary>
     public void Start()
     {

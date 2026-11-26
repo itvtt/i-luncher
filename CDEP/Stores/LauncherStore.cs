@@ -164,6 +164,88 @@ internal sealed partial class LauncherStore
         return removed;
     }
 
+    // 서버 목록 원본 (seed\apps.json + seed\media, i-api 에 들어 있음) ─────────────────────────────
+
+    public const string SeedAppliedFile = "seed-applied.json";
+
+    /// <summary>
+    /// i-api 에 든 서버 목록 원본에서 이 서버가 아직 받은 적 없는 앱을 앱 목록에 더함 (설명 · 상세 설명 · 개발자 · 스크린샷까지 원본 그대로).
+    /// 한 번 본 앱 id 는 seed-applied.json 에 남겨, 관리자가 목록에서 뺀 앱은 다시 넣지 않음. 이미 목록에 있는 앱(id · 예전 id)은 건드리지 않음.
+    /// 저장소 주소 = 목록의 다른 앱과 같은 호스트/소유자 (목록이 비면 repositoryBase). 모르면 넣지 않고 다음 시작 때 다시 봄.
+    /// 더한 앱 이름들을 돌려줌
+    /// </summary>
+    public List<string> AddSeedApps(JsonArray seed, Func<string, byte[]?> media, string repositoryBase)
+    {
+        lock (_lock)
+        {
+            string appliedPath = Path.Combine(_directory, SeedAppliedFile);
+            var applied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(appliedPath))
+            {
+                try
+                {
+                    foreach (var id in JsonNode.Parse(Util.StripBom(Util.ReadBytes(appliedPath))) as JsonArray ?? []) if (Util.AsString(id) is { } text) applied.Add(text);
+                }
+                catch (JsonException) { }
+            }
+            var fresh = seed.OfType<JsonObject>().Where(app => Util.Or(app["id"], "") is { Length: > 0 } id && !applied.Contains(id)).ToList();
+            if (fresh.Count == 0) return [];
+
+            var catalog = Catalog();
+            var apps = catalog["apps"]!.AsArray();
+            string owner = RepositoryBase(apps) ?? repositoryBase.Trim().TrimEnd('/');
+            var added = new List<string>();
+            foreach (var app in fresh)
+            {
+                string id = Util.Or(app["id"], "");
+                bool listed = apps.OfType<JsonObject>().Any(existing => string.Equals(Util.Or(existing["id"], ""), id, StringComparison.OrdinalIgnoreCase)
+                    || (existing["formerIds"] as JsonArray ?? []).Any(former => string.Equals(Util.AsString(former), id, StringComparison.OrdinalIgnoreCase)));
+                if (listed)
+                {
+                    applied.Add(id);
+                    continue;
+                }
+                string repository = Util.Or(app["repository"], "").Trim();
+                if (!repository.Contains("://", StringComparison.Ordinal))
+                {
+                    if (owner.Length == 0) continue;  // 저장소 주소를 모름: 다음 시작 때 다시
+                    repository = $"{owner}/{repository}";
+                }
+                var copy = (JsonObject)app.DeepClone();
+                copy["repository"] = repository;
+                if (app["screenshots"] is JsonArray shots)
+                {
+                    var names = new JsonArray();
+                    foreach (string shot in shots.Select(Util.AsString).OfType<string>())
+                    {
+                        if (media(shot) is { Length: > 0 } image) names.Add(AddMedia(image));
+                        else if (MediaName().IsMatch(shot) || WebAddress().IsMatch(shot)) names.Add(shot);
+                    }
+                    copy["screenshots"] = names;
+                }
+                apps.Add(copy);
+                applied.Add(id);
+                added.Add(Util.Or(app["name"], id));
+            }
+            if (added.Count > 0)
+            {
+                var document = new JsonObject { ["schemaVersion"] = 1, ["apps"] = Validate(apps).DeepClone() };
+                SaveFile("catalog.json", Util.Utf8.GetBytes(document.ToJsonString(Util.Indent2).Replace("\r\n", "\n") + "\n"), Util.Or(catalog["revision"], ""));
+            }
+            Util.AtomicWrite(appliedPath, Util.Utf8.GetBytes(new JsonArray([.. applied.Order(StringComparer.OrdinalIgnoreCase).Select(id => (JsonNode)id)]).ToJsonString(Util.Indent2) + "\n"));
+            return added;
+        }
+    }
+
+    /// <summary>목록의 앱이 가장 많이 쓰는 저장소 주소 앞부분 (https://호스트/소유자). 없으면 null</summary>
+    private static string? RepositoryBase(JsonArray apps) =>
+        apps.OfType<JsonObject>().Select(app => Util.Or(app["repository"], "").Trim())
+            .Select(repository => Uri.TryCreate(repository, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+                && uri.AbsolutePath.Trim('/').Split('/') is [var owner, _, ..] && owner.Length > 0
+                    ? $"{uri.Scheme}://{uri.Authority}/{owner}" : null)
+            .OfType<string>().GroupBy(prefix => prefix, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count()).Select(group => group.First()).FirstOrDefault();
+
     public JsonObject Notices()
     {
         var (data, revision) = ReadFile("notices.txt");

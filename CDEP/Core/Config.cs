@@ -76,6 +76,8 @@ internal sealed class Config
     public int GitHubSyncMinutes { get; }
     public int GitHubSyncSeconds { get; }
     public string LauncherDir { get; }
+    /// <summary>[업데이트]가 새 버전을 받는 저장소 (RELAY_UPDATE_REPOSITORY, 없으면 이 i-api 를 릴리스한 저장소). 비면 모름</summary>
+    public string UpdateRepository { get; }
     public string UsageDir { get; }
     public string ApiDir { get; }
     public List<string> GitHubProxyRepos { get; }
@@ -95,6 +97,11 @@ internal sealed class Config
     public string? RunnersRoot { get; }
     public string? RunnersEnvDir { get; }
     public string? RunnerPackage { get; }
+
+    /// <summary>릴리스 러너가 빌드할 때 넣은 저장소 주소 (https://호스트/소유자/저장소). PC 에서 빌드하면 비어 있음</summary>
+    public static string BuiltUpdateRepository =>
+        typeof(Config).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false).OfType<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(item => item.Key == "UpdateRepository")?.Value ?? "";
 
     public Config(Options options, IReadOnlyDictionary<string, string>? fileValues = null, System.Collections.IDictionary? environment = null)
     {
@@ -156,6 +163,7 @@ internal sealed class Config
         GitHubSyncMinutes = Math.Max(1, Number("RELAY_GITHUB_SYNC_MINUTES", 10));
         GitHubSyncSeconds = Number("RELAY_GITHUB_SYNC_SECONDS", 0) is > 0 and var seconds ? seconds : GitHubSyncMinutes * 60;
         LauncherDir = Directory("LAUNCHER_DIR", "launcher", null);
+        UpdateRepository = (Text("RELAY_UPDATE_REPOSITORY") is { Length: > 0 } update ? update : BuiltUpdateRepository).TrimEnd('/');
         UsageDir = Path.Combine(DataRoot, "usage");
         ApiDir = Path.Combine(DataRoot, "api");
         GitHubProxyRepos = Text("LAUNCHER_GITHUB_REPOS").Split(',').Select(item => item.Trim().ToLowerInvariant()).Where(item => item.Length > 0).ToList();

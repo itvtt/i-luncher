@@ -29,7 +29,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | | 일반 | 마스터 |
 |---|---|---|
 | 누구 | 마스터가 아닌 모든 사람 | 이 PC 의 Windows 계정이 런처 빌드 설정 `MASTER_USERS` 에 있음 |
-| 화면 | 홈 화면 (스토어 없음): `GENERAL_APPS`(기본 DeskCal) + 설치한 앱 + 내 앱 · 내 PC 프로그램, 위쪽 분류 필터(아이콘), 모두 업데이트 | 왼쪽 메뉴의 스토어(기본 목록 + 서버 목록) · 설치됨 + 내 앱 |
+| 화면 | 홈 화면 (스토어 없음): `GENERAL_APPS`(기본 DeskCal) + 설치한 앱 + 내 앱 · 내 PC 프로그램, 위쪽 분류 필터(아이콘, 내 앱 포함), 모두 업데이트 | 왼쪽 메뉴의 스토어(기본 목록 + 서버 목록) · 설치됨 · 내 앱 |
 | 공지 (GitHub `공지.txt`) | 있음 | 있음 |
 | API 서버 | **쓰지 않음** | 서버 목록 · 사용 기록 (설정 → API 서버) |
 | 앱 사용 기록 (AppKit `AppUsage`) | 모으지도 보내지도 않음 (나중에 정함) | 보냄 |
@@ -51,7 +51,7 @@ GitHub(github.com)와 GitHub Enterprise 모두 같은 방식입니다. 이 문�
 | 목록 | 누가 보나 | 원본 · 고치는 곳 | 반영 |
 |---|---|---|---|
 | **기본 목록** | 모두 | GitHub 공지 저장소 `i-luncher-notices` 의 `basic-apps.json` + 스크린샷 `basic-media/<id>-1~3.png` (GitHub 에서 편집) | 런처가 다음에 시작 · 새로고침할 때 (런처 릴리스 필요 없음) |
-| **서버 목록** | 마스터 | 서버 PC 의 i-api 관리 창 → 앱 목록 (처음 넣을 때: `CDEP\seed\apps.json` → `CDEP\import_app_list.py`) | 저장하면 바로 |
+| **서버 목록** | 마스터 | 서버 PC 의 i-api 관리 창 → 앱 목록 (`CDEP\seed\apps.json` 의 새 앱은 i-api 가 시작할 때 스스로 더함, 빈 칸 채우기는 `CDEP\import_app_list.py`) | 저장하면 바로 |
 | **내 앱** | 그 PC · 그 사용자 | 런처 독의 **+ → GitHub 프로젝트…** (`C:\i-luncher\my-apps.json`) | 바로 |
 
 - **모두에게 나눠 주는 앱은 기본 목록으로만** 관리합니다. 그 밖의 앱은 각 사용자가 내 앱으로 더해 씁니다.

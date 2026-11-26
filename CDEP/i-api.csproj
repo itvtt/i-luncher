@@ -16,7 +16,7 @@
     <RootNamespace>IApi</RootNamespace>
     <AssemblyName>i-api</AssemblyName>
     <!-- 서버 버전 (관리 창의 [업데이트]가 릴리스의 것과 견줘 새 버전이면 바꿈: 서버를 고치면 올림). relay.py 의 마지막 버전은 2.23.0 -->
-    <Version>3.4.0</Version>
+    <Version>3.4.1</Version>
     <Product>i-api</Product>
     <Description>i-luncher API 서버</Description>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -47,6 +47,11 @@
   <!-- [업데이트]가 새 버전을 받을 저장소: 릴리스 러너(GitHub Actions)에서 빌드하면 그 저장소 (settings.txt 의 RELAY_UPDATE_REPOSITORY 가 먼저) -->
   <ItemGroup Condition="'$(GITHUB_SERVER_URL)' != '' and '$(GITHUB_REPOSITORY)' != ''">
     <AssemblyMetadata Include="UpdateRepository" Value="$(GITHUB_SERVER_URL)/$(GITHUB_REPOSITORY)" />
+  </ItemGroup>
+  <!-- 서버 목록 원본: 서버가 시작할 때 아직 받은 적 없는 앱을 앱 목록에 더함 (RelayServer.AddSeedApps) -->
+  <ItemGroup>
+    <EmbeddedResource Include="seed\apps.json" LogicalName="seed/apps.json" />
+    <EmbeddedResource Include="seed\media\*.png" LogicalName="seed/media/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup Condition="'$(ApiServerContainer)' == 'true'">
     <Compile Remove="Desktop\**" />

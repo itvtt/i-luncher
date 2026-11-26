@@ -992,6 +992,38 @@ Check("the GitHub Enterprise host comes from the API address", () =>
     Equal("owner/b,team/app", string.Join(",", store.Repositories().Order()));
 });
 
+Check("new apps in the server list seed reach an existing list once; a removed one stays removed", () =>
+{
+    var store = new LauncherStore(Path.Combine(sandbox, "seeded"), ["github.example.com"]);
+    store.SaveCatalog(J("""[{"id":"terminal-notes","name":"Terminal Notes (사내)","repository":"https://github.example.com/Team/TerminalNotes","description":"사내 설명"}]"""), "");
+    var seed = J("""[{"id":"terminal-notes","name":"Terminal Notes","repository":"TerminalNotes","description":"원본 설명"},{"id":"imperformance","name":"ImPerformance","repository":"ImPerformance","details":"상세","screenshots":["imperformance-1.png","missing.png"]}]""").AsArray();
+    byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+    Equal("ImPerformance", string.Join(",", store.AddSeedApps(seed, name => name == "imperformance-1.png" ? png : null, "")));
+    var apps = store.Catalog()["apps"]!.AsArray();
+    Equal("Terminal Notes (사내)|사내 설명", $"{apps[0]!["name"]}|{apps[0]!["description"]}", "a listed app keeps the company values");
+    Equal("https://github.example.com/Team/ImPerformance", apps[1]!["repository"]!.ToString(), "host and owner of the other apps");
+    Equal(1, apps[1]!["screenshots"]!.AsArray().Count, "only the shipped screenshots");
+    True(File.Exists(store.MediaFile(apps[1]!["screenshots"]![0]!.ToString())), "the screenshot is served");
+    // 관리자가 빼면 다음 시작에도 다시 넣지 않음
+    var catalog = store.Catalog();
+    store.SaveCatalog(new JsonArray(apps[0]!.DeepClone()), catalog["revision"]!.ToString());
+    Equal(0, store.AddSeedApps(seed, _ => null, "").Count, "removed stays removed");
+    // 빈 목록: 저장소 주소는 업데이트 저장소의 호스트/소유자, 그것도 모르면 넣지 않고 다음 때 다시
+    var empty = new LauncherStore(Path.Combine(sandbox, "seeded-empty"), ["github.example.com"]);
+    Equal(0, empty.AddSeedApps(seed, _ => null, "").Count, "no address, no app");
+    Equal(2, empty.AddSeedApps(seed, _ => null, "https://github.example.com/Team").Count, "tried again once the address is known");
+    Equal("https://github.example.com/Team/TerminalNotes", empty.Catalog()["apps"]![0]!["repository"]!.ToString());
+    // i-api 에 든 원본: 서버 목록의 모든 앱과 스크린샷
+    using var h = new Harness("RELAY_UPDATE_REPOSITORY=https://github.example.com/Team/i-luncher");
+    var builtIn = h.Server.AddSeedApps();
+    Contains("ImPerformance", string.Join(",", builtIn));
+    Equal("https://github.example.com/Team/ImPerformance", h.Server.Launcher.Catalog()["apps"]!.AsArray()
+        .First(app => app!["id"]!.ToString() == "imperformance")!["repository"]!.ToString(), "owner of the update repository");
+    var shots = h.Server.Launcher.Catalog()["apps"]!.AsArray().SelectMany(app => app!["screenshots"]!.AsArray()).Select(shot => shot!.ToString()).ToList();
+    Equal(Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "CDEP", "seed", "media"), "*.png").Length, shots.Count, "every shipped screenshot");
+    True(shots.All(shot => File.Exists(h.Server.Launcher.MediaFile(shot))), "screenshots are served");
+});
+
 string RunnerFolder(Harness h, string name, string agent, string repository)
 {
     string folder = Path.Combine(h.Config.RunnersRoot!, name);

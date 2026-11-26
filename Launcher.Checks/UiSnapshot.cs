@@ -101,6 +101,13 @@ static class UiSnapshot
                     Pump(TimeSpan.FromSeconds(1));
                     Save((FrameworkElement)window.Content, Suffix(output, "-favorites"));
                     Console.WriteLine($"favorites: {window.ViewTitle} · {window.VisibleCards.Count}개 앱");
+                    // 내 앱 (마스터 왼쪽 메뉴 · 홈 분류 줄): 독의 + 로 더한 것
+                    window.ShowView("installed", "mine");
+                    Pump(TimeSpan.FromMilliseconds(700));
+                    Save((FrameworkElement)window.Content, Suffix(output, "-mine"));
+                    Console.WriteLine($"mine: {window.ViewTitle} · {window.VisibleCards.Count}개 앱 · " + (window.EmptyState.Visibility == Visibility.Visible ? window.EmptyStateTitle.Text : "목록")
+                        + " · menu: " + string.Join(", ", window.CategoryButtons.Children.OfType<System.Windows.Controls.Button>().Select(chip => System.Windows.Automation.AutomationProperties.GetName(chip)))
+                        + " · chips: " + string.Join(", ", window.InstalledChips.Children.OfType<System.Windows.Controls.Button>().Select(chip => System.Windows.Automation.AutomationProperties.GetName(chip))));
                     var favoriteEditor = new FavoriteEditorWindow(null, ["개발", "설비", "일정", "파일"]) { ShowActivated = false, Left = -4000, Top = 0 };
                     favoriteEditor.Show();
                     Pump(TimeSpan.FromSeconds(3));

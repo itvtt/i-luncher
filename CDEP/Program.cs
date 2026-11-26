@@ -370,6 +370,15 @@ internal static class Program
         new Thread(() => GitHubSync(server, stop.Token)) { IsBackground = true, Name = "github-sync" }.Start();
         new Thread(server.Runners.RepointTask) { IsBackground = true, Name = "runners-task" }.Start();
         foreach (string line in config.Summary()) Log.Info(line);
+        // 새 i-api 에 든 서버 목록 원본의 새 앱 (예: 나중에 생긴 앱): 손으로 넣지 않아도 목록에 (관리자가 뺀 앱은 다시 넣지 않음)
+        try
+        {
+            if (server.AddSeedApps() is { Count: > 0 } seeded) Log.Info($"서버 목록에 새 앱을 더했습니다: {string.Join(", ", seeded)}");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or RelayError)
+        {
+            Log.Warning("서버 목록에 새 앱을 더하지 못했습니다: " + error.Message);
+        }
         if (!Config.IsLoopback(config.Bind) && Setup.FirewallAllowed(config.Port) == false) Log.Warning(Setup.FirewallText(config));
         if (server.EquipmentPort is { } equipment && !Config.IsLoopback(config.Bind) && Setup.FirewallAllowed(equipment) == false)
             Log.Warning($"방화벽: 설비 상태 TCP {equipment} 허용 규칙 없음 — 다른 PC의 EQ Status가 접속하지 못할 수 있습니다(i-api.exe --allow-firewall)");
