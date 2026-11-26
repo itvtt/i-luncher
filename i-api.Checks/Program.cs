@@ -995,12 +995,17 @@ Check("the GitHub Enterprise host comes from the API address", () =>
 Check("new apps in the server list seed reach an existing list once; a removed one stays removed", () =>
 {
     var store = new LauncherStore(Path.Combine(sandbox, "seeded"), ["github.example.com"]);
-    store.SaveCatalog(J("""[{"id":"terminal-notes","name":"Terminal Notes (고친 이름)","repository":"https://github.example.com/Team/TerminalNotes","description":"고친 설명"}]"""), "");
-    var seed = J("""[{"id":"terminal-notes","name":"Terminal Notes","repository":"TerminalNotes","description":"원본 설명"},{"id":"imperformance","name":"ImPerformance","repository":"ImPerformance","details":"상세","screenshots":["imperformance-1.png","missing.png"]}]""").AsArray();
-    byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
-    Equal("ImPerformance", string.Join(",", store.AddSeedApps(seed, name => name == "imperformance-1.png" ? png : null, "")));
+    byte[] Png(byte tail) => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, tail];
+    byte[]? Shipped(string name) => name switch { "imperformance-1.png" => Png(3), "tn-1.png" => Png(11), "tn-2.png" => Png(12), "tn-3.png" => Png(13), _ => null };
+    // 이미 있는 앱: 스크린샷 2장 (원본의 1 · 2) → 원본에서 없는 3 만 뒤에 더함, 다른 값은 그대로
+    string listedShots = $"\"{store.AddMedia(Png(11))}\",\"{store.AddMedia(Png(12))}\"";
+    store.SaveCatalog(J($$"""[{"id":"terminal-notes","name":"Terminal Notes (고친 이름)","repository":"https://github.example.com/Team/TerminalNotes","description":"고친 설명","screenshots":[{{listedShots}}]}]"""), "");
+    var seed = J("""[{"id":"terminal-notes","name":"Terminal Notes","repository":"TerminalNotes","description":"원본 설명","screenshots":["tn-1.png","tn-2.png","tn-3.png"]},{"id":"imperformance","name":"ImPerformance","repository":"ImPerformance","details":"상세","screenshots":["imperformance-1.png","missing.png"]}]""").AsArray();
+    Equal("ImPerformance", string.Join(",", store.AddSeedApps(seed, Shipped, "")));
     var apps = store.Catalog()["apps"]!.AsArray();
     Equal("Terminal Notes (고친 이름)|고친 설명", $"{apps[0]!["name"]}|{apps[0]!["description"]}", "a listed app keeps its own values");
+    Equal(3, apps[0]!["screenshots"]!.AsArray().Count, "a listed app with fewer than three screenshots gets the missing shipped one");
+    Equal(store.AddMedia(Png(13)), apps[0]!["screenshots"]![2]!.ToString());
     Equal("https://github.example.com/Team/ImPerformance", apps[1]!["repository"]!.ToString(), "host and owner of the other apps");
     Equal(1, apps[1]!["screenshots"]!.AsArray().Count, "only the shipped screenshots");
     True(File.Exists(store.MediaFile(apps[1]!["screenshots"]![0]!.ToString())), "the screenshot is served");

@@ -10,7 +10,7 @@ namespace IApi;
 /// </summary>
 internal sealed partial class LauncherStore
 {
-    public const int CatalogMax = 1_048_576, HistoryKeep = 50, MediaMax = 8 * 1024 * 1024, ScreenshotsMax = 12, DetailsMax = 20_000;
+    public const int CatalogMax = 1_048_576, HistoryKeep = 50, MediaMax = 8 * 1024 * 1024, ScreenshotsMax = 12, ScreenshotsMin = 3, DetailsMax = 20_000;
     private const int MediaKeepUnusedSeconds = 86400;
     public static readonly Dictionary<string, string> MediaTypes = new() { ["png"] = "image/png", ["jpg"] = "image/jpeg" };
 
@@ -170,7 +170,8 @@ internal sealed partial class LauncherStore
 
     /// <summary>
     /// i-api 에 든 서버 목록 원본에서 이 서버가 아직 받은 적 없는 앱을 앱 목록에 더함 (설명 · 상세 설명 · 개발자 · 스크린샷까지 원본 그대로).
-    /// 한 번 본 앱 id 는 seed-applied.json 에 남겨, 관리자가 목록에서 뺀 앱은 다시 넣지 않음. 이미 목록에 있는 앱(id · 예전 id)은 건드리지 않음.
+    /// 한 번 본 앱 id 는 seed-applied.json 에 남겨, 관리자가 목록에서 뺀 앱은 다시 넣지 않음. 이미 목록에 있는 앱(id · 예전 id)은 그대로 두고,
+    /// 스크린샷이 3장보다 적을 때만 원본 그림 중 없는 것을 뒤에 더함 (이것도 그 id 를 처음 볼 때 한 번).
     /// 저장소 주소 = 목록의 다른 앱과 같은 호스트/소유자 (목록이 비면 repositoryBase). 모르면 넣지 않고 다음 시작 때 다시 봄.
     /// 더한 앱 이름들을 돌려줌
     /// </summary>
@@ -195,13 +196,29 @@ internal sealed partial class LauncherStore
             var apps = catalog["apps"]!.AsArray();
             string owner = RepositoryBase(apps) ?? repositoryBase.Trim().TrimEnd('/');
             var added = new List<string>();
+            bool filled = false;
             foreach (var app in fresh)
             {
                 string id = Util.Or(app["id"], "");
-                bool listed = apps.OfType<JsonObject>().Any(existing => string.Equals(Util.Or(existing["id"], ""), id, StringComparison.OrdinalIgnoreCase)
+                var listed = apps.OfType<JsonObject>().FirstOrDefault(existing => string.Equals(Util.Or(existing["id"], ""), id, StringComparison.OrdinalIgnoreCase)
                     || (existing["formerIds"] as JsonArray ?? []).Any(former => string.Equals(Util.AsString(former), id, StringComparison.OrdinalIgnoreCase)));
-                if (listed)
+                if (listed is not null)
                 {
+                    // 이미 있는 앱은 그대로. 스크린샷이 앱 페이지 최소(3장)보다 적을 때만 원본 그림 중 없는 것을 뒤에 더함 (같은 그림 = 같은 이름)
+                    var current = listed["screenshots"] as JsonArray;
+                    if ((current?.Count ?? 0) < ScreenshotsMin && app["screenshots"] is JsonArray seedShots)
+                    {
+                        var names = current is null ? new JsonArray() : (JsonArray)current.DeepClone();
+                        foreach (string shot in seedShots.Select(Util.AsString).OfType<string>())
+                        {
+                            if (names.Count >= ScreenshotsMax || media(shot) is not { Length: > 0 } image) continue;
+                            string name = AddMedia(image);
+                            if (names.Any(existing => Util.AsString(existing) == name)) continue;
+                            names.Add(name);
+                            filled = true;
+                        }
+                        listed["screenshots"] = names;
+                    }
                     applied.Add(id);
                     continue;
                 }
@@ -227,7 +244,7 @@ internal sealed partial class LauncherStore
                 applied.Add(id);
                 added.Add(Util.Or(app["name"], id));
             }
-            if (added.Count > 0)
+            if (added.Count > 0 || filled)
             {
                 var document = new JsonObject { ["schemaVersion"] = 1, ["apps"] = Validate(apps).DeepClone() };
                 SaveFile("catalog.json", Util.Utf8.GetBytes(document.ToJsonString(Util.Indent2).Replace("\r\n", "\n") + "\n"), Util.Or(catalog["revision"], ""));
