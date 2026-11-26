@@ -14,6 +14,7 @@ namespace ILauncher;
 ///   4. 저장소에서 이름으로 찾은 아이콘 (Assets/…icon.png 등)
 ///   5. 예전에 본 실행 파일 아이콘 (제거한 뒤에도)
 /// 저장소에서 받은 아이콘은 %LOCALAPPDATA%\i-luncher\icons 에 PNG 로 두고 7일마다 (못 찾았으면 하루마다) 다시 확인.
+/// 그보다 새 릴리스가 나왔으면 바로 다시 확인 (아이콘 파일 이름은 그대로 두고 그림만 바꾼 릴리스도 반영).
 /// </summary>
 public sealed class AppIconService(GitHubClient github, string cacheDirectory, Func<string?> defaultHost)
 {
@@ -45,13 +46,14 @@ public sealed class AppIconService(GitHubClient github, string cacheDirectory, F
         return repository ?? AppIcons.Load(app.Id, null, cacheDirectory);
     }
 
-    /// <summary>저장소에서 아이콘을 (필요하면) 다시 찾음. 바뀌었으면 true</summary>
-    public async Task<bool> RefreshAsync(AppDefinition app, CancellationToken cancellationToken = default)
+    /// <summary>저장소에서 아이콘을 (필요하면) 다시 찾음. releasedAt = 최신 릴리스 시각 (캐시보다 새로우면 다시 찾음). 바뀌었으면 true</summary>
+    public async Task<bool> RefreshAsync(AppDefinition app, DateTimeOffset? releasedAt = null, CancellationToken cancellationToken = default)
     {
         if (CustomIcons.IsCustom(app.Icon)) return false;  // 고른 아이콘은 저장소에서 찾지 않음
         var meta = ReadMeta(app);
         string key = Key(app);
         if (meta is not null && meta.Key == key && DateTimeOffset.Now - meta.CheckedAt < (meta.Path is null ? RecheckMissing : RecheckFound)
+            && !(releasedAt is { } released && released > meta.CheckedAt)
             && (meta.Path is null || File.Exists(ImagePath(app))))
             return false;
         if (GitHubRepository.Parse(app.Repository, defaultHost()) is not { } repository) return false;

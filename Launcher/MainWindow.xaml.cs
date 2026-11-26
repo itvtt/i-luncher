@@ -534,7 +534,7 @@ public partial class MainWindow : Window
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 var app = card.App;
-                if (!await _icons.RefreshAsync(app, timeout.Token)) return;
+                if (!await _icons.RefreshAsync(app, card.Latest?.PublishedAt, timeout.Token)) return;
                 var installed = card.Installed;
                 card.Icon = await Task.Run(() => _icons.Current(app, installed));
             }
@@ -1809,6 +1809,7 @@ public partial class MainWindow : Window
         RestoreGlyph.Visibility = maximized ? Visibility.Visible : Visibility.Collapsed;
         // 테두리 없는 창을 최대화하면 화면 밖으로 넘치는 만큼 안쪽으로
         BorderThickness = maximized ? new Thickness(7) : new Thickness(0);
+        WindowOutline.Visibility = maximized ? Visibility.Collapsed : Visibility.Visible;
     }
 
     protected override void OnClosed(EventArgs e)

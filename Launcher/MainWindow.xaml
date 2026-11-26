@@ -811,5 +811,8 @@
                 <TextBlock x:Name="StatusText" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
             </Grid>
         </Border>
+
+        <!-- 창 테두리: 어두운 바탕화면 · 다른 창과 구분 (최대화하면 숨김) -->
+        <Border x:Name="WindowOutline" Grid.RowSpan="3" BorderBrush="#FF5C5F68" BorderThickness="1" IsHitTestVisible="False" />
     </Grid>
 </Window>
