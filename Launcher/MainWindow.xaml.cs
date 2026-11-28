@@ -1155,7 +1155,10 @@ public partial class MainWindow : Window
 
     // ───────────────────────── 스토어 / 설치됨 ─────────────────────────
 
-    /// <summary>지금 탭: store = 앱 목록의 앱 (받기 · 열기), installed = 이 PC 에 설치한 앱 · 내 앱 · 내 PC 프로그램 (홈 화면처럼 큰 아이콘)</summary>
+    /// <summary>
+    /// 지금 탭: store = 앱 목록의 앱 (받기 · 열기), installed = 이 PC 에 설치한 앱 · 내 앱 · 내 PC 프로그램 (홈 화면처럼 큰 아이콘),
+    /// all = 전체 보기 (마스터 왼쪽 메뉴 맨 위): 앱 목록의 앱 · 내 앱 · 내 PC 프로그램 모두를 큰 아이콘으로 (받지 않은 앱은 흐리게, 이름 아래 받기)
+    /// </summary>
     private string _tab = "installed";
     private bool _tabChosen;
 
@@ -1209,7 +1212,8 @@ public partial class MainWindow : Window
         int palette = 0;
         foreach (var card in Sorted(_cards)) card.Palette = palette++ % CardArt.Count;
 
-        Func<AppCard, bool> visible = home ? InHome : store ? InStore : InInstalled;
+        bool everything = !home && _tab == "all";
+        Func<AppCard, bool> visible = home ? InHome : store ? InStore : everything ? _ => true : InInstalled;
         var pool = Sorted(_cards.Where(visible));
         string? category = _filter.StartsWith("category:", StringComparison.Ordinal) ? _filter[9..] : null;
         bool InCategory(string name) => string.Equals(name, category, StringComparison.CurrentCultureIgnoreCase);
@@ -1243,12 +1247,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            _title = home ? "홈" : store ? "스토어" : "설치됨";
+            _title = home ? "홈" : store ? "스토어" : everything ? "전체 보기" : "설치됨";
             items = [.. pool, .. programs];
         }
         ViewHeading.Text = _title;
         if (home) RenderHomeChips(pool, programs);
-        else RenderInstalledChips(search.Length == 0 && !store && (_filter == "all" || category is not null));  // 설치됨 · 그 분류에서만 (내 앱 · 즐겨찾기 · 업데이트는 없음)
+        else RenderInstalledChips(search.Length == 0 && !store && (_filter == "all" || category is not null), pool, programs);  // 설치됨 · 전체 보기와 그 분류에서만 (내 앱 · 즐겨찾기 · 업데이트는 없음)
         // 스토어는 같은 앱 칸을 한 줄 모양으로
         if (store) items = items.Select(item => item is AppCard card ? new StoreRow(card) : item).ToList();
 
@@ -1307,6 +1311,12 @@ public partial class MainWindow : Window
             EmptyStateText.Text = "앱: 마우스를 올려 별 · 프로그램: 우클릭 → 즐겨찾기에 추가";
             EmptyStateButton.Content = home ? "전체" : "설치됨";
             EmptyStateButton.Tag = "installed";
+        }
+        else if (everything && _filter == "all" && search.Length == 0)
+        {
+            EmptyStateTitle.Text = "앱이 없습니다";
+            EmptyStateText.Text = "아래 + 로 추가하세요.";
+            EmptyStateButton.Tag = "none";
         }
         else if (!store && _filter == "mine" && search.Length == 0)
         {
@@ -1420,8 +1430,8 @@ public partial class MainWindow : Window
     /// 고른 것은 흰 버튼. 검색하는 동안은 숨김
     /// </summary>
     /// <summary>
-    /// 왼쪽 메뉴 (앱스토어처럼): 스토어 · 분류마다 | 설치됨 · 내 앱 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판.
-    /// 누르면 그 화면으로 (검색은 지움). 설정에서는 메뉴를 숨김
+    /// 왼쪽 메뉴 (앱스토어처럼): 전체 보기 | 스토어 · 분류마다 | 설치됨 · 내 앱 · 즐겨찾기 · 업데이트 (있을 때). 지금 화면은 밝은 판
+    /// (전체 보기 · 설치됨은 위쪽 분류 단추로 고른 분류에서도). 누르면 그 화면으로 (검색은 지움). 설정에서는 메뉴를 숨김
     /// </summary>
     private void RenderCategories()
     {
@@ -1430,7 +1440,8 @@ public partial class MainWindow : Window
         var store = _cards.Where(InStore).ToList();
         var installed = _cards.Where(InInstalled).ToList();
         var programs = ProgramCards();
-        AddItem("스토어", null, "store", "all", "\uE719", 0);
+        AddItem("전체 보기", _cards.Count + programs.Count, "all", "all", CategoryLook.AllGlyph, 0);
+        AddItem("스토어", null, "store", "all", "\uE719", 18);
         foreach (var group in store.GroupBy(card => card.Category, StringComparer.CurrentCultureIgnoreCase)
                      .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
             AddItem(group.Key, group.Count(), "store", "category:" + group.Key, CategoryLook.Glyph(group.Key), 0);
@@ -1443,7 +1454,8 @@ public partial class MainWindow : Window
 
         void AddItem(string name, int? count, string tab, string filter, string glyph, double gap)
         {
-            bool on = !searching && _tab == tab && _filter == filter;
+            bool on = !searching && _tab == tab && (_filter == filter
+                || tab != "store" && filter == "all" && _filter.StartsWith("category:", StringComparison.Ordinal));
             var row = new Grid();
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1469,13 +1481,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>설치됨 위쪽의 분류 필터 단추: 전체 · 분류마다 (설치한 앱 · 내 앱 · 내 PC 프로그램의 개수). 고른 것은 흰 단추</summary>
-    private void RenderInstalledChips(bool show)
+    /// <summary>설치됨 · 전체 보기 위쪽의 분류 필터 단추: 전체 · 분류마다 (그 화면의 앱 · 내 PC 프로그램 개수). 고른 것은 흰 단추</summary>
+    private void RenderInstalledChips(bool show, IReadOnlyList<AppCard> pool, IReadOnlyList<FavoriteCard> programs)
     {
         InstalledChips.Children.Clear();
         InstalledChips.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) return;
-        var categories = _cards.Where(InInstalled).Select(card => card.Category).Concat(ProgramCards().Select(card => card.Category)).ToList();
+        string tab = _tab;
+        var categories = pool.Select(card => card.Category).Concat(programs.Select(card => card.Category)).ToList();
         AddChip("전체", categories.Count, "all");
         foreach (var group in categories.GroupBy(name => name, StringComparer.CurrentCultureIgnoreCase)
                      .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
@@ -1490,7 +1503,7 @@ public partial class MainWindow : Window
             var button = new Button { Style = (Style)FindResource("CategoryChipStyle"), Content = text, Tag = on ? "on" : "off" };
             if (on) { button.Background = ChipOnBack; button.Foreground = ChipOnText; }
             System.Windows.Automation.AutomationProperties.SetName(button, name);
-            button.Click += (_, _) => ShowView("installed", filter);
+            button.Click += (_, _) => ShowView(tab, filter);
             InstalledChips.Children.Add(button);
         }
     }

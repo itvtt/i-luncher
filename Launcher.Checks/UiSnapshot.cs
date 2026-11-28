@@ -64,10 +64,10 @@ static class UiSnapshot
                     Pump(TimeSpan.FromMilliseconds(500));
                     Save((FrameworkElement)window.Content, Suffix(output, "-scrolled"));
                     window.CardScrollViewer.ScrollToHome();
-                    // 두 탭을 따로: 스토어(한 줄씩, -store) · 설치됨(큰 아이콘, -installed). 처음 탭은 위 그림
+                    // 탭을 따로: 스토어(한 줄씩, -store) · 설치됨(큰 아이콘, -installed) · 전체 보기(모든 앱 큰 아이콘, -all). 처음 탭은 위 그림
                     string firstTab = window.CurrentTab;
                     Console.WriteLine($"first tab: {firstTab}");
-                    foreach (string tab in new[] { "store", "installed" })
+                    foreach (string tab in new[] { "store", "installed", "all" })
                     {
                         window.ShowTab(tab);
                         Pump(TimeSpan.FromMilliseconds(700));

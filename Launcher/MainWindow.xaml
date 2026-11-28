@@ -364,7 +364,7 @@
         <Grid Grid.Row="1">
             <!-- 왼쪽 메뉴 칸: 마스터 화면만 (일반 화면은 폭 0 = 홈 화면, 코드에서) -->
             <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 스토어 · 분류마다, 설치됨 · 내 앱 · 즐겨찾기 · 업데이트. 설정 · 일반 화면에서는 숨김 -->
+            <!-- 왼쪽 메뉴 (앱스토어처럼): 검색, 전체 보기, 스토어 · 분류마다, 설치됨 · 내 앱 · 즐겨찾기 · 업데이트. 설정 · 일반 화면에서는 숨김 -->
             <Border x:Name="Sidebar" Background="#FF161618" BorderBrush="#FF2A2B30" BorderThickness="0,0,1,0">
                 <DockPanel Margin="12,16,12,12">
                     <Border DockPanel.Dock="Top" Height="34" Background="#FF2C2D32" CornerRadius="9">
